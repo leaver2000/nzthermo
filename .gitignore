@@ -1,0 +1,7 @@
+# python
+.venv/
+build/
+**/__pycache__/
+**/*.pyc
+**/*.so
+**/*.c

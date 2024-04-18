@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=58.2.0", "wheel", "Cython>=0.29.23", "numpy>=1.23.4"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nzthermo"
+version = "0.0.1"
+description = "(N, Z) Thermodynamics"
+authors = [{ name = "Jason Leaver", email = "leaver2000@gmail.com" }]
+dependencies = ['numpy']
+
+[tool.pytest]
+testpaths = ["tests/"]
+
+[tool.coverage.run]
+plugins = ["Cython.Coverage"]
+source = ["nzthermo/"]
+
+[tool.coverage.report]
+ignore_errors = false
+show_missing = true
+exclude_lines = [
+    # Have to re-enable the standard pragma
+    "pragma: no cover",
+    # Don't complain about missing debug-only code:s
+    # "def __repr__",
+    # "if self.debug",
+    # Don't complain if tests don't hit defensive assertion code:
+    # "raise AssertionError",
+    "raise NotImplementedError",
+    "AbstractMethodError",
+    # Don't complain if non-runnable code isn't run:
+    # "if 0:",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_configs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+check_untyped_defs = true
