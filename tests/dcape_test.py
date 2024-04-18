@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 import metpy.calc as mpcalc
 import numpy as np
 import pytest
@@ -47,5 +46,5 @@ def test_downdraft_cape(dtype) -> None:
             )[0].m
             for i in range(len(temperature))
         ],
-        rtol=1e-2,
+        rtol=1e-3,
     )

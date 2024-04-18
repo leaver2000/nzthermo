@@ -1,7 +1,18 @@
 from __future__ import annotations
 
 import functools
-from typing import Callable, Concatenate, Generic, Literal, NamedTuple, ParamSpec, Self, TypeVar, overload, Any
+from typing import (
+    Any,
+    Callable,
+    Concatenate,
+    Generic,
+    Literal,
+    NamedTuple,
+    ParamSpec,
+    Self,
+    TypeVar,
+    overload,
+)
 
 import numpy as np
 from numpy.typing import NDArray
@@ -316,16 +327,16 @@ def intersect_nz(
     if np.sum(nah := np.all(~mask, axis=-1)):
         mask[nah] = True
 
-    batch, i0 = np.nonzero(mask)
-    i1 = np.clip(i0 + 1, 0, Z - 1)
+    nx, z0 = np.nonzero(mask)
+    z1 = np.clip(z0 + 1, 0, Z - 1)
 
     if x.ndim == 1:
-        x0, x1 = x[i0], x[i1]
+        x0, x1 = x[z0], x[z1]
     else:
-        x0, x1 = x[batch, i0], x[batch, i1]
+        x0, x1 = x[nx, z0], x[nx, z1]
 
-    a0, a1 = a[batch, i0], a[batch, i1]
-    b0, b1 = b[batch, i0], b[batch, i1]
+    a0, a1 = a[nx, z0], a[nx, z1]
+    b0, b1 = b[nx, z0], b[nx, z1]
 
     delta_y0 = a0 - b0
     delta_y1 = a1 - b1
@@ -336,4 +347,4 @@ def intersect_nz(
         if log_x is True:
             x = np.exp(x)
 
-    return Intersection(x, y, batch)  # type: ignore
+    return Intersection(x, y, nx)  # type: ignore
