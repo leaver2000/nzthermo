@@ -1,6 +1,0 @@
-Metadata-Version: 2.1
-Name: nzthermo
-Version: 0.0.1
-Summary: (N, Z) Thermodynamics
-Author-email: Jason Leaver <leaver2000@gmail.com>
-Requires-Dist: numpy
