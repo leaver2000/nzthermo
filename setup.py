@@ -58,7 +58,15 @@ extension_modules = [
         define_macros=define_macros,
         extra_compile_args=extra_compile_args,
         extra_link_args=extra_link_args,
-    )
+    ),
+    setuptools.Extension(
+        "nzthermo._datetime",
+        ["nzthermo/_datetime.pyx"],
+        include_dirs=include_dirs,
+        define_macros=define_macros,
+        extra_compile_args=extra_compile_args,
+        extra_link_args=extra_link_args,
+    ),
 ]
 
 setuptools.setup(

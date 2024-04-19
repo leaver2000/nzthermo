@@ -163,7 +163,7 @@ def insert_along_z(
     elif not x.ndim == 2:
         raise ValueError("x must be a 1D or 2D array")
 
-    indices = np.zeros((N, 1), dtype=int) + np.arange(Z)
+    indices = np.zeros((N, 1), dtype=int) + np.arange(Z)  # (N, Z)
     out = np.full((N, Z), np.nan, dtype=dtype)
     idx = np.argmin(np.abs(z[newaxis, :] - x), axis=1)
     # insert all of our new values

@@ -8,14 +8,14 @@
 
 from cython.parallel cimport parallel, prange
 from cython.view cimport array as cvarray
-from libc.math cimport ceil, exp, isnan
+from libc.math cimport ceil, exp, isnan, sin, cos, fmax, fmin
 
 import numpy as np
 cimport numpy as np
 from . import const as _const
 from cython cimport floating
-
 np.import_array()
+
 
 cdef extern from *:
     """
@@ -26,6 +26,16 @@ cdef extern from *:
     #endif
     """
     cdef bint _OMP_ENABLED
+
+cdef extern from "<math.h>" nogil:
+    double sin(double x)
+    double cos(double x)
+    double tan(double x)
+    double asin(double x)
+    double acos(double x)
+    double atan(double x)
+    double atan2(double y, double x)
+    const double pi "M_PI"  # as in Python's math module
 
 OPENMP_ENABLED = bool(_OMP_ENABLED)
 
@@ -48,7 +58,9 @@ cdef floating saturation_mixing_ratio(floating pressure, floating temperature) n
     P = E0 * exp(17.67 * (temperature - T0) / (temperature - 29.65)) # saturation vapor pressure
     return 0.6219 * P / (pressure - P)
 
-
+# =================================================================================================
+# moist_lapse
+# =================================================================================================
 cdef floating solver(floating pressure, floating temperature) noexcept nogil:
     cdef floating r
     r = saturation_mixing_ratio(pressure, temperature)
@@ -254,3 +266,57 @@ def moist_lapse(
         )
 
     return x
+
+# =================================================================================================
+# in development...
+# =================================================================================================
+cdef floating czda(floating h_start, floating h_end, floating h_sunrise, floating h_sunset, floating lat, floating Decl, floating interval) nogil:
+    # h_start: hour angle of the starting point of each interval (radian)
+    # h_end: hour angle of the end point of each interval (radian)
+    # h_sunrise: hour angle at sunrise (radian)
+    # h_sunrise: hour angle at sunset (radian)
+    # lat: latitude (radian)
+    # Decl: solar declination angle (radian)
+    # interval: length of interval (e.g. 3 for 3-hourly interval)
+    # return: cosine zenith angle during only the sunlit part of each interval
+    cdef floating h_min, h_max, cosz, h_min1, h_max1, h_min2, h_max2
+    if isnan(h_sunrise) and (lat * Decl) > 0:
+        h_min = h_start
+        h_max = h_end
+        cosz = sin(Decl) * sin(lat) + cos(Decl) * cos(lat) * (sin(h_max) - sin(h_min)) * ((interval * 15.0 / 180.0 * pi)**(-1))
+    elif isnan(h_sunrise) and lat*Decl<0:
+        cosz = 0
+    elif (
+        (h_start > h_sunset and h_end < h_sunrise) 
+        or (h_start < h_sunrise and h_end < h_sunrise) 
+        or (h_start > h_sunset and h_end > h_sunset)
+    ):
+        cosz=0
+    elif (h_start>h_sunset and h_end<0 and h_end>h_sunrise):
+        h_min=h_sunrise
+        h_max=h_end
+        cosz= sin(Decl) * sin(lat)+ cos(Decl) * cos(lat) *(sin(h_max)- sin(h_min))*((h_max-h_min)**(-1))
+    elif (h_start>0 and h_start<h_sunset and h_end<h_sunrise):
+        h_min=h_start
+        h_max=h_sunset
+        cosz= sin(Decl)* sin(lat)+ cos(Decl)* cos(lat)*( sin(h_max)- sin(h_min))*((h_max-h_min)**(-1))
+    elif (h_start > 0 and h_start < h_sunset and h_end < 0 and h_end > h_sunrise):
+        h_min1 = h_start
+        h_max1 = h_sunset
+        h_min2 = h_sunrise
+        h_max2 = h_end
+        cosz = (
+            (sin(Decl)* sin(lat) * (h_max1-h_min1) + cos(Decl) * cos(lat)*(sin(h_max1) - sin(h_min1))
+            + sin(Decl)* sin(lat)*(h_max2-h_min2) + cos(Decl)* cos(lat)*(sin(h_max2) - sin(h_min2)))
+            *((h_max1-h_min1+h_max2-h_min2)**(-1))
+        )
+    else:
+        h_min = fmax(h_sunrise, h_start)
+        h_max = fmin(h_sunset, h_end)
+        cosz = sin(Decl)* sin(lat)+ cos(Decl)* cos(lat)*( sin(h_max)- sin(h_min))*((h_max-h_min)**(-1))
+    return cosz
+
+
+
+def black_globe_temperature():...
+def wet_bulb_globe_temperature():...
