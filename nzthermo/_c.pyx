@@ -8,12 +8,12 @@
 
 from cython.parallel cimport parallel, prange
 from cython.view cimport array as cvarray
-from libc.math cimport ceil, exp, isnan, sin, cos, fmax, fmin
 
 import numpy as np
 cimport numpy as np
+
 from . import const as _const
-from cython cimport floating
+
 np.import_array()
 
 
@@ -27,18 +27,11 @@ cdef extern from *:
     """
     cdef bint _OMP_ENABLED
 
-cdef extern from "<math.h>" nogil:
-    double sin(double x)
-    double cos(double x)
-    double tan(double x)
-    double asin(double x)
-    double acos(double x)
-    double atan(double x)
-    double atan2(double y, double x)
-    const double pi "M_PI"  # as in Python's math module
-
 OPENMP_ENABLED = bool(_OMP_ENABLED)
 
+# =================================================================================================
+# constant declarations
+# =================================================================================================
 cdef:
     float Rd        = _const.Rd
     float Rv        = _const.Rv
@@ -52,16 +45,39 @@ cdef:
 
 del _const
 
-
+# -------------------------------------------------------------------------------------------------
+# thermodynamic functions
+# -------------------------------------------------------------------------------------------------
 cdef floating saturation_mixing_ratio(floating pressure, floating temperature) noexcept nogil:
     cdef floating P
     P = E0 * exp(17.67 * (temperature - T0) / (temperature - 29.65)) # saturation vapor pressure
     return 0.6219 * P / (pressure - P)
 
-# =================================================================================================
+
+cdef floating vapor_pressure(floating pressure, floating mixing_ratio) noexcept nogil:
+    return pressure * mixing_ratio / (Rd / Rv + mixing_ratio)
+
+
+cdef floating _dewpoint(floating vapor_pressure) noexcept nogil:
+    cdef floating ln
+    ln = log(vapor_pressure / E0)
+    return T0 + 243.5 * ln / (17.67 - ln)
+
+
+cdef floating mixing_ratio(
+    floating partial_press, floating total_press, floating molecular_weight_ratio = Rd / Rv
+) noexcept nogil:
+    return molecular_weight_ratio * partial_press / (total_press - partial_press)
+
+
+cdef floating saturation_vapor_pressure(floating temperature) noexcept nogil:    
+    return E0 * exp(17.67 * (temperature - T0) / (temperature - 29.65))
+
+
+# -------------------------------------------------------------------------------------------------
 # moist_lapse
-# =================================================================================================
-cdef floating solver(floating pressure, floating temperature) noexcept nogil:
+# -------------------------------------------------------------------------------------------------
+cdef floating moist_lapse_solver(floating pressure, floating temperature) noexcept nogil:
     cdef floating r
     r = saturation_mixing_ratio(pressure, temperature)
     r = (Rd * temperature + Lv * r) / (Cpd + (Lv * Lv * r * epsilon / (Rd * temperature**2)))
@@ -69,7 +85,7 @@ cdef floating solver(floating pressure, floating temperature) noexcept nogil:
     return r
 
 
-cdef floating intergrator(
+cdef floating moist_lapse_integrator(
     floating pressure, floating next_pressure, floating temperature, floating step
 ) noexcept nogil:
     """``2nd order Runge-Kutta (RK2)``
@@ -86,8 +102,8 @@ cdef floating intergrator(
         delta = delta / <floating> N
 
     for _ in range(N):
-        k1 = delta * solver(pressure, temperature)
-        temperature += delta * solver(pressure + delta * 0.5, temperature + k1 * 0.5)
+        k1 = delta * moist_lapse_solver(pressure, temperature)
+        temperature += delta * moist_lapse_solver(pressure + delta * 0.5, temperature + k1 * 0.5)
         pressure += delta
 
     return temperature
@@ -97,7 +113,7 @@ cdef void moist_lapse_1d_(
     floating[:] out, floating[:] pressure, floating reference_pressure, floating temperature, floating step
 ) noexcept nogil:
     """Moist adiabatic lapse rate for a 1D array of pressure levels."""
-    cdef size_t i, Z
+    cdef size_t Z, i
     cdef floating next_pressure
 
     Z = pressure.shape[0]
@@ -113,65 +129,40 @@ cdef void moist_lapse_1d_(
             # The solver will start at the first non nan value
             out[i] = nan
         else:
-            out[i] = temperature = intergrator(reference_pressure, next_pressure, temperature, step=step)
-            reference_pressure = pressure[i]
+            out[i] = temperature = moist_lapse_integrator(
+                reference_pressure, next_pressure, temperature, step=step
+            )
+            reference_pressure = next_pressure
 
 
-cdef enum ComputationMode:
-    INFER = 0
-    BROADCAST = 1
-    MATRIX = 2
-    SLICE = 3
-
-
-cdef float[:, :] moist_lapse_f32(
-    (size_t, size_t) shape,
-    float[:, :] pressure, 
-    float[:] reference_pressure, 
-    float[:] temperature, 
-    float step,
-    ComputationMode mode
+cdef floating[:, :] _moist_lapse(
+    floating[:, :] pressure, 
+    floating[:] reference_pressure, 
+    floating[:] temperature, 
+    floating step,
+    BroadcastMode mode,
 ):
-    cdef int i
-    cdef float[:, :] out
-    out = cvarray(shape, itemsize=sizeof(float), format='f', mode='c')
+    cdef size_t N, Z, i
+    cdef floating[:, :] out
+
+    N = temperature.shape[0]
+    Z = pressure.shape[1]
+
+    if pressure.itemsize == sizeof(float):
+        out = cvarray((N, Z), itemsize=sizeof(float), format='f', mode='c')
+    else:
+        out = cvarray((N, Z), itemsize=sizeof(double), format='d', mode='c')
 
     with nogil, parallel():
-        if mode == MATRIX:
-            for i in prange(out.shape[0], schedule='dynamic'):
-                moist_lapse_1d_(out[i], pressure[i], reference_pressure[i], temperature[i], step=step)
-        elif mode == BROADCAST:
-            for i in prange(out.shape[0], schedule='dynamic'):
-                moist_lapse_1d_(out[i], pressure[0], reference_pressure[i], temperature[i], step=step)
+        if BROADCAST is mode:
+            for i in prange(N, schedule='dynamic'):
+                moist_lapse_1d_(out[i], pressure[0, :], reference_pressure[i], temperature[i], step=step)
+        elif MATRIX is mode:
+            for i in prange(N, schedule='dynamic'):
+                moist_lapse_1d_(out[i], pressure[i, :], reference_pressure[i], temperature[i], step=step)
         else: # SLICE
-            for i in prange(out.shape[0], schedule='dynamic'):
-                moist_lapse_1d_(out[i], pressure[0, i:i+1], reference_pressure[i], temperature[i], step=step)
-
-    return out
-
-
-cdef double[:, :] moist_lapse_f64(
-    (size_t, size_t) shape,
-    double[:, :] pressure, 
-    double[:] reference_pressure, 
-    double[:] temperature, 
-    double step,
-    ComputationMode mode
-):
-    cdef int i
-    cdef double[:, :] out
-    out = cvarray(shape, itemsize=sizeof(double), format='d', mode='c')
-
-    with nogil, parallel():
-        if mode == MATRIX:
-            for i in prange(out.shape[0], schedule='dynamic'):
-                moist_lapse_1d_(out[i], pressure[i], reference_pressure[i], temperature[i], step=step)
-        elif mode == BROADCAST:
-            for i in prange(out.shape[0], schedule='dynamic'):
-                moist_lapse_1d_(out[i], pressure[0], reference_pressure[i], temperature[i], step=step)
-        else: # SLICE
-            for i in prange(out.shape[0], schedule='dynamic'):
-                moist_lapse_1d_(out[i], pressure[0, i:i+1], reference_pressure[i], temperature[i], step=step)
+            for i in prange(N, schedule='dynamic'):
+                moist_lapse_1d_(out[i], pressure[i:i+1, 0], reference_pressure[i], temperature[i], step=step)
 
     return out
 
@@ -185,6 +176,12 @@ def moist_lapse(
     object dtype = None,
 ):
     """
+    pressure shape (Z,) | (N, Z) | (1, Z) | (N,)
+    BROADCAST: (Z,) & (1, Z)
+    MATRIX: (N, Z)
+    SLICE: (N,) 
+
+
     If reference_pressure is not provided and the pressure array is 2D, the reference pressure
     will be determined by finding the first non-nan value in each row.
     ```
@@ -197,126 +194,210 @@ def moist_lapse(
     >>> reference_pressure
     array([101312., 101393.,  97500.  ])
     ```
+
+    This function attempts to automaticly resolve the broadcast mode. In most cases it should not 
+    be necessary to specify the mode argument. Some cases may occur.
+
+    In this example `p0` is the reference pressure, and the MALR will be computed for each column.
+    this is the `SLICE` mode.
+    ```
+    p = np.array([912.12, 1012.93]) * 100.0
+    t = np.array([225.31, 254.0])
+    p0 = np.array([1013.12, 1013.93]) * 100.0
+    ```
+
+    However if all 3 arrays have the same shape, and you want to broadcast the computation you need to
+    specifiy mode=1
+
+    ```
+    p = np.array([1013, 1000, 975, 950, 925, 900, 875, 850, 825, 800, 775, 750]) * 100.0
+    t = np.array([225.31, 254.0, 273.0, 283.0, 293.0, 303.0, 313.0, 323.0, 333.0, 343.0, 353.0, 363.0])
+    p0 = np.array([1013.12, 1013.93, 1014.12, 1014.93, 1015.12, 1015.93, 1016.12, 1016.93, 1017.12, 1017.93, 1018.12, 1018.93]) * 100.0
+
+    ```
+    
     """
     cdef size_t N, Z, ndim
-    cdef ComputationMode mode = INFER
-    
+    cdef np.ndarray x
+    cdef BroadcastMode mode
+    mode = INFER
 
     if dtype is None:
         dtype = pressure.dtype
     else:
         dtype = np.dtype(dtype)
-    
-    pressure = np.atleast_1d(pressure.squeeze())    # (Z,) | (N, Z)
-    temperature = temperature.ravel()               # (N,)
-    ndim = pressure.ndim
 
-    if (N := temperature.shape[0]) == 0:
+    # [ pressure ]
+    if (ndim := pressure.ndim) == 1:
+        pressure = pressure.reshape(1, -1) # (1, Z)
+    elif ndim != 2:
+        raise ValueError("pressure must be 1D or 2D array.")
+
+    # [ temperature ]
+    temperature = temperature.ravel()  # (N,)
+    if temperature.ndim != 1:
+        raise ValueError("temperature must be a 1D array.")
+    elif (N := temperature.shape[0]) == 0:
         return np.full_like(pressure, nan, dtype=dtype)
 
-    # - determine the reference pressure
+    # [ reference_pressure ]
     if reference_pressure is not None:
         reference_pressure = reference_pressure.ravel()
-        if (
-            pressure.size == reference_pressure.size == temperature.size and 
-            SLICE == sum(x.ndim for x in (pressure, temperature, reference_pressure)) 
+        if reference_pressure.ndim != 1:
+            raise ValueError("reference_pressure must be a 1D array.")
+        elif ( # (N,) (N,) (N,)
+            ndim == <size_t> temperature.ndim == <size_t> reference_pressure.ndim
+            and pressure.size == temperature.size == reference_pressure.size
         ):
             mode = SLICE
+            pressure = pressure.reshape(N, 1)
+        elif len(reference_pressure) == len(temperature):
+            mode = <BroadcastMode> ndim # (N, Z) | (1, Z)
         else:
-            mode = <ComputationMode> ndim
-    elif BROADCAST == ndim:
-        mode = BROADCAST
-        reference_pressure = np.repeat(pressure[np.argmin(np.isnan(pressure))], N)
-    elif MATRIX == ndim:
+            raise ValueError("reference_pressure and temperature arrays must be the same size.")
+    # no reference_pressure provided
+    elif MATRIX == ndim and N == <size_t> pressure.shape[0]:
         mode = MATRIX
         reference_pressure = pressure[np.arange(N), np.argmin(np.isnan(pressure), axis=1)]
+    elif pressure.shape[0] == 1:
+        mode = BROADCAST
+        reference_pressure = np.repeat(pressure[0, np.argmin(np.isnan(pressure[0]))], N)
     else:
-        raise ValueError("pressure must be 1D or 2D array")
+        raise ValueError("Unable to determine the broadcast mode.")
 
-    # - reshape pressure for the supported computation modes
-    if BROADCAST == mode:
-        pressure = pressure.reshape(1, -1)
-        Z = pressure.shape[1]
-    elif MATRIX == mode:
-        Z = pressure.shape[1]
-    elif SLICE == mode:
-        pressure = pressure.reshape(1, -1)
-        Z = 1
-    else:
-        raise ValueError("Could not infer computation mode, check the shape of the input arrays")
+    Z = pressure.shape[1]
 
-    cdef np.ndarray x = np.empty((N, Z), dtype=dtype)
-    if dtype == np.float32:
-        x[:, :] = moist_lapse_f32(
-            (N, Z),
+    x = np.empty((N, Z), dtype=dtype)
+    if np.float32 == dtype:
+        x[...] = _moist_lapse[float](
             pressure.astype(np.float32), 
             reference_pressure.astype(np.float32),
             temperature.astype(np.float32), 
             step=step,
-            mode=mode
+            mode=mode,
         )
     else:
-        x[:, :] = moist_lapse_f64(
-            (N, Z),
+        x[...] = _moist_lapse[double](
             pressure.astype(np.float64),
             reference_pressure.astype(np.float64),
             temperature.astype(np.float64),
             step=step,
-            mode=mode
+            mode=mode,
         )
+    if mode == SLICE:
+        x = x.squeeze(1)
 
     return x
 
 # =================================================================================================
-# in development...
+# lcl
 # =================================================================================================
-cdef floating czda(floating h_start, floating h_end, floating h_sunrise, floating h_sunset, floating lat, floating Decl, floating interval) nogil:
-    # h_start: hour angle of the starting point of each interval (radian)
-    # h_end: hour angle of the end point of each interval (radian)
-    # h_sunrise: hour angle at sunrise (radian)
-    # h_sunrise: hour angle at sunset (radian)
-    # lat: latitude (radian)
-    # Decl: solar declination angle (radian)
-    # interval: length of interval (e.g. 3 for 3-hourly interval)
-    # return: cosine zenith angle during only the sunlit part of each interval
-    cdef floating h_min, h_max, cosz, h_min1, h_max1, h_min2, h_max2
-    if isnan(h_sunrise) and (lat * Decl) > 0:
-        h_min = h_start
-        h_max = h_end
-        cosz = sin(Decl) * sin(lat) + cos(Decl) * cos(lat) * (sin(h_max) - sin(h_min)) * ((interval * 15.0 / 180.0 * pi)**(-1))
-    elif isnan(h_sunrise) and lat*Decl<0:
-        cosz = 0
-    elif (
-        (h_start > h_sunset and h_end < h_sunrise) 
-        or (h_start < h_sunrise and h_end < h_sunrise) 
-        or (h_start > h_sunset and h_end > h_sunset)
-    ):
-        cosz=0
-    elif (h_start>h_sunset and h_end<0 and h_end>h_sunrise):
-        h_min=h_sunrise
-        h_max=h_end
-        cosz= sin(Decl) * sin(lat)+ cos(Decl) * cos(lat) *(sin(h_max)- sin(h_min))*((h_max-h_min)**(-1))
-    elif (h_start>0 and h_start<h_sunset and h_end<h_sunrise):
-        h_min=h_start
-        h_max=h_sunset
-        cosz= sin(Decl)* sin(lat)+ cos(Decl)* cos(lat)*( sin(h_max)- sin(h_min))*((h_max-h_min)**(-1))
-    elif (h_start > 0 and h_start < h_sunset and h_end < 0 and h_end > h_sunrise):
-        h_min1 = h_start
-        h_max1 = h_sunset
-        h_min2 = h_sunrise
-        h_max2 = h_end
-        cosz = (
-            (sin(Decl)* sin(lat) * (h_max1-h_min1) + cos(Decl) * cos(lat)*(sin(h_max1) - sin(h_min1))
-            + sin(Decl)* sin(lat)*(h_max2-h_min2) + cos(Decl)* cos(lat)*(sin(h_max2) - sin(h_min2)))
-            *((h_max1-h_min1+h_max2-h_min2)**(-1))
+cdef floating lcl_solver(
+    floating pressure, floating reference_pressure, floating temperature, floating mixing_ratio
+) noexcept nogil:
+    cdef floating Td, p2    
+    Td = _dewpoint(vapor_pressure(pressure, mixing_ratio))
+    p2 = reference_pressure * (Td / temperature) ** (1.0 / (Rd / Cpd))
+    if isnan(p2):
+        return pressure
+
+    return p2
+
+
+cdef floating lcl_integrator(
+    floating pressure, floating temperature, floating dewpoint, floating mixing_ratio, size_t max_iter, floating eps
+) noexcept nogil:
+    cdef size_t i, N
+    cdef floating p0, p1, p2, r, delta, err, lcl_p, lcl_t
+
+    p0 = pressure
+    for _ in range(max_iter):
+        p1 = lcl_solver(p0, pressure, temperature, mixing_ratio)
+        p2 = lcl_solver(p1, pressure, temperature, mixing_ratio)
+
+        if (delta := p2 - 2.0 * p1 + p0) == 0.0:
+            lcl_p = p2
+        else:
+            lcl_p = p0 - (p1 - p0) ** 2 / delta # delta squared
+
+        err = lcl_p if p0 == 0.0 else abs((lcl_p - p0) / p0) # absolute relative error
+
+        if err < eps:
+            return lcl_p
+
+        p0 = lcl_p
+
+    return nan
+
+
+cdef floating[:, :] _lcl(
+    floating[:] pressure, floating[:] temperature, floating[:] dewpoint, size_t max_iter, floating eps
+):
+    cdef size_t N, i
+    cdef floating r, Td, P, lcl_p
+    cdef floating[:, :] out
+    N = pressure.shape[0]
+    if pressure.itemsize == sizeof(float):
+        out = cvarray((2, N), itemsize=sizeof(float), format='f', mode='c')
+    else:
+        out = cvarray((2, N), itemsize=sizeof(double), format='d', mode='c')
+    
+    with nogil, parallel():
+        for i in prange(N, schedule='dynamic'):
+            P = pressure[i]
+            Td = dewpoint[i]
+            r = mixing_ratio(saturation_vapor_pressure(Td), P)
+            out[0, i] = lcl_p = lcl_integrator(P, temperature[i], Td, r, max_iter, eps=eps)
+            out[1, i] = _dewpoint(vapor_pressure(lcl_p, r))
+
+    return out
+
+
+def lcl(
+    np.ndarray pressure,
+    np.ndarray temperature,
+    np.ndarray dewpoint,
+    *,
+    size_t max_iter = 50,
+    floating eps = 0.1,
+    object dtype = None,
+):
+    """
+    The Lifting Condensation Level (LCL) is the level at which a parcel becomes saturated.
+    It is a reasonable estimate of cloud base height when parcels experience forced ascent.
+    The height difference between this parameter and the LFC is important when determining
+    convection initiation. The smaller the difference between the LCL and the LFC, the more likely
+    deep convection becomes. The LFC-LCL difference is similar to CIN (convective inhibition).
+    LCL heights from approximately 500 m (1600 ft) to 800 m (2600 ft) above ground level are
+    associated with F2 to F5 tornadoes. Low LCL heights and low surface dewpoint depressions
+    (high low level RH) suggest a warm RFD which may play a role in tornado development.
+    """
+    cdef size_t N
+    cdef np.ndarray x
+
+    if dtype is None:
+        dtype = pressure.dtype
+    else:
+        dtype = np.dtype(dtype)
+    N = pressure.size
+
+    x = np.empty((2, N), dtype=dtype)
+    if np.float32 == dtype:
+        x[...] = _lcl[float](
+            pressure.astype(np.float32), 
+            temperature.astype(np.float32),
+            dewpoint.astype(np.float32),
+            max_iter=max_iter,
+            eps=eps,
         )
     else:
-        h_min = fmax(h_sunrise, h_start)
-        h_max = fmin(h_sunset, h_end)
-        cosz = sin(Decl)* sin(lat)+ cos(Decl)* cos(lat)*( sin(h_max)- sin(h_min))*((h_max-h_min)**(-1))
-    return cosz
+        x[...] = _lcl[double](
+            pressure.astype(np.float64),
+            temperature.astype(np.float64),
+            dewpoint.astype(np.float64),
+            max_iter=max_iter,
+            eps=eps,
+        )
 
-
-
-def black_globe_temperature():...
-def wet_bulb_globe_temperature():...
+    return x
+    

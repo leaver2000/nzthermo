@@ -1,4 +1,5 @@
 from typing import Annotated, TypeVar, TypeVarTuple
+
 import numpy as np
 
 T = TypeVar("T")

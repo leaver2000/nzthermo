@@ -23,7 +23,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from . import functional as F
-from ._c import moist_lapse
+from ._c import lcl, moist_lapse
 from ._typing import Kelvin, Kilogram, N, Pascal, Ratio, Z, shape
 from .const import *
 
@@ -140,7 +140,7 @@ def virtual_temperature(
     temperature: Kelvin[NDArray[float_]],
     mixing_ratio: Ratio[NDArray[float_]],
     *,
-    molecular_weight_ratio: float = Mw / Md,
+    molecular_weight_ratio: float = Rd / Rv,
 ) -> Kelvin[NDArray[float_]]:
     return temperature * ((mixing_ratio + molecular_weight_ratio) / (molecular_weight_ratio * (1 + mixing_ratio)))
 
@@ -150,59 +150,6 @@ def dewpoint_from_specific_humidity(
 ) -> Kelvin[NDArray[float_]]:
     w = mixing_ratio_from_specific_humidity(specific_humidity)
     return dewpoint(pressure * w / (eps + w))
-
-
-# =================================================================================================
-# .....{ search functions }.....
-# the following functions are a bit more complex and are dependent
-# =================================================================================================
-# -------------------------------------------------------------------------------------------------
-# Lifting Condensation Level
-# -------------------------------------------------------------------------------------------------
-class LiftingCondensationLevel(NamedTuple, Generic[float_]):
-    pressure: Pascal[NDArray[float_]]
-    temperature: Kelvin[NDArray[float_]]
-
-
-def lcl(
-    pressure: Pascal[NDArray[float_]],
-    temperature: Kelvin[NDArray[float_]],
-    dewpoint: Kelvin[NDArray[float_]],
-    *,
-    max_iters: int = 50,
-    eps: float = 0.1,
-) -> LiftingCondensationLevel[float_]:
-    """
-    The Lifting Condensation Level (LCL) is the level at which a parcel becomes saturated.
-    It is a reasonable estimate of cloud base height when parcels experience forced ascent.
-    The height difference between this parameter and the LFC is important when determining
-    convection initiation. The smaller the difference between the LCL and the LFC, the more likely
-    deep convection becomes. The LFC-LCL difference is similar to CIN (convective inhibition).
-    LCL heights from approximately 500 m (1600 ft) to 800 m (2600 ft) above ground level are
-    associated with F2 to F5 tornadoes. Low LCL heights and low surface dewpoint depressions
-    (high low level RH) suggest a warm RFD which may play a role in tornado development.
-    """
-
-    mask = np.zeros_like(temperature, dtype=bool)
-
-    def lcl_iter(
-        p: Pascal[NDArray[np.float_]], p0: Pascal[NDArray[np.float_]], r: NDArray[np.float_], t: NDArray[np.float_]
-    ) -> Pascal[NDArray[np.float_]]:
-        nonlocal mask
-        td = _dewpoint(vapor_pressure(p, r))
-        p2 = p0 * (td / t) ** (1.0 / (Rd / Cpd))
-        nah = np.isnan(p2)
-        mask |= nah
-        return np.where(nah, p, p2)
-
-    r = mixing_ratio(saturation_vapor_pressure(dewpoint), pressure)
-
-    lcl_p = F.fixed_point(lcl_iter, pressure, (pressure, r, temperature), tolerance=eps, max_iters=max_iters)
-    lcl_p[mask] = np.nan
-    idx = np.isclose(lcl_p, pressure).nonzero()
-    lcl_p[idx] = pressure[idx]
-
-    return LiftingCondensationLevel(lcl_p, _dewpoint(vapor_pressure(lcl_p, r)))
 
 
 # -------------------------------------------------------------------------------------------------
@@ -217,7 +164,8 @@ def wet_bulb_temperature(
     if not all(x.ndim == 1 for x in (pressure, temperature, dewpoint)):
         raise NotImplementedError("Currently only support for 1D arrays")
     lcl_p, lcl_t = lcl(pressure, temperature, dewpoint)
-    return moist_lapse(pressure, lcl_t, lcl_p).squeeze(1)
+
+    return moist_lapse(pressure, lcl_t, lcl_p)
 
 
 # -------------------------------------------------------------------------------------------------
@@ -237,6 +185,7 @@ class ConvectiveCondensationLevel(NamedTuple, Generic[float_]):
     ) -> ConvectiveCondensationLevel[float_]:
         p, t, _ = intersect.lower() if which == "lower" else intersect.upper()
         ct = dry_lapse(p0, t, p)
+
         return ConvectiveCondensationLevel(p, t, ct)
 
 
@@ -353,6 +302,7 @@ def _parcel_profile(
     index = np.nonzero(p_lower.mask)
     p_lower[index] = p_upper[index]
     t_lower[index] = t_upper[index]
+
     return (p_lower.squeeze(), lcl_p.squeeze()), (t_lower.squeeze(), lcl_t.squeeze())
 
 

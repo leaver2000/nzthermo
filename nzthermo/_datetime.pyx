@@ -6,14 +6,15 @@
 
 # pyright: reportGeneralTypeIssues=false, reportUnusedExpression=false, reportMissingImports=false
 from cython.parallel cimport parallel, prange
-from cython.view cimport array as cvarray
 import numpy as np
 cimport numpy as np
+
 np.import_array()
 
-cdef double pe4dt(long year, long month) noexcept nogil:
+
+cdef double pe4dt(long year, long month, bint apply_corection = 0) noexcept nogil:
     """POLYNOMIAL EXPRESSIONS FOR DELTA T (ΔT)
-    ref: https://eclipse.gsfc.nasa.gov/SEcat5/deltatpoly.html
+    see: https://eclipse.gsfc.nasa.gov/SEcat5/deltatpoly.html
     """
     cdef double delta_t, u, y, t
 
@@ -115,8 +116,8 @@ cdef double pe4dt(long year, long month) noexcept nogil:
         u = (y - 1820) / 100
         delta_t = -20 + 32 * u**2
 
-    # if apply_corection:
-        # delta_t -= -0.000012932 * (y - 1955) ** 2
+    if apply_corection:
+        delta_t -= -0.000012932 * (y - 1955) ** 2
 
     return delta_t
 
@@ -134,7 +135,14 @@ cdef double[:] _delta_t(long[:] years, long[:] months):
     return out
 
 def delta_t(np.ndarray dt):
+    """
+    >>> np.array(['1970-01-01T02:00:00'], dtype="datetime64[Y]").astype(np.int64) + 1970
+    array([1970])
+    >>> np.array(['1970-03-01T02:00:00'], dtype="datetime64[M]").astype(np.int64) % 12 + 1
+    array([3])
+    """
     cdef long[:] Y = dt.astype("datetime64[Y]").astype(np.int64) + 1970
     cdef long[:] M = dt.astype("datetime64[M]").astype(np.int64) % 12 + 1
-
     return np.array(_delta_t(Y, M), dtype=np.float64, copy=False)
+
+

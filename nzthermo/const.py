@@ -2,9 +2,6 @@ __all__ = [
     "g",
     "G",
     "Re",
-    "Md",
-    "Mw",
-    "Mi",
     "R",
     "Rd",
     "Rv",
@@ -33,9 +30,6 @@ Re: Final[Annotated[float, "m"]] = 6371008.7714
 
 
 # [mass]
-Md: Final[Annotated[float, ...]] = 28.96546e-3  # (kg mol^-1) molar mass of dry air
-Mw: Final[Annotated[float, ...]] = 18.015268e-3  # (kg mol^-1) molar mass of water vapor
-Mi: Final[Annotated[float, ...]] = 28.9647e-3  # (kg mol^-1) molar mass of ice
 
 # [gas]
 R: Final[Annotated[float, " (J mol^-1 K^-1)", "R*"]] = 8.314462618
@@ -69,5 +63,5 @@ Lv: Final[Annotated[float, ...]] = 2.50084e6  # (J kg^-1) latent heat of vaporiz
 """Latent heat of vaporization (J/kg)"""
 
 # [other]
-epsilon: Final[Annotated[float, "Mw / Md"]] = Mw / Md
+epsilon: Final[Annotated[float, "Rd / Rv"]] = Rd / Rv
 P0: Final[Annotated[float, ...]] = 1e5
