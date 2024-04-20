@@ -176,15 +176,33 @@ def moist_lapse(
     object dtype = None,
 ):
     """
-    pressure shape (Z,) | (N, Z) | (1, Z) | (N,)
-    BROADCAST: (Z,) & (1, Z)
-    MATRIX: (N, Z)
-    SLICE: (N,) 
+    pressure shape ``(N,) | (Z,) | (1, Z) | (N, Z)``
+
+    This function attempts to automaticly resolve the broadcast mode. If all 3 arrays have the same
+    shape, and you want to broadcast ``N x Z`` reshape the ``pressure`` array to ``(1, Z)``,
+    otherwise the function will execute element-wise.
+
+    >>> import numpy as np
+    >>> import nzthermo as nzt
+    >>> pressure = np.linspace(100000, 31000, 20)
+    >>> temperature = np.random.uniform(300, 220, 20)
+    >>> refrence_pressures = np.random.uniform(1001325, 100001, 20)
+    >>> N = temperature.shape[0]
+    >>> nzt.moist_lapse(pressure, temperature, refrence_pressures)
+    array([136.21, 193.77, 154.62, ..., 112.51, 155.1 , 119.41])
+    >>> nzt.moist_lapse(pressure[np.newaxis, :], temperature, refrence_pressures)
+    array([[136.21, 134.78, 133.31, ..., 103.52, 100.61,  97.47],
+          [195.83, 193.77, 191.66, ..., 148.83, 144.65, 140.14],
+          [157.99, 156.33, 154.62, ..., 120.07, 116.7 , 113.06],
+          ...,
+          [148.05, 146.49, 144.89, ..., 112.51, 109.35, 105.94],
+          [209.97, 207.76, 205.5 , ..., 159.58, 155.1 , 150.27],
+          [166.86, 165.11, 163.31, ..., 126.81, 123.25, 119.41]])
 
 
-    If reference_pressure is not provided and the pressure array is 2D, the reference pressure
+    If ``reference_pressure`` is not provided and the pressure array is 2D, the reference pressure
     will be determined by finding the first non-nan value in each row.
-    ```
+
     >>> pressure = np.array([
         [1013.12, 1000, 975, 950, 925, 900, ...],
         [1013.93, 1000, 975, 950, 925, 900, ...],
@@ -193,29 +211,7 @@ def moist_lapse(
     >>> reference_pressure = pressure[np.arange(len(pressure)), np.argmin(np.isnan(pressure), axis=1)]
     >>> reference_pressure
     array([101312., 101393.,  97500.  ])
-    ```
 
-    This function attempts to automaticly resolve the broadcast mode. In most cases it should not 
-    be necessary to specify the mode argument. Some cases may occur.
-
-    In this example `p0` is the reference pressure, and the MALR will be computed for each column.
-    this is the `SLICE` mode.
-    ```
-    p = np.array([912.12, 1012.93]) * 100.0
-    t = np.array([225.31, 254.0])
-    p0 = np.array([1013.12, 1013.93]) * 100.0
-    ```
-
-    However if all 3 arrays have the same shape, and you want to broadcast the computation you need to
-    specifiy mode=1
-
-    ```
-    p = np.array([1013, 1000, 975, 950, 925, 900, 875, 850, 825, 800, 775, 750]) * 100.0
-    t = np.array([225.31, 254.0, 273.0, 283.0, 293.0, 303.0, 313.0, 323.0, 333.0, 343.0, 353.0, 363.0])
-    p0 = np.array([1013.12, 1013.93, 1014.12, 1014.93, 1015.12, 1015.93, 1016.12, 1016.93, 1017.12, 1017.93, 1018.12, 1018.93]) * 100.0
-
-    ```
-    
     """
     cdef size_t N, Z, ndim
     cdef np.ndarray x
@@ -251,10 +247,14 @@ def moist_lapse(
         ):
             mode = SLICE
             pressure = pressure.reshape(N, 1)
-        elif len(reference_pressure) == len(temperature):
-            mode = <BroadcastMode> ndim # (N, Z) | (1, Z)
-        else:
+        elif len(reference_pressure) != len(temperature):
             raise ValueError("reference_pressure and temperature arrays must be the same size.")
+        elif 1 == <size_t> pressure.shape[0]:
+            mode = BROADCAST
+        elif N == <size_t> pressure.shape[0]:
+            mode = MATRIX
+        else:
+            raise ValueError("Unable to determine the broadcast mode.")
     # no reference_pressure provided
     elif MATRIX == ndim and N == <size_t> pressure.shape[0]:
         mode = MATRIX
