@@ -1,18 +1,6 @@
 from __future__ import annotations
 
-import functools
-from typing import (
-    Any,
-    Callable,
-    Concatenate,
-    Generic,
-    Literal,
-    NamedTuple,
-    ParamSpec,
-    Self,
-    TypeVar,
-    overload,
-)
+from typing import Generic, Literal, NamedTuple, ParamSpec, Self, TypeVar, overload
 
 import numpy as np
 from numpy.typing import NDArray
@@ -163,7 +151,7 @@ def insert_along_z(
     elif not x.ndim == 2:
         raise ValueError("x must be a 1D or 2D array")
 
-    indices = np.zeros((N, 1), dtype=int) + np.arange(Z)
+    indices = np.zeros((N, 1), dtype=int) + np.arange(Z)  # (N, Z)
     out = np.full((N, Z), np.nan, dtype=dtype)
     idx = np.argmin(np.abs(z[newaxis, :] - x), axis=1)
     # insert all of our new values
@@ -198,60 +186,6 @@ def mask_insert(
     mask[nx, zx] = True
     z[~mask] = fill_value
     return np.ma.masked_array(z, mask=~mask)
-
-
-# -------------------------------------------------------------------------------------------------
-def broadcast_conditional(
-    __f: Callable[P, NDArray[float_]]
-) -> Callable[Concatenate[NDArray[np.bool_], NDArray[float_], P], NDArray[float_]]:
-    @functools.wraps(__f)
-    def inner(mask: NDArray[np.bool_], value: NDArray[float_], /, *args: Any, **kwargs: Any) -> NDArray[float_]:
-        dtype = value.dtype
-        mask, *arrs = np.broadcast_arrays(mask, *args)  # pyright: ignore
-        out = np.full(mask.shape, fill_value=value, dtype=dtype)
-        out[mask] = __f(*(a[mask] for a in arrs), **kwargs)  # type: ignore
-        return out
-
-    return inner  # type: ignore
-
-
-@broadcast_conditional
-def delta_squared(x0: NDArray[float_], x1: NDArray[float_], delta: NDArray[float_], /) -> NDArray[float_]:
-    """Aitken's delta-squared process"""
-    return x0 - np.square(x1 - x0) / delta  # pyright: ignore
-
-
-@broadcast_conditional
-def absolute_error(x0: NDArray[float_], x1: NDArray[float_], /) -> NDArray[float_]:
-    return np.abs((x0 - x1) / x1)
-
-
-# -------------------------------------------------------------------------------------------------
-def fixed_point(
-    __f: Callable[Concatenate[NDArray[float_], ...], NDArray[float_]],
-    /,
-    x0: NDArray[float_],
-    args: tuple[NDArray[float_], ...],
-    max_iters: int = 100,
-    tolerance: float = 1e-5,
-) -> NDArray[float_]:
-    # TODO: reimplement this function in Cython
-    p0 = x0
-    for _ in range(max_iters):
-        p1 = __f(p0, *args)  # pyright: ignore
-        p2 = __f(p1, *args)
-
-        delta = p2 - 2.0 * p1 + p0
-
-        point = delta_squared(delta != 0, p2, p0, p1, delta)
-        error = absolute_error(p0 != 0, point, point, p0)
-
-        if np.all(error < tolerance):
-            return point  # type: ignore
-
-        p0 = point  # type: ignore
-
-    raise ValueError("fixed point iteration did not converge")
 
 
 # -------------------------------------------------------------------------------------------------
