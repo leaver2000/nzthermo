@@ -1,4 +1,4 @@
-from typing import Literal, TypeVar, Union, overload
+from typing import Any, Literal, TypeVar, Union, overload
 
 import numpy as np
 
@@ -29,6 +29,14 @@ def moist_lapse(
     ],
     temperature: Kelvin[np.ndarray[shape[N], np.dtype[_dtype_T]]],
     reference_pressure: Pascal[np.ndarray[N, np.dtype[_dtype_T]]] | None = None,
+    *,
+    step: float = 1000.0,
+    dtype: _dtype[_dtype_T] | None = None,
+) -> Kelvin[np.ndarray[shape[N, Z], np.dtype[_dtype_T]]]: ...
+def moist_lapse(
+    pressure: Pascal[np.ndarray[Any, np.dtype[_dtype_T]]],
+    temperature: Kelvin[np.ndarray[Any, np.dtype[_dtype_T]]],
+    reference_pressure: Pascal[np.ndarray[Any, np.dtype[_dtype_T]]] | None = None,
     *,
     step: float = 1000.0,
     dtype: _dtype[_dtype_T] | None = None,

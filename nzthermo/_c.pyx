@@ -15,19 +15,7 @@ cimport numpy as np
 from . import const as _const
 
 np.import_array()
-
-
-cdef extern from *:
-    """
-    #if defined(OMP_SCHEDULE)
-      #define _OMP_ENABLED 1
-    #else
-      #define _OMP_ENABLED 0
-    #endif
-    """
-    cdef bint _OMP_ENABLED
-
-OPENMP_ENABLED = bool(_OMP_ENABLED)
+OPENMP_ENABLED = bool(OPENMP)
 
 # -------------------------------------------------------------------------------------------------
 # constant declarations
@@ -89,16 +77,17 @@ cdef floating moist_lapse_integrator(
     floating pressure, floating next_pressure, floating temperature, floating step
 ) noexcept nogil:
     """``2nd order Runge-Kutta (RK2)``
-    
+
     Integrate the moist lapse rate ODE, using a RK2 method, from an initial pressure lvl
     to a final one.
     """
     cdef int N
-    cdef floating delta, k1
+    cdef floating delta, abs_delta, k1
 
     N = 1
-    if abs(delta := next_pressure - pressure) > step:
-        N =  <int> ceil(abs(delta) / step)
+    delta = next_pressure - pressure
+    if (abs_delta := abs(delta)) > step:
+        N =  <int> ceil(abs_delta / step)
         delta = delta / <floating> N
 
     for _ in range(N):
@@ -160,7 +149,7 @@ cdef floating[:, :] _moist_lapse(
                 moist_lapse_1d_(out[i], pressure[i, :], reference_pressure[i], temperature[i], step=step)
         else: # ELEMENT_WISE
             for i in prange(N, schedule='dynamic'):
-                moist_lapse_1d_(out[i], pressure[i:i+1, 0], reference_pressure[i], temperature[i], step=step)
+                moist_lapse_1d_(out[i], pressure[i:i + 1, 0], reference_pressure[i], temperature[i], step=step)
 
     return out
 
@@ -227,36 +216,32 @@ def moist_lapse(
 
     # [ temperature ]
     temperature = temperature.ravel()  # (N,)
-    if temperature.ndim != 1:
-        raise ValueError("temperature must be a 1D array.")
-    elif not (N := temperature.shape[0]):
+    if not (N := temperature.shape[0]):
         return np.full_like(pressure, nan, dtype=dtype)
 
     # [ reference_pressure ]
     if reference_pressure is not None:
         reference_pressure = reference_pressure.ravel()
-        if reference_pressure.ndim != 1:
-            raise ValueError("reference_pressure must be a 1D array.")
-        elif ( # (N,) (N,) (N,)
+        if (
             ndim == <size_t> temperature.ndim == <size_t> reference_pressure.ndim
             and pressure.size == temperature.size == reference_pressure.size
         ):
-            mode = ELEMENT_WISE
+            mode = ELEMENT_WISE  # (N,) (N,) (N,)
             pressure = pressure.reshape(N, 1)
         elif N != <size_t> reference_pressure.shape[0]:
             raise ValueError("reference_pressure and temperature arrays must be the same size.")
         elif 1 == <size_t> pressure.shape[0]:
-            mode = BROADCAST
+            mode = BROADCAST    # (1, Z) (N,) (N,)
         elif N == <size_t> pressure.shape[0]:
-            mode = MATRIX
+            mode = MATRIX       # (N, Z) (N,) (N,)
         else:
             raise ValueError("Unable to determine the broadcast mode.")
     # no reference_pressure provided can only be MATRIX or BROADCAST
     elif 2 == ndim and N == <size_t> pressure.shape[0]:
-        mode = MATRIX
+        mode = MATRIX           # (N, Z) (N,)
         reference_pressure = pressure[np.arange(N), np.argmin(np.isnan(pressure), axis=1)]
     elif 1 == pressure.shape[0]:
-        mode = BROADCAST
+        mode = BROADCAST        # (1, Z) (N,)
         reference_pressure = np.repeat(pressure[0, np.argmin(np.isnan(pressure[0]))], N)
     else:
         raise ValueError("Unable to determine the broadcast mode.")

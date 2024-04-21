@@ -1,4 +1,15 @@
 # pyright: reportGeneralTypeIssues=false
+cdef extern from *:
+    """
+    #ifdef _OPENMP
+    #define OPENMP 1
+    #else
+    #define OPENMP 0
+    #endif /* OPENMP */
+    """
+    cdef bint OPENMP
+
+
 cdef extern from "<math.h>" nogil:
     double exp(double x)
     double log(double x)
@@ -24,4 +35,3 @@ cdef enum BroadcastMode:
     BROADCAST = 1
     MATRIX = 2
     ELEMENT_WISE = 3
-
