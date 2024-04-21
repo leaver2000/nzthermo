@@ -267,10 +267,8 @@ def _parcel_profile(
     else:
         P0 = refrence_pressure.reshape(-1, 1)  # (N, 1)
 
-    if P0.size == 1:
-        P0 = np.broadcast_to(P0, (N, 1))
-
-    assert T.shape == Td.shape == P0.shape == (N, 1), (T.shape, Td.shape, P0.shape)
+    if not T.shape == Td.shape == P0.shape == (N, 1):
+        raise ValueError("temperature, dewpoint, and refrence pressure must have the same shape")
     # ---------------------------------------------------------------------------------------------
     # - Find the LCL
     # ---------------------------------------------------------------------------------------------
@@ -392,6 +390,8 @@ def downdraft_cape(
     temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
     dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
 ) -> np.ndarray[shape[N], np.dtype[float_]]:
+    dtype = temperature.dtype
+    pressure, temperature, dewpoint = (x.astype(dtype) for x in (pressure, temperature, dewpoint))
 
     assert temperature.shape == dewpoint.shape
     N, Z = temperature.shape
@@ -415,14 +415,14 @@ def downdraft_cape(
     cap = -(np.searchsorted(np.squeeze(pressure)[::-1], np.min(p_top)) - 1)
     pressure = pressure[0, :cap].repeat(N).reshape(-1, N).transpose()  # (N, Z -cap)
     if not np.any(pressure):
-        return np.repeat(np.nan, N).astype(np.float32)
+        return np.repeat(np.nan, N).astype(dtype)
 
     # our moist_lapse rate function has nan ignoring capabilities
     pressure[pressure < p_top[:, newaxis]] = np.nan
     temperature = temperature[:, :cap]
     dewpoint = dewpoint[:, :cap]
 
-    trace = moist_lapse(pressure.astype(np.float32), wb_top, p_top)  # (N, Z)
+    trace = moist_lapse(pressure, wb_top, p_top)  # (N, Z)
     e_vt = virtual_temperature(temperature, saturation_mixing_ratio(pressure, dewpoint))  # (N, Z)
     p_vt = virtual_temperature(trace, saturation_mixing_ratio(pressure, trace))  # (N, Z)
 
@@ -431,7 +431,7 @@ def downdraft_cape(
 
     # the np.trapz function does not support np.nan values, but we only really have a couple of unique
     # levels in the gridded dataset. So this is really just like a loop of 4, 5 iterations
-    dcape = np.zeros(N, dtype=np.float32)  # (N,)
+    dcape = np.zeros(N, dtype=dtype)  # (N,)
     batch, levels = np.nonzero(np.diff(pressure > p_top[:, newaxis], prepend=True, append=False))
     for lvl in np.unique(levels):
         above = levels == lvl
