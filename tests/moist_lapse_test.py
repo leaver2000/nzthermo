@@ -15,7 +15,7 @@ def pressure_levels(sfc=1013.25, dtype: Any = np.float64):
     return np.array(pressure, dtype=dtype) * 100.0
 
 
-# SLICE: (N,) x (N,) x (N,)
+# ELEMENT_WISE: (N,) x (N,) x (N,)
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
 def test_moist_lapse_mode_1(dtype):
     # this mode requires that reference pressure is provided for each temperature value
