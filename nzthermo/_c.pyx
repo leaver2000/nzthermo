@@ -4,7 +4,7 @@
 # cython: nonecheck=False
 # cython: cdivision=True
 
-# pyright: reportGeneralTypeIssues=false, reportUnusedExpression=false, reportMissingImports=false
+# pyright: reportGeneralTypeIssues=false
 
 from cython.parallel cimport parallel, prange
 from cython.view cimport array as cvarray
@@ -29,9 +29,9 @@ cdef extern from *:
 
 OPENMP_ENABLED = bool(_OMP_ENABLED)
 
-# =================================================================================================
+# -------------------------------------------------------------------------------------------------
 # constant declarations
-# =================================================================================================
+# -------------------------------------------------------------------------------------------------
 cdef:
     float Rd        = _const.Rd
     float Rv        = _const.Rv
@@ -145,9 +145,7 @@ cdef floating[:, :] _moist_lapse(
     cdef size_t N, Z, i
     cdef floating[:, :] out
 
-    N = temperature.shape[0]
-    Z = pressure.shape[1]
-
+    N, Z = temperature.shape[0], pressure.shape[1]
     if pressure.itemsize == sizeof(float):
         out = cvarray((N, Z), itemsize=sizeof(float), format='f', mode='c')
     else:
