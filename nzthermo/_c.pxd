@@ -1,3 +1,4 @@
+# pyright: reportGeneralTypeIssues=false
 cdef extern from "<math.h>" nogil:
     double exp(double x)
     double log(double x)
@@ -20,7 +21,7 @@ ctypedef fused floating:
 
 
 cdef enum BroadcastMode:
-    INFER = 0
     BROADCAST = 1
     MATRIX = 2
-    SLICE = 3
+    ELEMENT_WISE = 3
+

@@ -160,7 +160,7 @@ cdef floating[:, :] _moist_lapse(
         elif MATRIX is mode:
             for i in prange(N, schedule='dynamic'):
                 moist_lapse_1d_(out[i], pressure[i, :], reference_pressure[i], temperature[i], step=step)
-        else: # SLICE
+        else: # ELEMENT_WISE
             for i in prange(N, schedule='dynamic'):
                 moist_lapse_1d_(out[i], pressure[i:i+1, 0], reference_pressure[i], temperature[i], step=step)
 
@@ -216,7 +216,6 @@ def moist_lapse(
     cdef size_t N, Z, ndim
     cdef np.ndarray x
     cdef BroadcastMode mode
-    mode = INFER
 
     if dtype is None:
         dtype = pressure.dtype
@@ -233,7 +232,7 @@ def moist_lapse(
     temperature = temperature.ravel()  # (N,)
     if temperature.ndim != 1:
         raise ValueError("temperature must be a 1D array.")
-    elif (N := temperature.shape[0]) == 0:
+    elif not (N := temperature.shape[0]):
         return np.full_like(pressure, nan, dtype=dtype)
 
     # [ reference_pressure ]
@@ -245,9 +244,9 @@ def moist_lapse(
             ndim == <size_t> temperature.ndim == <size_t> reference_pressure.ndim
             and pressure.size == temperature.size == reference_pressure.size
         ):
-            mode = SLICE
+            mode = ELEMENT_WISE
             pressure = pressure.reshape(N, 1)
-        elif len(reference_pressure) != len(temperature):
+        elif N != <size_t> reference_pressure.shape[0]:
             raise ValueError("reference_pressure and temperature arrays must be the same size.")
         elif 1 == <size_t> pressure.shape[0]:
             mode = BROADCAST
@@ -255,8 +254,8 @@ def moist_lapse(
             mode = MATRIX
         else:
             raise ValueError("Unable to determine the broadcast mode.")
-    # no reference_pressure provided
-    elif MATRIX == ndim and N == <size_t> pressure.shape[0]:
+    # no reference_pressure provided and only be MATRIX | BROADCAST
+    elif 2 == ndim and N == <size_t> pressure.shape[0]:
         mode = MATRIX
         reference_pressure = pressure[np.arange(N), np.argmin(np.isnan(pressure), axis=1)]
     elif pressure.shape[0] == 1:
@@ -284,7 +283,7 @@ def moist_lapse(
             step=step,
             mode=mode,
         )
-    if mode == SLICE:
+    if mode == ELEMENT_WISE:
         x = x.squeeze(1)
 
     return x
@@ -295,59 +294,57 @@ def moist_lapse(
 cdef floating lcl_solver(
     floating pressure, floating reference_pressure, floating temperature, floating mixing_ratio
 ) noexcept nogil:
-    cdef floating Td, p2    
+    cdef floating Td, P
+
     Td = _dewpoint(vapor_pressure(pressure, mixing_ratio))
-    p2 = reference_pressure * (Td / temperature) ** (1.0 / (Rd / Cpd))
-    if isnan(p2):
+    if isnan(P := reference_pressure * (Td / temperature) ** (1.0 / (Rd / Cpd))):
         return pressure
 
-    return p2
+    return P
 
 
 cdef floating lcl_integrator(
-    floating pressure, floating temperature, floating dewpoint, floating mixing_ratio, size_t max_iter, floating eps
+    floating pressure, floating temperature, floating mixing_ratio, size_t max_iters, floating eps
 ) noexcept nogil:
-    cdef size_t i, N
-    cdef floating p0, p1, p2, r, delta, err, lcl_p, lcl_t
+    cdef size_t N, i
+    cdef floating p0, p1, p2, delta, err
 
     p0 = pressure
-    for _ in range(max_iter):
+    for _ in range(max_iters):
         p1 = lcl_solver(p0, pressure, temperature, mixing_ratio)
         p2 = lcl_solver(p1, pressure, temperature, mixing_ratio)
 
-        if (delta := p2 - 2.0 * p1 + p0) == 0.0:
-            lcl_p = p2
-        else:
-            lcl_p = p0 - (p1 - p0) ** 2 / delta # delta squared
+        if (delta := p2 - 2.0 * p1 + p0):
+            p2 = p0 - (p1 - p0) ** 2 / delta    # delta squared
 
-        err = lcl_p if p0 == 0.0 else abs((lcl_p - p0) / p0) # absolute relative error
+        err = abs((p2 - p0) / p0) if p0 else p2 # absolute relative error
 
         if err < eps:
-            return lcl_p
+            return p2
 
-        p0 = lcl_p
+        p0 = p2
 
     return nan
 
 
 cdef floating[:, :] _lcl(
-    floating[:] pressure, floating[:] temperature, floating[:] dewpoint, size_t max_iter, floating eps
+    floating[:] pressure, floating[:] temperature, floating[:] dewpoint, size_t max_iters, floating eps
 ):
     cdef size_t N, i
-    cdef floating r, Td, P, lcl_p
+    cdef floating P, lcl_p, r
     cdef floating[:, :] out
+
     N = pressure.shape[0]
     if pressure.itemsize == sizeof(float):
         out = cvarray((2, N), itemsize=sizeof(float), format='f', mode='c')
     else:
         out = cvarray((2, N), itemsize=sizeof(double), format='d', mode='c')
-    
+
     with nogil, parallel():
         for i in prange(N, schedule='dynamic'):
             P = pressure[i]
-            Td = dewpoint[i]
-            r = mixing_ratio(saturation_vapor_pressure(Td), P)
-            out[0, i] = lcl_p = lcl_integrator(P, temperature[i], Td, r, max_iter, eps=eps)
+            r = mixing_ratio(saturation_vapor_pressure(dewpoint[i]), P)
+            out[0, i] = lcl_p = lcl_integrator(P, temperature[i], r, max_iters, eps=eps)
             out[1, i] = _dewpoint(vapor_pressure(lcl_p, r))
 
     return out
@@ -358,7 +355,7 @@ def lcl(
     np.ndarray temperature,
     np.ndarray dewpoint,
     *,
-    size_t max_iter = 50,
+    size_t max_iters = 50,
     floating eps = 0.1,
     object dtype = None,
 ):
@@ -387,17 +384,16 @@ def lcl(
             pressure.astype(np.float32), 
             temperature.astype(np.float32),
             dewpoint.astype(np.float32),
-            max_iter=max_iter,
-            eps=eps,
+            max_iters,
+            eps,
         )
     else:
         x[...] = _lcl[double](
             pressure.astype(np.float64),
             temperature.astype(np.float64),
             dewpoint.astype(np.float64),
-            max_iter=max_iter,
-            eps=eps,
+            max_iters,
+            eps,
         )
 
     return x
-    
