@@ -4,7 +4,7 @@
 # cython: nonecheck=False
 # cython: cdivision=True
 
-# pyright: reportGeneralTypeIssues=false, reportUnusedExpression=false, reportMissingImports=false
+# pyright: reportGeneralTypeIssues=false
 
 from cython.parallel cimport parallel, prange
 from cython.view cimport array as cvarray
@@ -15,23 +15,11 @@ cimport numpy as np
 from . import const as _const
 
 np.import_array()
+OPENMP_ENABLED = bool(OPENMP)
 
-
-cdef extern from *:
-    """
-    #if defined(OMP_SCHEDULE)
-      #define _OMP_ENABLED 1
-    #else
-      #define _OMP_ENABLED 0
-    #endif
-    """
-    cdef bint _OMP_ENABLED
-
-OPENMP_ENABLED = bool(_OMP_ENABLED)
-
-# =================================================================================================
+# -------------------------------------------------------------------------------------------------
 # constant declarations
-# =================================================================================================
+# -------------------------------------------------------------------------------------------------
 cdef:
     float Rd        = _const.Rd
     float Rv        = _const.Rv
@@ -89,16 +77,17 @@ cdef floating moist_lapse_integrator(
     floating pressure, floating next_pressure, floating temperature, floating step
 ) noexcept nogil:
     """``2nd order Runge-Kutta (RK2)``
-    
+
     Integrate the moist lapse rate ODE, using a RK2 method, from an initial pressure lvl
     to a final one.
     """
     cdef int N
-    cdef floating delta, k1
+    cdef floating delta, abs_delta, k1
 
     N = 1
-    if abs(delta := next_pressure - pressure) > step:
-        N =  <int> ceil(abs(delta) / step)
+    delta = next_pressure - pressure
+    if (abs_delta := abs(delta)) > step:
+        N =  <int> ceil(abs_delta / step)
         delta = delta / <floating> N
 
     for _ in range(N):
@@ -145,9 +134,7 @@ cdef floating[:, :] _moist_lapse(
     cdef size_t N, Z, i
     cdef floating[:, :] out
 
-    N = temperature.shape[0]
-    Z = pressure.shape[1]
-
+    N, Z = temperature.shape[0], pressure.shape[1]
     if pressure.itemsize == sizeof(float):
         out = cvarray((N, Z), itemsize=sizeof(float), format='f', mode='c')
     else:
@@ -162,7 +149,7 @@ cdef floating[:, :] _moist_lapse(
                 moist_lapse_1d_(out[i], pressure[i, :], reference_pressure[i], temperature[i], step=step)
         else: # ELEMENT_WISE
             for i in prange(N, schedule='dynamic'):
-                moist_lapse_1d_(out[i], pressure[i:i+1, 0], reference_pressure[i], temperature[i], step=step)
+                moist_lapse_1d_(out[i], pressure[i:i + 1, 0], reference_pressure[i], temperature[i], step=step)
 
     return out
 
@@ -187,17 +174,16 @@ def moist_lapse(
     >>> pressure = np.linspace(100000, 31000, 20)
     >>> temperature = np.random.uniform(300, 220, 20)
     >>> refrence_pressures = np.random.uniform(1001325, 100001, 20)
-    >>> N = temperature.shape[0]
     >>> nzt.moist_lapse(pressure, temperature, refrence_pressures)
     array([136.21, 193.77, 154.62, ..., 112.51, 155.1 , 119.41])
     >>> nzt.moist_lapse(pressure[np.newaxis, :], temperature, refrence_pressures)
     array([[136.21, 134.78, 133.31, ..., 103.52, 100.61,  97.47],
-          [195.83, 193.77, 191.66, ..., 148.83, 144.65, 140.14],
-          [157.99, 156.33, 154.62, ..., 120.07, 116.7 , 113.06],
-          ...,
-          [148.05, 146.49, 144.89, ..., 112.51, 109.35, 105.94],
-          [209.97, 207.76, 205.5 , ..., 159.58, 155.1 , 150.27],
-          [166.86, 165.11, 163.31, ..., 126.81, 123.25, 119.41]])
+           [195.83, 193.77, 191.66, ..., 148.83, 144.65, 140.14],
+           [157.99, 156.33, 154.62, ..., 120.07, 116.7 , 113.06],
+           ...,
+           [148.05, 146.49, 144.89, ..., 112.51, 109.35, 105.94],
+           [209.97, 207.76, 205.5 , ..., 159.58, 155.1 , 150.27],
+           [166.86, 165.11, 163.31, ..., 126.81, 123.25, 119.41]])
 
 
     If ``reference_pressure`` is not provided and the pressure array is 2D, the reference pressure
@@ -230,36 +216,32 @@ def moist_lapse(
 
     # [ temperature ]
     temperature = temperature.ravel()  # (N,)
-    if temperature.ndim != 1:
-        raise ValueError("temperature must be a 1D array.")
-    elif not (N := temperature.shape[0]):
+    if not (N := temperature.shape[0]):
         return np.full_like(pressure, nan, dtype=dtype)
 
     # [ reference_pressure ]
     if reference_pressure is not None:
         reference_pressure = reference_pressure.ravel()
-        if reference_pressure.ndim != 1:
-            raise ValueError("reference_pressure must be a 1D array.")
-        elif ( # (N,) (N,) (N,)
+        if (
             ndim == <size_t> temperature.ndim == <size_t> reference_pressure.ndim
             and pressure.size == temperature.size == reference_pressure.size
         ):
-            mode = ELEMENT_WISE
+            mode = ELEMENT_WISE  # (N,) (N,) (N,)
             pressure = pressure.reshape(N, 1)
         elif N != <size_t> reference_pressure.shape[0]:
             raise ValueError("reference_pressure and temperature arrays must be the same size.")
         elif 1 == <size_t> pressure.shape[0]:
-            mode = BROADCAST
+            mode = BROADCAST    # (1, Z) (N,) (N,)
         elif N == <size_t> pressure.shape[0]:
-            mode = MATRIX
+            mode = MATRIX       # (N, Z) (N,) (N,)
         else:
             raise ValueError("Unable to determine the broadcast mode.")
-    # no reference_pressure provided and only be MATRIX | BROADCAST
+    # no reference_pressure provided can only be MATRIX or BROADCAST
     elif 2 == ndim and N == <size_t> pressure.shape[0]:
-        mode = MATRIX
+        mode = MATRIX           # (N, Z) (N,)
         reference_pressure = pressure[np.arange(N), np.argmin(np.isnan(pressure), axis=1)]
-    elif pressure.shape[0] == 1:
-        mode = BROADCAST
+    elif 1 == pressure.shape[0]:
+        mode = BROADCAST        # (1, Z) (N,)
         reference_pressure = np.repeat(pressure[0, np.argmin(np.isnan(pressure[0]))], N)
     else:
         raise ValueError("Unable to determine the broadcast mode.")
@@ -288,9 +270,9 @@ def moist_lapse(
 
     return x
 
-# =================================================================================================
+# -------------------------------------------------------------------------------------------------
 # lcl
-# =================================================================================================
+# -------------------------------------------------------------------------------------------------
 cdef floating lcl_solver(
     floating pressure, floating reference_pressure, floating temperature, floating mixing_ratio
 ) noexcept nogil:
@@ -371,6 +353,9 @@ def lcl(
     """
     cdef size_t N
     cdef np.ndarray x
+    pressure, temperature, dewpoint = map(np.ravel, (pressure, temperature, dewpoint))
+    if not pressure.size == temperature.size == dewpoint.size:
+        raise ValueError("pressure, temperature, and dewpoint arrays must be the same size.")
 
     if dtype is None:
         dtype = pressure.dtype
