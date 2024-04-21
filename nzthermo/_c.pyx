@@ -185,17 +185,16 @@ def moist_lapse(
     >>> pressure = np.linspace(100000, 31000, 20)
     >>> temperature = np.random.uniform(300, 220, 20)
     >>> refrence_pressures = np.random.uniform(1001325, 100001, 20)
-    >>> N = temperature.shape[0]
     >>> nzt.moist_lapse(pressure, temperature, refrence_pressures)
     array([136.21, 193.77, 154.62, ..., 112.51, 155.1 , 119.41])
     >>> nzt.moist_lapse(pressure[np.newaxis, :], temperature, refrence_pressures)
     array([[136.21, 134.78, 133.31, ..., 103.52, 100.61,  97.47],
-          [195.83, 193.77, 191.66, ..., 148.83, 144.65, 140.14],
-          [157.99, 156.33, 154.62, ..., 120.07, 116.7 , 113.06],
-          ...,
-          [148.05, 146.49, 144.89, ..., 112.51, 109.35, 105.94],
-          [209.97, 207.76, 205.5 , ..., 159.58, 155.1 , 150.27],
-          [166.86, 165.11, 163.31, ..., 126.81, 123.25, 119.41]])
+           [195.83, 193.77, 191.66, ..., 148.83, 144.65, 140.14],
+           [157.99, 156.33, 154.62, ..., 120.07, 116.7 , 113.06],
+           ...,
+           [148.05, 146.49, 144.89, ..., 112.51, 109.35, 105.94],
+           [209.97, 207.76, 205.5 , ..., 159.58, 155.1 , 150.27],
+           [166.86, 165.11, 163.31, ..., 126.81, 123.25, 119.41]])
 
 
     If ``reference_pressure`` is not provided and the pressure array is 2D, the reference pressure
@@ -252,11 +251,11 @@ def moist_lapse(
             mode = MATRIX
         else:
             raise ValueError("Unable to determine the broadcast mode.")
-    # no reference_pressure provided and only be MATRIX | BROADCAST
+    # no reference_pressure provided can only be MATRIX or BROADCAST
     elif 2 == ndim and N == <size_t> pressure.shape[0]:
         mode = MATRIX
         reference_pressure = pressure[np.arange(N), np.argmin(np.isnan(pressure), axis=1)]
-    elif pressure.shape[0] == 1:
+    elif 1 == pressure.shape[0]:
         mode = BROADCAST
         reference_pressure = np.repeat(pressure[0, np.argmin(np.isnan(pressure[0]))], N)
     else:
@@ -286,9 +285,9 @@ def moist_lapse(
 
     return x
 
-# =================================================================================================
+# -------------------------------------------------------------------------------------------------
 # lcl
-# =================================================================================================
+# -------------------------------------------------------------------------------------------------
 cdef floating lcl_solver(
     floating pressure, floating reference_pressure, floating temperature, floating mixing_ratio
 ) noexcept nogil:
