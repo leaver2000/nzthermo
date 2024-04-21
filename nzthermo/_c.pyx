@@ -368,6 +368,9 @@ def lcl(
     """
     cdef size_t N
     cdef np.ndarray x
+    pressure, temperature, dewpoint = map(np.ravel, (pressure, temperature, dewpoint))
+    if not pressure.size == temperature.size == dewpoint.size:
+        raise ValueError("pressure, temperature, and dewpoint arrays must be the same size.")
 
     if dtype is None:
         dtype = pressure.dtype
