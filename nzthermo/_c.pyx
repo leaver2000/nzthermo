@@ -28,10 +28,19 @@ cdef:
     float epsilon   = _const.epsilon
     float T0        = _const.T0
     float E0        = _const.E0
-    float nan       = float('nan')
-    float inf       = float('inf')
 
 del _const
+
+
+cdef cvarray nzarray((size_t, size_t) shape, size_t size):
+    return cvarray(
+        shape, 
+        itemsize=size, 
+        format='f' if size == sizeof(float) else 'd', 
+        mode='c',
+        allocate_buffer=True,
+    )
+
 
 # -------------------------------------------------------------------------------------------------
 # thermodynamic functions
@@ -108,7 +117,7 @@ cdef void moist_lapse_1d_(
     Z = pressure.shape[0]
     if isnan(temperature) or isnan(reference_pressure): # don't bother with the computation
         for i in prange(Z):
-            out[i] = nan
+            out[i] = NaN
         return
 
     for i in range(Z):
@@ -116,7 +125,7 @@ cdef void moist_lapse_1d_(
             # This can be usefull in 2D case where we might want to mask out some 
             # values below the lcl for a particular column.
             # The solver will start at the first non nan value
-            out[i] = nan
+            out[i] = NaN
         else:
             out[i] = temperature = moist_lapse_integrator(
                 reference_pressure, next_pressure, temperature, step=step
@@ -135,11 +144,8 @@ cdef floating[:, :] _moist_lapse(
     cdef floating[:, :] out
 
     N, Z = temperature.shape[0], pressure.shape[1]
-    if pressure.itemsize == sizeof(float):
-        out = cvarray((N, Z), itemsize=sizeof(float), format='f', mode='c')
-    else:
-        out = cvarray((N, Z), itemsize=sizeof(double), format='d', mode='c')
 
+    out = nzarray((N, Z), pressure.itemsize)
     with nogil, parallel():
         if BROADCAST is mode:
             for i in prange(N, schedule='dynamic'):
@@ -163,8 +169,34 @@ def moist_lapse(
     object dtype = None,
 ):
     """
-    pressure shape ``(N,) | (Z,) | (1, Z) | (N, Z)``
+    Calculate the moist adiabatic lapse rate.
 
+    Parameters
+    ----------
+    pressure : `np.ndarray` (shape: N | Z | 1 x Z | N x Z)
+        Atmospheric pressure level's of interest. Levels must be in decreasing order. `NaN` values
+        can be used to mask out values for a particular column.
+
+    temperature : `np.ndarray` (shape: N)
+        Starting temperature
+
+    reference_pressure : `np.ndarray (optional)` (shape: N)
+        Reference pressure; if not given, it defaults to the first non nan element of the
+        pressure array.
+
+    step :
+        The step size for the calculation (default: 1000.0).
+
+    dtype :
+        The data type for the output array (optional).
+
+    Returns
+    -------
+    `np.ndarray`
+       The resulting parcel temperature at levels given by `pressure`
+
+    Examples:
+    ---------
     This function attempts to automaticly resolve the broadcast mode. If all 3 arrays have the same
     shape, and you want to broadcast ``N x Z`` reshape the ``pressure`` array to ``(1, Z)``,
     otherwise the function will execute element-wise.
@@ -208,6 +240,9 @@ def moist_lapse(
     else:
         dtype = np.dtype(dtype)
 
+    if dtype != np.float32 and dtype != np.float64:
+        raise ValueError("dtype must be either np.float32 or np.float64.")
+
     # [ pressure ]
     if (ndim := pressure.ndim) == 1:
         pressure = pressure.reshape(1, -1) # (1, Z)
@@ -217,7 +252,7 @@ def moist_lapse(
     # [ temperature ]
     temperature = temperature.ravel()  # (N,)
     if not (N := temperature.shape[0]):
-        return np.full_like(pressure, nan, dtype=dtype)
+        return np.full_like(pressure, NaN, dtype=dtype)
 
     # [ reference_pressure ]
     if reference_pressure is not None:
@@ -288,7 +323,6 @@ cdef floating lcl_solver(
 cdef floating lcl_integrator(
     floating pressure, floating temperature, floating mixing_ratio, size_t max_iters, floating eps
 ) noexcept nogil:
-    cdef size_t N, i
     cdef floating p0, p1, p2, delta, err
 
     p0 = pressure
@@ -306,7 +340,7 @@ cdef floating lcl_integrator(
 
         p0 = p2
 
-    return nan
+    return NaN
 
 
 cdef floating[:, :] _lcl(
@@ -317,11 +351,8 @@ cdef floating[:, :] _lcl(
     cdef floating[:, :] out
 
     N = pressure.shape[0]
-    if pressure.itemsize == sizeof(float):
-        out = cvarray((2, N), itemsize=sizeof(float), format='f', mode='c')
-    else:
-        out = cvarray((2, N), itemsize=sizeof(double), format='d', mode='c')
 
+    out = nzarray((2, N), pressure.itemsize)
     with nogil, parallel():
         for i in prange(N, schedule='dynamic'):
             P = pressure[i]
@@ -381,4 +412,4 @@ def lcl(
             eps,
         )
 
-    return x
+    return x[0], x[1]

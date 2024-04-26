@@ -9,6 +9,9 @@ description = "(N, Z) Thermodynamics"
 authors = [{ name = "Jason Leaver", email = "leaver2000@gmail.com" }]
 dependencies = ['numpy']
 
+[tool.setuptools]
+packages = ["nzthermo"]
+
 [tool.pytest]
 testpaths = ["tests/"]
 
@@ -56,6 +59,8 @@ combine_as_imports = true
 target-version = "py311"
 line-length = 119
 fix = true
+
+[tool.ruff.lint]
 ignore = [
     "E731", # do not assign a lambda expression, use a def
     "E402", # module level import not at top of file

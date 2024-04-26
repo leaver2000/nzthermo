@@ -43,9 +43,11 @@ else:
     # runtime:
     #   The schedule and chunk size are taken from the runtime scheduling variable, which can be set
     #   through the openmp.omp_set_schedule() function call, or the OMP_SCHEDULE environment variable.
-    #   Note that this essentially disables any static compile time optimisations of the scheduling code
+    #   Note that this essentially disables any static compile time optimizations of the scheduling code
     #   itself and may therefore show a slightly worse performance than when the same scheduling policy
     #   is statically configured at compile time.
+    # Dynamic scheduling:
+    #  Is better when the iterations may take very different  amounts of time.
     if (omp := os.getenv("OMP_SCHEDULE", "dynamic")) not in ("static", "dynamic", "guided", "auto"):
         raise OSError(f"the provided ``OMP_SCHEDULE`` is invalid got := {omp}")
     os.environ["OMP_SCHEDULE"] = omp
