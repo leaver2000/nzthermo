@@ -1,11 +1,11 @@
-from typing import Annotated, TypeVar, TypeVarTuple
+from typing import Annotated, TypeVar, TypeVarTuple, NewType
 
 import numpy as np
 
 T = TypeVar("T")
 Ts = TypeVarTuple("Ts")
-N = Annotated[int, "N"]
-Z = Annotated[int, "Z"]
+N = NewType("N", int)
+Z = NewType("Z", int)
 shape = Annotated[tuple[*Ts], "shape"]
 Kelvin = Annotated[T, "Kelvin"]
 Pascal = Annotated[T, "Pascal"]
