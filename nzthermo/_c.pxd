@@ -24,6 +24,8 @@ cdef extern from "<math.h>" nogil:
     double fmin(double x, double y)
     bint isnan(long double x)
     const double pi "M_PI"  # as in Python's math module
+    const float NaN "NAN"
+    const float Inf "INFINITY"
 
 
 ctypedef fused floating:
