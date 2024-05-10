@@ -144,7 +144,7 @@ def dewpoint_from_specific_humidity(
 
 
 # -------------------------------------------------------------------------------------------------
-# wet bulb temperature
+# wet_bulb_temperature
 # -------------------------------------------------------------------------------------------------
 def wet_bulb_temperature(
     pressure: Pascal[np.ndarray[shape[N], np.dtype[float_]]],
@@ -294,3 +294,110 @@ def downdraft_cape(
         dcape[nx] = -(Rd * np.trapz(delta[nx, zx], logp[nx, zx], axis=1))
 
     return dcape
+
+
+# -------------------------------------------------------------------------------------------------
+# parcel_profile
+# -------------------------------------------------------------------------------------------------
+class ParcelProfile(NamedTuple, Generic[float_]):
+    pressure: np.ndarray[shape[N, Z], np.dtype[float_]]
+    temperature: np.ndarray[shape[N, Z], np.dtype[float_]]
+    lcl_index: tuple[
+        np.ndarray[shape[N], np.dtype[np.intp]],
+        np.ndarray[shape[Z], np.dtype[np.intp]],
+    ]
+
+    @property
+    def lcl_pressure(self) -> np.ndarray[shape[N], np.dtype[float_]]:
+        return self.pressure[self.lcl_index]
+
+    @property
+    def lcl_temperature(self) -> np.ndarray[shape[N], np.dtype[float_]]:
+        return self.temperature[self.lcl_index]
+
+    def below_lcl(self, copy: bool = True):
+        P, T = self.pressure, self.temperature
+        N, Z = self.shape
+        if copy:
+            P, T = P.copy(), T.copy()
+        indices = np.ones(N, dtype=np.int_)[:, None] * np.arange(Z)
+        mask = indices > self.lcl_index[-1][:, None]
+
+        P[mask] = np.nan
+        T[mask] = np.nan
+        return P, T
+
+    def above_lcl(self, copy: bool = True):
+        P, T = self.pressure, self.temperature
+        N, Z = self.shape
+        if copy:
+            P, T = P.copy(), T.copy()
+        indices = np.ones(N, dtype=np.int_)[:, None] * np.arange(Z)
+        mask = indices < self.lcl_index[-1][:, None]
+
+        P[mask] = np.nan
+        T[mask] = np.nan
+        return P, T
+
+    @property
+    def shape(self) -> shape[N, Z]:
+        return self.pressure.shape  # type: ignore
+
+
+def parcel_profile(
+    pressure: Annotated[Pascal[np.ndarray[shape[Z], np.dtype[float_]]], "pressure levels"],
+    temperature: Annotated[Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]], "surface temperature"],
+    dewpoint: Annotated[Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]], "surface dewpoint temperature"],
+    sfc_pressure: Annotated[Pascal[np.ndarray[shape[N], np.dtype[np.float_]]], "surface pressure"] | None = None,
+) -> ParcelProfile[float_]:
+    # add a nan value to the end of the pressure array
+    dtype = pressure.dtype
+    pressure = np.append(pressure, np.nan)
+    N, Z = temperature.shape[0], pressure.shape[0]
+    p0 = sfc_pressure or pressure[:1].repeat(N)
+    assert temperature.shape == dewpoint.shape == p0.shape == (N,)
+
+    indices = np.arange(N)
+
+    # - calculate LCL
+    lcl_p, lcl_t = lcl(p0, temperature, dewpoint)  # (N,)
+
+    mask = pressure >= lcl_p.reshape(-1, 1)  # (N, Z)
+    mask[indices, np.argmin(mask, axis=1) + 1] = 0
+
+    # [ pressure ]
+    P = np.full((N, Z), np.nan, dtype=dtype)
+
+    nx, zx = np.nonzero(mask)
+    P[nx, zx] = pressure[zx]
+
+    nx, zx = np.nonzero(~mask & ~np.isnan(pressure))
+    P[nx, zx + 1] = pressure[zx]
+    lcl_index = np.nonzero(np.isnan(P))
+
+    # [ temperature ]
+    T = np.where(
+        mask,
+        dry_lapse(np.where(mask, P, np.nan), temperature[:, np.newaxis], p0[:, np.newaxis]),  # lower
+        moist_lapse(np.where(~mask, P, np.nan), temperature, lcl_p),  # upper
+    )
+    assert len(lcl_index) == 2 and len(lcl_index[0]) == N == len(lcl_index[1])
+
+    P[lcl_index] = lcl_p
+    T[lcl_index] = lcl_t
+
+    return ParcelProfile(P, T, lcl_index)
+
+
+# -------------------------------------------------------------------------------------------------
+# el
+# -------------------------------------------------------------------------------------------------
+# TODO:...
+# -------------------------------------------------------------------------------------------------
+# lfc
+# -------------------------------------------------------------------------------------------------
+# TODO:...
+# -------------------------------------------------------------------------------------------------
+# cape
+# -------------------------------------------------------------------------------------------------
+# TODO:...
