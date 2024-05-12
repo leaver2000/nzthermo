@@ -354,7 +354,7 @@ def parcel_profile(
     dtype = pressure.dtype
     pressure = np.append(pressure, np.nan)
     N, Z = temperature.shape[0], pressure.shape[0]
-    p0 = sfc_pressure or pressure[:1].repeat(N)
+    p0 = sfc_pressure if sfc_pressure is not None else pressure[0]
     assert temperature.shape == dewpoint.shape == p0.shape == (N,)
 
     indices = np.arange(N)
@@ -362,15 +362,12 @@ def parcel_profile(
     # - calculate LCL
     lcl_p, lcl_t = lcl(p0, temperature, dewpoint)  # (N,)
 
+    # [ pressure ]
     mask = pressure >= lcl_p.reshape(-1, 1)  # (N, Z)
     mask[indices, np.argmin(mask, axis=1) + 1] = 0
-
-    # [ pressure ]
     P = np.full((N, Z), np.nan, dtype=dtype)
-
     nx, zx = np.nonzero(mask)
     P[nx, zx] = pressure[zx]
-
     nx, zx = np.nonzero(~mask & ~np.isnan(pressure))
     P[nx, zx + 1] = pressure[zx]
     lcl_index = np.nonzero(np.isnan(P))

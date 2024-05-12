@@ -1,16 +1,21 @@
-from typing import Annotated, TypeVar, TypeVarTuple, NewType
+from typing import Annotated, NewType, TypeVar, TypeVarTuple
 
 import numpy as np
 
-T = TypeVar("T")
+_T = TypeVar("_T")
+Kelvin = Annotated[_T, "Kelvin"]
+Pascal = Annotated[_T, "Pascal"]
+Kilogram = Annotated[_T, "kg"]
+Percent = Annotated[_T, "%"]
+Ratio = Annotated[_T, "ratio"]
+
 Ts = TypeVarTuple("Ts")
-N = NewType("N", int)
-Z = NewType("Z", int)
 shape = Annotated[tuple[*Ts], "shape"]
-Kelvin = Annotated[T, "Kelvin"]
-Pascal = Annotated[T, "Pascal"]
-Kilogram = Annotated[T, "kg"]
-Percent = Annotated[T, "%"]
-Ratio = Annotated[T, "ratio"]
+
+N = NewType("N", int)
+T = NewType("T", int)
+Z = NewType("Z", int)
+Y = NewType("Y", int)
+X = NewType("X", int)
 
 NZArray = Annotated[np.ndarray[shape[N, Z], np.dtype[np.float_]], "NZArray"]
