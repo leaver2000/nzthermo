@@ -299,13 +299,21 @@ def downdraft_cape(
 # -------------------------------------------------------------------------------------------------
 # parcel_profile
 # -------------------------------------------------------------------------------------------------
+from typing_extensions import Doc
 class ParcelProfile(NamedTuple, Generic[float_]):
-    pressure: np.ndarray[shape[N, Z], np.dtype[float_]]
-    temperature: np.ndarray[shape[N, Z], np.dtype[float_]]
+    pressure: Annotated[
+        Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]], 
+        Doc("[N, [...below, LCL, ...above]]"),
+    ]
+    temperature: Annotated[
+        Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+        Doc("[N, [...dry_lapse, LCL, ...moist_lapse]]"),
+    ]
     lcl_index: tuple[
         np.ndarray[shape[N], np.dtype[np.intp]],
         np.ndarray[shape[Z], np.dtype[np.intp]],
     ]
+
 
     @property
     def lcl_pressure(self) -> np.ndarray[shape[N], np.dtype[float_]]:
@@ -344,6 +352,8 @@ class ParcelProfile(NamedTuple, Generic[float_]):
         return self.pressure.shape  # type: ignore
 
 
+
+
 def parcel_profile(
     pressure: Annotated[Pascal[np.ndarray[shape[Z], np.dtype[float_]]], "pressure levels"],
     temperature: Annotated[Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]], "surface temperature"],
@@ -354,13 +364,16 @@ def parcel_profile(
     dtype = pressure.dtype
     pressure = np.append(pressure, np.nan)
     N, Z = temperature.shape[0], pressure.shape[0]
-    p0 = sfc_pressure if sfc_pressure is not None else pressure[0]
-    assert temperature.shape == dewpoint.shape == p0.shape == (N,)
-
     indices = np.arange(N)
+    P0 = sfc_pressure if sfc_pressure is not None else pressure[:1].repeat(N)  # (N,)
+    T0 = temperature[:, 0]  # (N,)
+    Td0 = dewpoint[:, 0]  # (N,)
+
+    assert T0.shape == Td0.shape == P0.shape == (N,)
+
 
     # - calculate LCL
-    lcl_p, lcl_t = lcl(p0, temperature, dewpoint)  # (N,)
+    lcl_p, lcl_t = lcl(P0, T0, Td0)  # (N,)
 
     # [ pressure ]
     mask = pressure >= lcl_p.reshape(-1, 1)  # (N, Z)
@@ -375,8 +388,8 @@ def parcel_profile(
     # [ temperature ]
     T = np.where(
         mask,
-        dry_lapse(np.where(mask, P, np.nan), temperature[:, np.newaxis], p0[:, np.newaxis]),  # lower
-        moist_lapse(np.where(~mask, P, np.nan), temperature, lcl_p),  # upper
+        dry_lapse(np.where(mask, P, np.nan), T0[:, np.newaxis], P0[:, np.newaxis]),  # lower
+        moist_lapse(np.where(~mask, P, np.nan), T0, lcl_p),  # upper
     )
     assert len(lcl_index) == 2 and len(lcl_index[0]) == N == len(lcl_index[1])
 
