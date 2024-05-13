@@ -29,7 +29,7 @@ def test_intersect_nz() -> None:
         ],
     )  # (N, Z)
     intersect = F.intersect_nz(pressure_levels, temperature, dewpoint)
-    lower, upper = intersect.lower(), intersect.upper()
+    lower, upper = intersect.bottom(), intersect.top()
     assert_allclose(lower.x, [90579.71, 90538.89, 90632.88, 90673.91, 91280.0], atol=1e-2)
     assert_allclose(lower.y, [295.55, 295.47, 295.71, 295.69, 296.14], atol=1e-2)
     assert_allclose(upper.x, [48253.97, 44907.41, 106619.72, 104708.33, 89521.28], atol=1e-2)

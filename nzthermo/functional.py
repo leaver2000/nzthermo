@@ -1,16 +1,72 @@
 from __future__ import annotations
 
-from typing import Generic, Literal, NamedTuple, ParamSpec, Self, TypeVar, overload
+import functools
+from typing import (
+    Callable,
+    Concatenate,
+    Final,
+    Generic,
+    Iterable,
+    Literal,
+    NamedTuple,
+    ParamSpec,
+    Self,
+    TypeVar,
+    overload,
+)
 
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from typing_extensions import deprecated
+except ImportError:
+    deprecated = lambda s: lambda f: f  # type: ignore
 from ._typing import N, Z, shape
 
-P = ParamSpec("P")
+_T = TypeVar("_T")
+_R = TypeVar("_R")
+_P = ParamSpec("_P")
 
 float_ = TypeVar("float_", bound=np.float_)
 newaxis = np.newaxis
+
+
+# -------------------------------------------------------------------------------------------------
+# utility functions
+# -------------------------------------------------------------------------------------------------
+def map_partial(
+    __f: Callable[Concatenate[_T, _P], _R], __values: Iterable[_T], /, *args: _P.args, **kwargs: _P.kwargs
+) -> map[_R]:
+    """
+    >>> x, y = map_partial(np.ndarray.astype, [np.array([1, 2, 3]), np.array([4, 5, 6])], dtype=np.float64)
+    >>> x, y = map_partial(np.reshape, [x, y], newshape=(-1, 3))
+    >>> x
+    array([[1.],[2.],[3.]])
+    """
+    return map(functools.partial(__f, *args, **kwargs), __values)
+
+
+def indices(shape: shape[N, Z]) -> np.ndarray[shape[N, Z], np.dtype[np.intp]]:
+    """
+    ```python
+    N, Z = shape
+    np.ones(N, dtype=np.int_)[:, newaxis] * np.arange(Z)
+    ```
+    """
+    N, Z = shape
+    return np.ones(N, dtype=np.int_)[:, newaxis] * np.arange(Z)
+
+
+def interp_nan(x: NDArray[float_], /, copy: bool = True) -> NDArray[float_]:
+    if copy is True:
+        x = x.copy()
+    mask = np.isnan(x)
+    x[mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), x[~mask])
+    return x
+
+
+_interp_nan: Final = interp_nan
 
 
 # -------------------------------------------------------------------------------------------------
@@ -36,8 +92,7 @@ def linear_interpolate(
             x = np.exp(x)
 
     if interp_nan is True:
-        mask = np.isnan(x)
-        x[mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), x[~mask])
+        x = _interp_nan(x, copy=False)
 
     return x
 
@@ -95,22 +150,43 @@ def interpolate_nz(
         None
 
     Examples:
-        >>> lcl_p = np.array([93290.11, 92921.01, 92891.83, 93356.17, 94216.14]) # (N,)
-        >>> pressure_levels = np.array([101300., 100000.,  97500.,  95000.,  92500.,  90000.,  87500.,  85000.,  82500.,  80000.]) # (Z,)
-        >>> temperature = np.array([
-            [303.3 , 302.36, 300.16, 298.  , 296.09, 296.73, 295.96, 294.79, 293.51, 291.81],
-            [303.58, 302.6 , 300.41, 298.24, 296.49, 295.35, 295.62, 294.43, 293.27, 291.6 ],
-            [303.75, 302.77, 300.59, 298.43, 296.36, 295.15, 295.32, 294.19, 292.84, 291.54],
-            [303.46, 302.51, 300.34, 298.19, 296.34, 295.51, 295.06, 293.84, 292.42, 291.1 ],
-            [303.23, 302.31, 300.12, 297.97, 296.28, 295.68, 294.83, 293.67, 292.56, 291.47]]) # (N, Z)
-        >>> dewpoint = np.array([
-            [297.61, 297.36, 296.73, 296.05, 294.69, 289.18, 286.82, 285.82, 284.88, 283.81],
-            [297.62, 297.36, 296.79, 296.18, 294.5 , 292.07, 287.74, 286.67, 285.15, 284.02],
-            [297.76, 297.51, 296.91, 296.23, 295.05, 292.9 , 288.86, 287.12, 285.99, 283.98],
-            [297.82, 297.56, 296.95, 296.23, 295.  , 292.47, 289.97, 288.45, 287.09, 285.17],
-            [298.22, 297.95, 297.33, 296.69, 295.19, 293.16, 291.42, 289.66, 287.28, 284.31]]) # (N, Z)
-        >>> F.interpolate_nz(lcl_p, pressure_levels, temperature, dewpoint) # temp & dwpt values interpolated at LCL pressure
-        (array([296.69, 296.78, 296.68, 296.97, 297.44]), array([295.12, 294.78, 295.23, 295.42, 296.22]))
+    >>> import numpy as np
+    >>> import nzthermo as nzt
+    >>> import nzthermo.functional as F
+    >>> temperature = np.array(
+    ...     [
+    ...         [303.3, 302.36, 300.16, 298.0, 296.09, 296.73, 295.96, 294.79, 293.51, 291.81],
+    ...         [303.58, 302.6, 300.41, 298.24, 296.49, 295.35, 295.62, 294.43, 293.27, 291.6],
+    ...         [303.75, 302.77, 300.59, 298.43, 296.36, 295.15, 295.32, 294.19, 292.84, 291.54],
+    ...         [303.46, 302.51, 300.34, 298.19, 296.34, 295.51, 295.06, 293.84, 292.42, 291.1],
+    ...         [303.23, 302.31, 300.12, 297.97, 296.28, 295.68, 294.83, 293.67, 292.56, 291.47],
+    ...     ]
+    ... )  # (N, Z)
+    >>> dewpoint = np.array(
+    ...     [
+    ...         [297.61, 297.36, 296.73, 296.05, 294.69, 289.18, 286.82, 285.82, 284.88, 283.81],
+    ...         [297.62, 297.36, 296.79, 296.18, 294.5, 292.07, 287.74, 286.67, 285.15, 284.02],
+    ...         [297.76, 297.51, 296.91, 296.23, 295.05, 292.9, 288.86, 287.12, 285.99, 283.98],
+    ...         [297.82, 297.56, 296.95, 296.23, 295.0, 292.47, 289.97, 288.45, 287.09, 285.17],
+    ...         [298.22, 297.95, 297.33, 296.69, 295.19, 293.16, 291.42, 289.66, 287.28, 284.31],
+    ...     ]
+    ... )  # (N, Z)
+    >>> surface_pressure = np.array([101210.0, 101300.0, 101373.0, 101430.0, 101470.0])  # (N,)
+    >>> pressure_levels = np.array(
+    ...     [101300.0, 100000.0, 97500.0, 95000.0, 92500.0, 90000.0, 87500.0, 85000.0, 82500.0, 80000.0]
+    ... )  # (Z,)
+    >>> lcl_p, lcl_t = nzt.lcl(
+    ...     surface_pressure,  # (N,)
+    ...     temperature[:, 0],  # (N,)
+    ...     dewpoint[:, 0],  # (N,)
+    ... )  # (N,), (N,)
+    >>> lcl_p
+    array([93214.26240694, 92938.06420037, 92967.83292536, 93487.43780492, 94377.76028999])
+    >>> F.interpolate_nz(lcl_p, pressure_levels, temperature, dewpoint)  # temp & dwpt values interpolated at LCL pressure
+    (
+        array([296.63569648, 296.79664494, 296.74736566, 297.07070398, 297.54936596]),
+        array([295.07855875, 294.79437914, 295.27081714, 295.4858194, 296.31665617])
+    )
 
     """
     fp = np.array(args)  # (B, N, Z)
@@ -140,9 +216,9 @@ def interpolate_nz(
 # -------------------------------------------------------------------------------------------------
 def insert_along_z(
     arr: np.ndarray[shape[N, Z], np.dtype[float_]],
-    values: np.ndarray[shape[N], np.dtype[float_]],
-    z: np.ndarray[shape[Z], np.dtype[float_]],
-    x: np.ndarray[shape[N] | shape[N, Z], np.dtype[float_]] | None = None,
+    values: np.ndarray[shape[N], np.dtype[np.float_]],
+    z: np.ndarray[shape[Z], np.dtype[np.float_]],
+    x: np.ndarray[shape[N], np.dtype[np.float_]] | np.ndarray[shape[N, Z], np.dtype[np.float_]] | None = None,
 ) -> np.ndarray[shape[N, Z], np.dtype[float_]]:
     N, Z = arr.shape
     dtype = arr.dtype
@@ -151,7 +227,7 @@ def insert_along_z(
     if x is None:
         x = values[:, newaxis]
     if x.ndim == 1:
-        x = x[:, np.newaxis]
+        x = x[:, newaxis]
     elif not x.ndim == 2:
         raise ValueError("x must be a 1D or 2D array")
 
@@ -203,15 +279,23 @@ class Intersection(NamedTuple, Generic[float_]):
     @property
     def shape(self) -> shape[N]:
         (N,) = self.x.shape
-        return (N,)
+        return (N,)  # type: ignore
 
+    @deprecated("Use 'bottom' instead")
     def lower(self) -> Self:
+        return self.bottom()
+
+    def bottom(self) -> Self:
         cls = self.__class__
         x, y, indices = self
         _, idx = np.unique(indices, return_index=True)
         return cls(x[idx], y[idx], indices[idx])
 
+    @deprecated("Use 'top' instead")
     def upper(self) -> Self:
+        return self.top()
+
+    def top(self) -> Self:
         cls = self.__class__
         (N,) = self.shape
         x, y, indices = self
@@ -231,6 +315,7 @@ def intersect_nz(
     a: np.ndarray[shape[N, Z], np.dtype[float_]],
     b: np.ndarray[shape[N, Z], np.dtype[float_]],
     *,
+    direction: Literal["increasing", "decreasing"] = "increasing",  # TODO:...
     log_x: bool = False,
 ) -> Intersection[float_]:
     """interpolate the points on `x` where `a` and `b` intersect.
@@ -264,8 +349,8 @@ def intersect_nz(
         x = np.log(x)
 
     mask = np.diff(np.sign(a - b), axis=-1, append=1) != 0  # (N, Z)
-    if np.sum(nah := np.all(~mask, axis=-1)):
-        mask[nah] = True
+    if np.sum(yep := np.all(~mask, axis=-1)):
+        mask[yep] = True
 
     nx, z0 = np.nonzero(mask)
     z1 = np.clip(z0 + 1, 0, Z - 1)
@@ -282,7 +367,7 @@ def intersect_nz(
     delta_y1 = a1 - b1
 
     with np.errstate(divide="ignore", invalid="ignore"):
-        x = ((delta_y1 * x0 - delta_y0 * x1)) / (delta_y1 - delta_y0)  # type: ignore
+        x = (delta_y1 * x0 - delta_y0 * x1) / (delta_y1 - delta_y0)  # type: ignore
         y = ((x - x0) / (x1 - x0)) * (a1 - a0) + a0  # type: NDArray[float_] # type: ignore
         if log_x is True:
             x = np.exp(x)
