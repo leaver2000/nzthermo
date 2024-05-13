@@ -19,6 +19,9 @@ testpaths = ["tests/"]
 plugins = ["Cython.Coverage"]
 source = ["nzthermo/"]
 
+[tool.coverage.xml]
+output = ".reports/coverage.xml"
+
 [tool.coverage.report]
 ignore_errors = false
 show_missing = true
@@ -60,11 +63,11 @@ target-version = "py311"
 line-length = 119
 fix = true
 
-[tool.ruff.lint]
-ignore = [
-    "E731", # do not assign a lambda expression, use a def
-    "E402", # module level import not at top of file
-    "E402", # module level import not at top of file
-    "E501", # line too long
-    "E741", # do not use variables named 'l', 'O', or 'I'
-]
+# [tool.ruff.lint]
+# ignore = [
+#     "E731", # do not assign a lambda expression, use a def
+#     "E402", # module level import not at top of file
+#     "E402", # module level import not at top of file
+#     "E501", # line too long
+#     "E741", # do not use variables named 'l', 'O', or 'I'
+# ]

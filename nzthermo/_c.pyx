@@ -48,7 +48,7 @@ cdef cvarray nzarray((size_t, size_t) shape, size_t size):
 cdef floating saturation_mixing_ratio(floating pressure, floating temperature) noexcept nogil:
     cdef floating P
     P = E0 * exp(17.67 * (temperature - T0) / (temperature - 29.65)) # saturation vapor pressure
-    return 0.6219 * P / (pressure - P)
+    return (Rd / Rv) * P / (pressure - P)
 
 
 cdef floating vapor_pressure(floating pressure, floating mixing_ratio) noexcept nogil:
@@ -67,7 +67,10 @@ cdef floating mixing_ratio(
     return molecular_weight_ratio * partial_press / (total_press - partial_press)
 
 
-cdef floating saturation_vapor_pressure(floating temperature) noexcept nogil:    
+cdef floating saturation_vapor_pressure(floating temperature) noexcept nogil:
+    """
+    >>> saturation_mixing_ratio = mixing_ratio(saturation_vapor_pressure(temperature), pressure)
+    """  
     return E0 * exp(17.67 * (temperature - T0) / (temperature - 29.65))
 
 
@@ -229,7 +232,6 @@ def moist_lapse(
     >>> reference_pressure = pressure[np.arange(len(pressure)), np.argmin(np.isnan(pressure), axis=1)]
     >>> reference_pressure
     array([101312., 101393.,  97500.  ])
-
     """
     cdef size_t N, Z, ndim
     cdef np.ndarray x
@@ -392,6 +394,7 @@ def lcl(
         dtype = pressure.dtype
     else:
         dtype = np.dtype(dtype)
+
     N = pressure.size
 
     x = np.empty((2, N), dtype=dtype)
@@ -413,3 +416,4 @@ def lcl(
         )
 
     return x[0], x[1]
+

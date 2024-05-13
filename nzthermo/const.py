@@ -9,7 +9,7 @@ Re: Final[Annotated[float, "m"]] = 6371008.7714
 """Earth's radius meters"""
 # [gas]
 R: Final[Annotated[float, " (J mol^-1 K^-1)", "R*"]] = 8.314462618
-"""The molar gas constant (also known as the gas constant, universal gas constant, or ideal gas 
+"""the molar gas constant (also known as the gas constant, universal gas constant, or ideal gas 
 constant) is denoted by the symbol R or R"""
 # Specific gas constant
 Rd: Final[Annotated[float, "(J/kg*K)"]] = 287.04749097718457
@@ -24,6 +24,7 @@ Lv: Final[Annotated[float, ...]] = 2.50084e6  # (J kg^-1) latent heat of vaporiz
 P0: Final[Annotated[float, ...]] = 1e5
 T0: Final[Annotated[float, "K"]] = 273.15
 """freezing point in kelvin"""
-E0: Final[Annotated[float, "Pa"]] = 611.2
+E0: Final[Annotated[float, "Pa"]] = 611.21
 """saturation pressure at freezing in Pa"""
 epsilon: Final[Annotated[float, "Rd / Rv"]] = Rd / Rv
+"""`Rd / Rv`"""
