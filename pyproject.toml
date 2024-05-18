@@ -10,7 +10,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nzthermo"
-version = "0.0.1"
+dynamic = ["version"]
 description = "(N, Z) Thermodynamics"
 authors = [{ name = "Jason Leaver", email = "leaver2000@gmail.com" }]
 dependencies = ['numpy']
@@ -22,13 +22,15 @@ include = ["nzthermo"]
 [tool.setuptools_scm]
 write_to = "src/nzthermo/_version.py"
 
-
 [tool.pytest]
 testpaths = ["tests/"]
 
 [tool.coverage.run]
 plugins = ["Cython.Coverage"]
 source = ["nzthermo/"]
+
+[tool.coverage.xml]
+output = ".reports/coverage.xml"
 
 [tool.coverage.report]
 ignore_errors = false
@@ -70,10 +72,12 @@ combine_as_imports = true
 target-version = "py311"
 line-length = 119
 fix = true
-ignore = [
-    "E731", # do not assign a lambda expression, use a def
-    "E402", # module level import not at top of file
-    "E402", # module level import not at top of file
-    "E501", # line too long
-    "E741", # do not use variables named 'l', 'O', or 'I'
-]
+
+# [tool.ruff.lint]
+# ignore = [
+#     "E731", # do not assign a lambda expression, use a def
+#     "E402", # module level import not at top of file
+#     "E402", # module level import not at top of file
+#     "E501", # line too long
+#     "E741", # do not use variables named 'l', 'O', or 'I'
+# ]

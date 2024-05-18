@@ -16,8 +16,147 @@ There are some additional tools that useful for development. These can be instal
 ```bash
 pip install -r requirements.dev.txt
 python setup.py build_ext --inplace
-
 ```
+
+### functions
+
+Unless otherwise specified, units are assumed `si` units.
+
+#### moist_lapse
+
+The `Cython` implementation of the `moist_lapse` function supports `pressure` arrays of shape
+`(N,) | (Z,) | (1, Z) | (N, Z)`. The temperature array is raveled to a 1D array of shape `(N,)`.
+`nan` values are ignored in the calculation of the moist adiabatic lapse rate, this can be useful in masking out levels for a particular profile.
+
+If `reference_pressure` is not provided and the `pressure` array is 2D, the reference pressure
+will be determined by finding the first non-nan value in each row.
+
+```python
+>>> pressure = np.array([
+    [1013.12, 1000, 975, 950, 925, 900, ...],
+    [1013.93, 1000, 975, 950, 925, 900, ...],
+    [np.nan, np.nan, 975, 950, 925, 900, ...]
+]) * 100.0 # (N, Z) :: pressure profile
+>>> reference_pressure = pressure[np.arange(len(pressure)), np.argmin(np.isnan(pressure), axis=1)]
+>>> reference_pressure
+array([101312., 101393.,  97500.  ])
+```
+
+```python
+import numpy as np
+import metpy.calc as mpcalc
+from metpy.units import units
+
+import nzthermo as nzt
+N = 1000
+Z = 20
+
+P = np.linspace(101325, 10000, Z)[np.newaxis, :] # (1, Z)
+T = np.random.uniform(300, 200, N) # (N,)
+
+ml = nzt.moist_lapse(P, T)
+%timeit nzt.moist_lapse(P, T)
+# 1.22 ms ± 142 µs per loop (mean ± std. dev. of 7 runs, 1,000 loops each)
+P = P[0] * units.Pa
+T = T * units.kelvin
+ml_ = [mpcalc.moist_lapse(P, T[i]).m for i in range(N)]  # type: ignore
+%timeit [mpcalc.moist_lapse(P, T[i]).m for i in range(1000)]
+# 1.65 s ± 29.3 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
+np.testing.assert_allclose(ml, ml_, rtol=1e-3)
+```
+
+#### lcl
+
+```python
+P = np.random.uniform(101325, 10000, 1000) # (N,)
+T = np.random.uniform(300, 200, 1000) # (N,)
+Td = T - np.random.uniform(0, 10, 1000) # (N,)
+
+lcl_p, lcl_t = nzt.lcl(P, T, Td) # ((N,), (N,))
+%timeit nzt.lcl(P, T, Td)
+# 1.4 ms ± 373 µs per loop (mean ± std. dev. of 7 runs, 1,000 loops each)
+P *= units.Pa
+T *= units.kelvin
+Td *= units.kelvin
+lcl_p_, lcl_t_ = (x.m for x in mpcalc.lcl(P, T, Td))  # type: ignore
+%timeit mpcalc.lcl(P, T, Td)
+# 1.57 s ± 7.18 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
+np.testing.assert_allclose(lcl_p, lcl_p_, rtol=1e-3)
+np.testing.assert_allclose(lcl_t, lcl_t_, rtol=1e-3)
+```
+
+#### wet_bulb_temperature
+
+#### dcape
+
+```python
+import numpy as np
+import nzthermo as nzt
+pressure = np.array(
+    [1013, 1000, 975, 950, 925, 900, 875, 850, 825, 800, 775, 750, 725, 700, 650, 600, 550, 500, 450, 400, 350, 300],
+) # (Z,)
+pressure *= 100
+temperature = np.array( 
+    [
+        [243, 242, 241, 240, 239, 237, 236, 235, 233, 232, 231, 229, 228, 226, 235, 236, 234, 231, 226, 221, 217, 211],
+        [250, 249, 248, 247, 246, 244, 243, 242, 240, 239, 238, 236, 235, 233, 240, 239, 236, 232, 227, 223, 217, 211],
+        [293, 292, 290, 288, 287, 285, 284, 282, 281, 279, 279, 280, 279, 278, 275, 270, 268, 264, 260, 254, 246, 237],
+        [300, 299, 297, 295, 293, 291, 292, 291, 291, 289, 288, 286, 285, 285, 281, 278, 273, 268, 264, 258, 251, 242],
+    ]
+) # (N, Z)
+dewpoint = np.array(
+    [
+        [224, 224, 224, 224, 224, 223, 223, 223, 223, 222, 222, 222, 221, 221, 233, 233, 231, 228, 223, 218, 213, 207],
+        [233, 233, 232, 232, 232, 232, 231, 231, 231, 231, 230, 230, 230, 229, 237, 236, 233, 229, 223, 219, 213, 207],
+        [288, 288, 287, 286, 281, 280, 279, 277, 276, 275, 270, 258, 244, 247, 243, 254, 262, 248, 229, 232, 229, 224],
+        [294, 294, 293, 292, 291, 289, 285, 282, 280, 280, 281, 281, 278, 274, 273, 269, 259, 246, 240, 241, 226, 219],
+    ]
+) # (N, Z)
+nzt.downdraft_cape(pressure, temperature, dewpoint) #(N,)
+```
+
+```python
+import gcsfs
+import numpy as np
+import xarray as xr
+import matplotlib.pyplot as plt
+
+import nzthermo as nzt
+
+# configure matplotlib
+plt.rcParams["figure.figsize"] = (12, 8)
+plt.rcParams["xtick.bottom"] = False
+plt.rcParams["ytick.left"] = False
+plt.rcParams["xtick.labelbottom"] = False
+plt.rcParams["ytick.labelleft"] = False
+
+# google cloud storage for access of large datasets
+fs = gcsfs.GCSFileSystem(token="anon")
+mapper = fs.get_mapper("gs://weatherbench2/datasets/era5/1959-2023_01_10-wb13-6h-1440x721_with_derived_variables.zarr")
+ds = xr.open_zarr(mapper)
+
+pressure = ds.coords["level"].to_numpy().astype(np.float32) * 100.0  # (hPa -> Pa) (13,)
+temperature = ds["temperature"].isel(time=slice(0, 30)).to_numpy().astype(np.float32)  # (K) (30, 13, 721, 1440)
+specific_humidity = ds["specific_humidity"].isel(time=slice(0, 30)).to_numpy().astype(np.float32) # (kg/kg) (30, 13, 721, 1440)
+
+# - weatherbench's levels are in reverse order
+# - non vertical dimensions are flattened like (T, Z, Y, X) -> (T*Y*X, Z) || (N, Z)
+P = pressure[::-1]
+Z = len(P)
+T = np.moveaxis(temperature[:, ::-1, :, :], 1, -1).reshape(-1, Z)  # (N, Z)
+Td = nzt.dewpoint_from_specific_humidity(
+    P[np.newaxis, :],
+    np.moveaxis(specific_humidity[:, ::-1, :, :], 1, -1).reshape(-1, Z),
+)  # (K) (N, Z)
+dcape = nzt.downdraft_cape(P, T, Td)  # (N,)
+dcape = dcape.reshape((temperature.shape[0],) + temperature.shape[2:])  # (T, Y, X)
+fig, axes = plt.subplots(dcape.shape[0] // 3, 3, figsize=(10, 20))
+axes = axes.flatten()
+for i, ax in enumerate(axes):
+    ax.imshow(dcape[i], cmap="viridis")
+```
+
+[![dcape](assets/dcape.png)](assets/dcape.png)
 
 ### Testing
 

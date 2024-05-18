@@ -4,7 +4,11 @@ build/
 **/__pycache__/
 **/*.pyc
 **/*.so
-**/*.c
+src/nzthermo/*.c
 .egg/
 *.egg-info/
+.vscode/
+.coverage
+.reports/
+.trash/
 src/nzthermo/_version.py

@@ -9,8 +9,8 @@ additional support for higher dimensions in what would have normally been 1D arr
 from __future__ import annotations
 
 from typing import (
+    TYPE_CHECKING,
     Annotated,
-    Any,
     Final,
     Generic,
     Literal,
@@ -22,20 +22,18 @@ from typing import (
 import numpy as np
 from numpy.typing import NDArray
 
+if TYPE_CHECKING:
+    from typing_extensions import Doc
+
 from . import functional as F
-from ._c import moist_lapse
+from ._c import lcl, moist_lapse
 from ._typing import Kelvin, Kilogram, N, Pascal, Ratio, Z, shape
-from .const import *
+from .const import E0, P0, T0, Cpd, Rd, Rv
 
 # .....{ types }.....
 T = TypeVar("T")
 Pair = tuple[T, T]
-dtype_t = TypeVar("dtype_t", bound=np.floating[Any], contravariant=True)
 float_ = TypeVar("float_", bound=np.float_)
-
-
-Array2d = np.ndarray[Pair[int], np.dtype[float_]]
-Indices = NDArray[np.intp]
 newaxis: Final[None] = np.newaxis
 
 
@@ -43,7 +41,6 @@ newaxis: Final[None] = np.newaxis
 # .....{ basic thermodynamics }.....
 # None of the following require any type of array broadcasting or fancy indexing
 # =================================================================================================
-# arg count: 1
 def dewpoint(vapor_pressure: Pascal[NDArray[float_]]) -> Kelvin[NDArray[float_]]:
     """
     ther are two ways to calculate the dewpoint temperature from the vapor pressure
@@ -71,7 +68,6 @@ def mixing_ratio_from_specific_humidity(specific_humidity: Kilogram[NDArray[floa
     return specific_humidity / (1 - specific_humidity)
 
 
-# arg count: 2
 def vapor_pressure(
     pressure: Pascal[NDArray[float_]], mixing_ratio: Ratio[NDArray[float_] | float]
 ) -> Pascal[NDArray[float_]]:
@@ -85,7 +81,6 @@ def exner_function(
     return (pressure / refrence_pressure) ** (Rd / Cpd)
 
 
-# arg count: 3
 def mixing_ratio(
     partial_press: Pascal[NDArray[float_]],
     total_press: Pascal[NDArray[float_] | float],
@@ -140,7 +135,7 @@ def virtual_temperature(
     temperature: Kelvin[NDArray[float_]],
     mixing_ratio: Ratio[NDArray[float_]],
     *,
-    molecular_weight_ratio: float = Mw / Md,
+    molecular_weight_ratio: float = Rd / Rv,
 ) -> Kelvin[NDArray[float_]]:
     return temperature * ((mixing_ratio + molecular_weight_ratio) / (molecular_weight_ratio * (1 + mixing_ratio)))
 
@@ -152,72 +147,20 @@ def dewpoint_from_specific_humidity(
     return dewpoint(pressure * w / (eps + w))
 
 
-# =================================================================================================
-# .....{ search functions }.....
-# the following functions are a bit more complex and are dependent
-# =================================================================================================
 # -------------------------------------------------------------------------------------------------
-# Lifting Condensation Level
-# -------------------------------------------------------------------------------------------------
-class LiftingCondensationLevel(NamedTuple, Generic[float_]):
-    pressure: Pascal[NDArray[float_]]
-    temperature: Kelvin[NDArray[float_]]
-
-
-def lcl(
-    pressure: Pascal[NDArray[float_]],
-    temperature: Kelvin[NDArray[float_]],
-    dewpoint: Kelvin[NDArray[float_]],
-    *,
-    max_iters: int = 50,
-    eps: float = 0.1,
-) -> LiftingCondensationLevel[float_]:
-    """
-    The Lifting Condensation Level (LCL) is the level at which a parcel becomes saturated.
-    It is a reasonable estimate of cloud base height when parcels experience forced ascent.
-    The height difference between this parameter and the LFC is important when determining
-    convection initiation. The smaller the difference between the LCL and the LFC, the more likely
-    deep convection becomes. The LFC-LCL difference is similar to CIN (convective inhibition).
-    LCL heights from approximately 500 m (1600 ft) to 800 m (2600 ft) above ground level are
-    associated with F2 to F5 tornadoes. Low LCL heights and low surface dewpoint depressions
-    (high low level RH) suggest a warm RFD which may play a role in tornado development.
-    """
-
-    mask = np.zeros_like(temperature, dtype=bool)
-
-    def lcl_iter(
-        p: Pascal[NDArray[np.float_]], p0: Pascal[NDArray[np.float_]], r: NDArray[np.float_], t: NDArray[np.float_]
-    ) -> Pascal[NDArray[np.float_]]:
-        nonlocal mask
-        td = _dewpoint(vapor_pressure(p, r))
-        p2 = p0 * (td / t) ** (1.0 / (Rd / Cpd))
-        nah = np.isnan(p2)
-        mask |= nah
-        return np.where(nah, p, p2)
-
-    r = mixing_ratio(saturation_vapor_pressure(dewpoint), pressure)
-
-    lcl_p = F.fixed_point(lcl_iter, pressure, (pressure, r, temperature), tolerance=eps, max_iters=max_iters)
-    lcl_p[mask] = np.nan
-    idx = np.isclose(lcl_p, pressure).nonzero()
-    lcl_p[idx] = pressure[idx]
-
-    return LiftingCondensationLevel(lcl_p, _dewpoint(vapor_pressure(lcl_p, r)))
-
-
-# -------------------------------------------------------------------------------------------------
-# wet bulb temperature
+# wet_bulb_temperature
 # -------------------------------------------------------------------------------------------------
 def wet_bulb_temperature(
-    pressure: Pascal[np.ndarray[shape[N], np.dtype[np.float32]]],
-    temperature: Kelvin[np.ndarray[shape[N], np.dtype[np.float32]]],
-    dewpoint: Kelvin[np.ndarray[shape[N], np.dtype[np.float32]]],
-) -> Kelvin[np.ndarray[shape[N], np.dtype[np.float32]]]:
+    pressure: Pascal[np.ndarray[shape[N], np.dtype[float_]]],
+    temperature: Kelvin[np.ndarray[shape[N], np.dtype[float_]]],
+    dewpoint: Kelvin[np.ndarray[shape[N], np.dtype[float_]]],
+) -> Kelvin[np.ndarray[shape[N], np.dtype[float_]]]:
     # TODO:...
-    if not all(x.ndim == 1 for x in (pressure, temperature, dewpoint)):
-        raise NotImplementedError("Currently only support for 1D arrays")
+    shape = pressure.shape
+    pressure, temperature, dewpoint = map(np.ndarray.ravel, (pressure, temperature, dewpoint))
     lcl_p, lcl_t = lcl(pressure, temperature, dewpoint)
-    return moist_lapse(pressure, lcl_t, lcl_p).squeeze(1)
+
+    return moist_lapse(pressure, lcl_t, lcl_p).reshape(shape)
 
 
 # -------------------------------------------------------------------------------------------------
@@ -233,10 +176,11 @@ class ConvectiveCondensationLevel(NamedTuple, Generic[float_]):
         cls,
         p0: Pascal[NDArray[float_]],
         intersect: F.Intersection[float_],
-        which: Literal["lower", "upper"] = "lower",
+        which: Literal["bottom", "top"] = "bottom",
     ) -> ConvectiveCondensationLevel[float_]:
-        p, t, _ = intersect.lower() if which == "lower" else intersect.upper()
+        p, t, _ = intersect.bottom() if which == "bottom" else intersect.top()
         ct = dry_lapse(p0, t, p)
+
         return ConvectiveCondensationLevel(p, t, ct)
 
 
@@ -246,7 +190,7 @@ def ccl(
     temperature: Kelvin[NDArray[float_]],
     dewpoint: Kelvin[NDArray[float_]],
     *,
-    which: Literal["all"] = "all",
+    which: Literal["all"] = ...,
 ) -> Pair[ConvectiveCondensationLevel[float_]]: ...
 @overload
 def ccl(
@@ -254,14 +198,14 @@ def ccl(
     temperature: Kelvin[NDArray[float_]],
     dewpoint: Kelvin[NDArray[float_]],
     *,
-    which: Literal["lower", "upper"] = "lower",
+    which: Literal["bottom", "top"] = ...,
 ) -> ConvectiveCondensationLevel[float_]: ...
 def ccl(
     pressure: Pascal[NDArray[float_]],
     temperature: Kelvin[NDArray[float_]],
     dewpoint: Kelvin[NDArray[float_]],
     *,
-    which: Literal["lower", "upper", "all"] = "lower",
+    which: Literal["bottom", "top", "all"] = "bottom",
 ) -> ConvectiveCondensationLevel[float_] | Pair[ConvectiveCondensationLevel[float_]]:
     """
     # Convective Condensation Level (CCL)
@@ -291,146 +235,8 @@ def ccl(
         return ConvectiveCondensationLevel.from_intersect(p0, intersect, which)
 
     return (
-        ConvectiveCondensationLevel.from_intersect(p0, intersect, "lower"),
-        ConvectiveCondensationLevel.from_intersect(p0, intersect, "upper"),
-    )
-
-
-# -------------------------------------------------------------------------------------------------
-# Parcel Profile
-# -------------------------------------------------------------------------------------------------
-def _parcel_profile(
-    pressure: np.ndarray,
-    temperature: np.ndarray,
-    dewpoint: np.ndarray,
-    refrence_pressure: np.ndarray | None = None,
-    *,
-    axis=-1,
-):
-    Z = pressure.shape[axis]
-    P = np.reshape(np.moveaxis(pressure, axis, -1), (-1, Z))  # (N, Z)
-    T = temperature.reshape(-1, 1)  # (N, 1)
-    Td = dewpoint.reshape(-1, 1)  # (N, 1)
-    N = T.shape[0]
-
-    if refrence_pressure is None:
-        P0 = P[:, :1]
-    else:
-        P0 = refrence_pressure.reshape(-1, 1)  # (N, 1)
-
-    if P0.size == 1:
-        P0 = np.broadcast_to(P0, (N, 1))
-
-    assert T.shape == Td.shape == P0.shape == (N, 1), (T.shape, Td.shape, P0.shape)
-    # ---------------------------------------------------------------------------------------------
-    # - Find the LCL
-    # ---------------------------------------------------------------------------------------------
-    lcl_p, lcl_t = lcl(P0, T, Td)  # ((N, 1), (N, 1))
-
-    # - lower
-    # [[101300. 100000. 97500. 95000. 94171.484 nan ...], ...] (N, Z)
-    p_mask = P >= lcl_p
-    p_lower = F.mask_insert(p_mask, P, lcl_p, kind="above", copy=False)  # (N, Z)
-    t_lower = dry_lapse(p_lower, T, P0)
-
-    # - upper
-    # [[... nan 97500. 95000. 94171.484 90000. ...], ...] (N, Z)
-    p_upper = F.mask_insert(~p_mask, P, lcl_p, kind="below", copy=False)  # (N, Z)
-    t_upper = np.full_like(t_lower, np.nan)
-
-    nans = np.isnan(t_lower) | np.isnan(p_upper)
-    nx, zx = np.nonzero(~nans)
-    _, i = np.unique(nx, return_index=True)
-    nx, zx = nx[i], zx[i]
-
-    t_upper[nx, :] = moist_lapse(
-        p_upper[nx, :],
-        t_lower[nx, zx],
-        p_upper[nx, zx],
-    )
-
-    # OKAY now concat every thing
-    index = np.nonzero(p_lower.mask)
-    p_lower[index] = p_upper[index]
-    t_lower[index] = t_upper[index]
-    return (p_lower.squeeze(), lcl_p.squeeze()), (t_lower.squeeze(), lcl_t.squeeze())
-
-
-class ParcelProfile(NamedTuple, Generic[float_]):
-    pressure: Annotated[
-        Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
-        "",
-    ]
-    lcl_pressure: Annotated[
-        Pascal[np.ndarray[shape[N], np.dtype[float_]]],
-        "",
-    ]
-
-    temperature: Annotated[
-        Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
-        "",
-    ]
-    parcel_temperature: Annotated[
-        Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
-        "",
-    ]
-    lcl_temperature: Annotated[
-        Kelvin[np.ndarray[shape[N], np.dtype[float_]]],
-        "",
-    ]
-
-    dewpoint: Annotated[
-        Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
-        "",
-    ]
-
-
-def parcel_profile(
-    pressure: Pascal[np.ndarray[shape[Z], np.dtype[float_]]],
-    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    *,
-    pressure_2m: Pascal[np.ndarray[shape[N], np.dtype[float_]] | None] = None,
-    temperature_2m: Kelvin[np.ndarray[shape[N], np.dtype[float_]] | None] = None,
-    dewpoint_2m: Kelvin[np.ndarray[shape[N], np.dtype[float_]] | None] = None,
-) -> ParcelProfile[float_]:
-    assert pressure.ndim == 1
-    P = pressure.reshape(1, -1)  # (1, Z)
-    T, Td = temperature, dewpoint
-    Z = T.shape[1]
-    Z += 1  # add one for the 2m values
-
-    if pressure_2m is not None:
-        P2 = pressure_2m.reshape(-1, 1)
-    else:
-        P2 = P[:, :1]
-
-    if temperature_2m is None:
-        T2 = T[:, :1]
-    else:
-        T2 = temperature_2m.reshape(-1, 1)
-
-    if dewpoint_2m is None:
-        Td2 = Td[:, :1]
-    else:
-        Td2 = dewpoint_2m.reshape(-1, 1)
-
-    (pp_p, lcl_p), (pp_t, lcl_t) = _parcel_profile(P, T2, Td2, P2, axis=1)
-    if pp_t.shape == (N, Z - 1):  # concat the 2m values
-        pp_t = np.concatenate([T2, pp_t], axis=1)
-
-    interp_t, interp_td = F.interpolate_nz(lcl_p, pressure, T, Td, interp_nan=True)
-
-    t_new = F.insert_along_z(T, interp_t, pressure, lcl_p)
-    td_new = F.insert_along_z(Td, interp_td, pressure, lcl_p)
-
-    return ParcelProfile(
-        pressure=pp_p,
-        lcl_pressure=lcl_p,
-        temperature=pp_t,
-        parcel_temperature=t_new,
-        lcl_temperature=lcl_t,
-        dewpoint=td_new,
+        ConvectiveCondensationLevel.from_intersect(p0, intersect, "bottom"),
+        ConvectiveCondensationLevel.from_intersect(p0, intersect, "top"),
     )
 
 
@@ -442,6 +248,8 @@ def downdraft_cape(
     temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
     dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
 ) -> np.ndarray[shape[N], np.dtype[float_]]:
+    dtype = temperature.dtype
+    pressure, temperature, dewpoint = (x.astype(dtype) for x in (pressure, temperature, dewpoint))
 
     assert temperature.shape == dewpoint.shape
     N, Z = temperature.shape
@@ -465,14 +273,14 @@ def downdraft_cape(
     cap = -(np.searchsorted(np.squeeze(pressure)[::-1], np.min(p_top)) - 1)
     pressure = pressure[0, :cap].repeat(N).reshape(-1, N).transpose()  # (N, Z -cap)
     if not np.any(pressure):
-        return np.repeat(np.nan, N).astype(np.float32)
+        return np.repeat(np.nan, N).astype(dtype)
 
     # our moist_lapse rate function has nan ignoring capabilities
     pressure[pressure < p_top[:, newaxis]] = np.nan
     temperature = temperature[:, :cap]
     dewpoint = dewpoint[:, :cap]
 
-    trace = moist_lapse(pressure.astype(np.float32), wb_top, p_top)  # (N, Z)
+    trace = moist_lapse(pressure, wb_top, p_top)  # (N, Z)
     e_vt = virtual_temperature(temperature, saturation_mixing_ratio(pressure, dewpoint))  # (N, Z)
     p_vt = virtual_temperature(trace, saturation_mixing_ratio(pressure, trace))  # (N, Z)
 
@@ -481,7 +289,7 @@ def downdraft_cape(
 
     # the np.trapz function does not support np.nan values, but we only really have a couple of unique
     # levels in the gridded dataset. So this is really just like a loop of 4, 5 iterations
-    dcape = np.zeros(N, dtype=np.float32)  # (N,)
+    dcape = np.zeros(N, dtype=dtype)  # (N,)
     batch, levels = np.nonzero(np.diff(pressure > p_top[:, newaxis], prepend=True, append=False))
     for lvl in np.unique(levels):
         above = levels == lvl
@@ -490,3 +298,228 @@ def downdraft_cape(
         dcape[nx] = -(Rd * np.trapz(delta[nx, zx], logp[nx, zx], axis=1))
 
     return dcape
+
+
+# -------------------------------------------------------------------------------------------------
+# parcel_profile
+# -------------------------------------------------------------------------------------------------
+def _insert(arr: np.ndarray, mask: np.ndarray, value: np.ndarray):
+    N, Z = arr.shape
+    x = np.column_stack([arr, np.full(N, np.nan)])
+    out = np.full_like(x, np.nan)
+    # [ below mask ]
+    nx, zx = np.nonzero(mask)
+    out[nx, zx] = arr[nx, zx]
+    # [ above mask ]
+    nx, zx = np.nonzero(~mask)
+    zx = np.minimum(zx, Z - 1)
+    out[nx, zx + 1] = arr[nx, zx]
+    # [ mask position ]
+    out[np.isnan(out)] = value
+
+    return out
+
+
+class ParcelProfile(NamedTuple, Generic[float_]):
+    pressure: Annotated[
+        Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
+        Doc("[N, [...below, LCL, ...above]]"),
+    ]
+    temperature: Annotated[
+        Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+        Doc("[N, [...below, LCL, ...above]]"),
+    ]
+    dewpoint: Annotated[
+        Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
+        Doc("[N, [...below, LCL, ...above]]"),
+    ]
+    temperature_profile: Annotated[
+        Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+        Doc("[N, [...dry_lapse, LCL, ...moist_lapse]]"),
+    ]
+    lcl_index: tuple[
+        np.ndarray[shape[N], np.dtype[np.intp]],
+        np.ndarray[shape[Z], np.dtype[np.intp]],
+    ]
+
+    @property
+    def lcl_pressure(self) -> np.ndarray[shape[N], np.dtype[float_]]:
+        return self.pressure[self.lcl_index]
+
+    @property
+    def lcl_temperature(self) -> np.ndarray[shape[N], np.dtype[float_]]:
+        return self.temperature[self.lcl_index]
+
+    def below_lcl(self, copy: bool = True):
+        P, T = self.pressure, self.temperature
+        N, Z = self.shape
+        if copy:
+            P, T = P.copy(), T.copy()
+        indices = np.ones(N, dtype=np.int_)[:, None] * np.arange(Z)
+        mask = indices >= self.lcl_index[1][:, None]
+
+        P[mask] = np.nan
+        T[mask] = np.nan
+        return P, T
+
+    def above_lcl(self, copy: bool = True):
+        P, T = self.pressure, self.temperature
+        N, Z = self.shape
+        if copy:
+            P, T = P.copy(), T.copy()
+        indices = np.ones(N, dtype=np.int_)[:, None] * np.arange(Z)
+        mask = indices < self.lcl_index[1][:, None]
+
+        P[mask] = np.nan
+        T[mask] = np.nan
+        return P, T
+
+    @property
+    def shape(self) -> shape[N, Z]:
+        return self.pressure.shape  # type: ignore
+
+    def with_lcl(
+        self,
+    ) -> tuple[
+        Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
+        Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+        Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
+        Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+    ]:
+        # mpcalc.parcel_profile_with_lcl
+        return (
+            self.pressure,
+            self.temperature,
+            self.dewpoint,
+            self.temperature_profile,
+        )
+
+    def el(
+        self, which: Literal["top", "bottom"] = "top"
+    ) -> tuple[
+        Pascal[np.ndarray[shape[N], np.dtype[float_]]],
+        Kelvin[np.ndarray[shape[N], np.dtype[float_]]],
+    ]:
+        pressure, temperature, dewpoint = self.pressure, self.temperature, self.dewpoint
+        parcel_temperature_profile = self.temperature_profile
+        shape = temperature.shape
+        assert pressure.shape == shape == dewpoint.shape == parcel_temperature_profile.shape
+        lcl_p = self.lcl_pressure
+
+        intersect = F.intersect_nz(
+            pressure[:, 1:],
+            temperature[:, 1:],
+            parcel_temperature_profile[:, 1:],
+            log_x=True,
+        )
+        if which == "top":
+            x, y, _ = intersect.top()
+        elif which == "bottom":
+            x, y, _ = intersect.bottom()
+        else:
+            raise ValueError("which must be 'top' or 'bottom'")
+        mask = x < lcl_p
+        return np.where(mask, x, np.nan), np.where(mask, y, np.nan)
+
+    def __repr__(self) -> str:
+        text = f"{self.__class__.__name__}(\n"
+        text += f"[pressure]\n{self.pressure}\n"
+        text += f"[temperature]\n{self.temperature}\n"
+        text += f"[dewpoint]\n{self.dewpoint}\n"
+        text += f"[temperature_profile]\n{self.temperature_profile}\n)"
+
+        return text
+
+
+def parcel_profile(
+    pressure: Annotated[
+        Pascal[np.ndarray[shape[Z], np.dtype[float_]]], "isobaric pressure levels"
+    ],  # TODO: add support for (N, Z) pressure arrays...
+    temperature: Annotated[Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]], "isobaric temperature"],
+    dewpoint: Annotated[Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]], "isobaric dewpoint temperature"],
+    *,
+    refrence_pressure: Annotated[Pascal[np.ndarray[shape[N], np.dtype[np.float_]]], "surface pressure"] | None = None,
+    refrence_temperature: Annotated[Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]], "surface temperature"]
+    | None = None,
+    refrence_dewpoint: Annotated[Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]], "surface dewpoint temperature"]
+    | None = None,
+) -> ParcelProfile[float_]:
+    # add a nan value to the end of the pressure array
+    dtype = pressure.dtype
+    pressure = np.append(pressure, np.nan)
+    N, Z = temperature.shape[0], pressure.shape[0]
+    indices = np.arange(N)
+    P0 = pressure[:1].repeat(N) if refrence_pressure is None else refrence_pressure  # (N,)
+    T0 = temperature[:, 0] if refrence_temperature is None else refrence_temperature  # (N,)
+    Td0 = dewpoint[:, 0] if refrence_dewpoint is None else refrence_dewpoint  # (N,)
+    assert T0.shape == Td0.shape == P0.shape == (N,)
+
+    # [ lcl ]
+    lcl_p, lcl_t = lcl(P0, T0, Td0)  # (N,)
+
+    # [ pressure ]
+    mask = pressure >= lcl_p.reshape(-1, 1)  # (N, Z)
+    mask[indices, np.argmin(mask, axis=1) + 1] = 0
+    P = np.full((N, Z), np.nan, dtype=dtype)
+    nx, zx = np.nonzero(mask)
+    P[nx, zx] = pressure[zx]
+    nx, zx = np.nonzero(~mask & ~np.isnan(pressure))
+    P[nx, zx + 1] = pressure[zx]
+    lcl_index = np.nonzero(np.isnan(P))
+    assert len(lcl_index) == 2 and len(lcl_index[0]) == N == len(lcl_index[1])
+    P[lcl_index] = lcl_p
+
+    # [ parcel temperature ]
+    lower = np.column_stack(
+        [T0, dry_lapse(np.where(mask, P, np.nan), T0[:, newaxis], P0[:, newaxis])[:, 1:]]
+    )  #  sfc -> lcl
+    upper = moist_lapse(np.where(mask, np.nan, P), lcl_t, lcl_p)  # lcl -> top
+
+    Tp = np.where(mask, lower, upper)  # parcel temperature
+    Tp[lcl_index] = lcl_t
+
+    # [ temperature & dewpoint ]
+    T, Td = F.interpolate_nz(
+        lcl_p,
+        pressure[:-1],  # drop the trailing nan value
+        temperature,
+        dewpoint,
+    )
+    T = _insert(temperature, mask, T)
+    Td = _insert(dewpoint, mask, Td)
+
+    return ParcelProfile(P, T, Td, Tp, lcl_index)
+
+
+_parcel_profile: Final = parcel_profile  # alias for the parcel_profile function to mitigate namespace conflicts
+
+
+# -------------------------------------------------------------------------------------------------
+# el
+# -------------------------------------------------------------------------------------------------
+def el(
+    pressure: Annotated[
+        Pascal[np.ndarray[shape[Z], np.dtype[float_]]], "isobaric pressure levels"
+    ],  # TODO: add support for (N, Z) pressure arrays...
+    temperature: Annotated[Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]], "isobaric temperature"],
+    dewpoint: Annotated[Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]], "isobaric dewpoint temperature"],
+    *,
+    parcel_profile: Annotated[ParcelProfile[float_], "parcel profile"] | None = None,
+) -> tuple[
+    Pascal[np.ndarray[shape[N], np.dtype[float_]]],
+    Kelvin[np.ndarray[shape[N], np.dtype[float_]]],
+]:
+    if parcel_profile is None:
+        parcel_profile = _parcel_profile(pressure, temperature, dewpoint)
+    return parcel_profile.el()
+
+
+# TODO:...
+# -------------------------------------------------------------------------------------------------
+# lfc
+# -------------------------------------------------------------------------------------------------
+# TODO:...
+# -------------------------------------------------------------------------------------------------
+# cape
+# -------------------------------------------------------------------------------------------------
+# TODO:...

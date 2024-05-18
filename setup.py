@@ -21,10 +21,13 @@ if "--production" in sys.argv:
     purge = True  # this flag will be used to remove the created .c files to minimize the docker image size
 
 
-if tuple(sys.argv[1:3]) == ("clean", "--all") and os.path.exists("src/nzthermo/_c.c"):
+if tuple(sys.argv[1:3]) == ("clean", "--all"):
     # when switching between production and coverage we need to remove the _c.c file to
     # ensure that the cython code is recompiled with the correct compiler directives
-    os.remove("nzthermo/_c.c")
+    for file in ("src/nzthermo/_c.c", "src/nzthermo/_datetime.c"):
+        print(f"removing {file}")
+        if os.path.exists(file):
+            os.remove(file)
 
 
 if "--coverage" in sys.argv:
@@ -40,9 +43,11 @@ else:
     # runtime:
     #   The schedule and chunk size are taken from the runtime scheduling variable, which can be set
     #   through the openmp.omp_set_schedule() function call, or the OMP_SCHEDULE environment variable.
-    #   Note that this essentially disables any static compile time optimisations of the scheduling code
+    #   Note that this essentially disables any static compile time optimizations of the scheduling code
     #   itself and may therefore show a slightly worse performance than when the same scheduling policy
     #   is statically configured at compile time.
+    # Dynamic scheduling:
+    #  Is better when the iterations may take very different  amounts of time.
     if (omp := os.getenv("OMP_SCHEDULE", "dynamic")) not in ("static", "dynamic", "guided", "auto"):
         raise OSError(f"the provided ``OMP_SCHEDULE`` is invalid got := {omp}")
     os.environ["OMP_SCHEDULE"] = omp
@@ -58,7 +63,7 @@ extension_modules = [
         define_macros=define_macros,
         extra_compile_args=extra_compile_args,
         extra_link_args=extra_link_args,
-    )
+    ),
 ]
 
 setuptools.setup(
