@@ -21,7 +21,7 @@ if "--production" in sys.argv:
     purge = True  # this flag will be used to remove the created .c files to minimize the docker image size
 
 
-if tuple(sys.argv[1:3]) == ("clean", "--all") and os.path.exists("nzthermo/_c.c"):
+if tuple(sys.argv[1:3]) == ("clean", "--all") and os.path.exists("src/nzthermo/_c.c"):
     # when switching between production and coverage we need to remove the _c.c file to
     # ensure that the cython code is recompiled with the correct compiler directives
     os.remove("nzthermo/_c.c")
@@ -53,7 +53,7 @@ else:
 extension_modules = [
     setuptools.Extension(
         "nzthermo._c",
-        ["nzthermo/_c.pyx"],
+        ["src/nzthermo/_c.pyx"],
         include_dirs=include_dirs,
         define_macros=define_macros,
         extra_compile_args=extra_compile_args,

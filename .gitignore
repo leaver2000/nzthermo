@@ -7,3 +7,4 @@ build/
 **/*.c
 .egg/
 *.egg-info/
+src/nzthermo/_version.py
