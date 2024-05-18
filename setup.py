@@ -24,7 +24,7 @@ if "--production" in sys.argv:
 if tuple(sys.argv[1:3]) == ("clean", "--all"):
     # when switching between production and coverage we need to remove the _c.c file to
     # ensure that the cython code is recompiled with the correct compiler directives
-    for file in ("nzthermo/_c.c", "nzthermo/_datetime.c"):
+    for file in ("src/nzthermo/_c.c", "src/nzthermo/_datetime.c"):
         print(f"removing {file}")
         if os.path.exists(file):
             os.remove(file)
@@ -58,7 +58,7 @@ else:
 extension_modules = [
     setuptools.Extension(
         "nzthermo._c",
-        ["nzthermo/_c.pyx"],
+        ["src/nzthermo/_c.pyx"],
         include_dirs=include_dirs,
         define_macros=define_macros,
         extra_compile_args=extra_compile_args,
