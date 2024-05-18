@@ -28,7 +28,7 @@ def test_moist_lapse_mode_1(dtype):
         [
             mpcalc.moist_lapse(
                 pressure[i] * units.pascal, temperature[i] * units.kelvin, ref_pressure[i] * units.pascal
-            ).m
+            ).m  # type: ignore
             for i in range(len(temperature))
         ],  # type: ignore
         rtol=1e-4,
