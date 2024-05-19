@@ -20,7 +20,7 @@ __all__ = [
     "virtual_temperature",
     "wet_bulb_temperature",
 ]
-from ._c import OPENMP_ENABLED, lcl, moist_lapse
+from ._c import OPENMP_ENABLED, lcl, moist_lapse, wet_bulb_temperature
 from .core import (
     ccl,
     dewpoint,
@@ -36,5 +36,4 @@ from .core import (
     saturation_vapor_pressure,
     vapor_pressure,
     virtual_temperature,
-    wet_bulb_temperature,
 )

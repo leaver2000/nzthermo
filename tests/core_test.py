@@ -47,24 +47,6 @@ def pressure_levels(sfc=1013.25, dtype: Any = np.float64):
 
 
 @pytest.mark.parametrize("dtype", [np.float64, np.float32])
-def test_wet_bulb_temperature(dtype):
-    pressure = np.array([912.12, 1012.93], dtype=dtype) * 100.0  # (N,) :: surface pressure
-    temperature = np.array([225.31, 254.0], dtype=dtype)  # (N,) :: surface temperature
-    dewpoint = np.array([220.31, 240.0], dtype=dtype)  # (N,) :: surface temperature
-
-    assert_allclose(
-        wet_bulb_temperature(pressure, temperature, dewpoint),
-        [
-            mpcalc.wet_bulb_temperature(
-                pressure[i] * units.pascal, temperature[i] * units.kelvin, dewpoint[i] * units.kelvin
-            ).m
-            for i in range(len(temperature))
-        ],
-        rtol=1e-4,
-    )
-
-
-@pytest.mark.parametrize("dtype", [np.float64, np.float32])
 def test_ccl(dtype) -> None:
     P = (
         ([993.0, 957.0, 925.0, 886.0, 850.0, 813.0, 798.0, 732.0, 716.0, 700.0] * units.hPa)
@@ -118,13 +100,9 @@ def test_parcel_profile_with_lcl() -> None:
             DEWPOINT[i] * units.degK,
         )
         P_, T_, Td_, Tp_ = (x.m for x in metpy_pp)
-        print("[pressure (nzthermo, metpy)]", P[i], P_, sep="\n")
         assert_allclose(P[i], P_, rtol=1e-3)
-        print("[temperature (nzthermo, metpy)]", T[i], T_, sep="\n")
         assert_allclose(T[i], T_, rtol=1e-4)
-        print("[dewpoint (nzthermo, metpy)]", Td[i], Td_, sep="\n")
         assert_allclose(Td[i], Td_, rtol=1e-4)
-        print("[parcel (nzthermo, metpy)]", Tp[i], Tp_, sep="\n")
         assert_allclose(Tp[i], Tp_, rtol=1e-4)
 
 

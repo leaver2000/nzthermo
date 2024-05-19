@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from typing_extensions import Doc
 
 from . import functional as F
-from ._c import lcl, moist_lapse
+from ._c import lcl, moist_lapse, wet_bulb_temperature
 from ._typing import Kelvin, Kilogram, N, Pascal, Ratio, Z, shape
 from .const import E0, P0, T0, Cpd, Rd, Rv
 
@@ -145,22 +145,6 @@ def dewpoint_from_specific_humidity(
 ) -> Kelvin[NDArray[float_]]:
     w = mixing_ratio_from_specific_humidity(specific_humidity)
     return dewpoint(pressure * w / (eps + w))
-
-
-# -------------------------------------------------------------------------------------------------
-# wet_bulb_temperature
-# -------------------------------------------------------------------------------------------------
-def wet_bulb_temperature(
-    pressure: Pascal[np.ndarray[shape[N], np.dtype[float_]]],
-    temperature: Kelvin[np.ndarray[shape[N], np.dtype[float_]]],
-    dewpoint: Kelvin[np.ndarray[shape[N], np.dtype[float_]]],
-) -> Kelvin[np.ndarray[shape[N], np.dtype[float_]]]:
-    # TODO:...
-    shape = pressure.shape
-    pressure, temperature, dewpoint = map(np.ndarray.ravel, (pressure, temperature, dewpoint))
-    lcl_p, lcl_t = lcl(pressure, temperature, dewpoint)
-
-    return moist_lapse(pressure, lcl_t, lcl_p).reshape(shape)
 
 
 # -------------------------------------------------------------------------------------------------
@@ -394,9 +378,7 @@ class ParcelProfile(NamedTuple, Generic[float_]):
             self.temperature_profile,
         )
 
-    def el(
-        self, which: Literal["top", "bottom"] = "top"
-    ) -> tuple[
+    def el(self, which: Literal["top", "bottom"] = "top") -> tuple[
         Pascal[np.ndarray[shape[N], np.dtype[float_]]],
         Kelvin[np.ndarray[shape[N], np.dtype[float_]]],
     ]:
@@ -439,10 +421,12 @@ def parcel_profile(
     dewpoint: Annotated[Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]], "isobaric dewpoint temperature"],
     *,
     refrence_pressure: Annotated[Pascal[np.ndarray[shape[N], np.dtype[np.float_]]], "surface pressure"] | None = None,
-    refrence_temperature: Annotated[Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]], "surface temperature"]
-    | None = None,
-    refrence_dewpoint: Annotated[Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]], "surface dewpoint temperature"]
-    | None = None,
+    refrence_temperature: (
+        Annotated[Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]], "surface temperature"] | None
+    ) = None,
+    refrence_dewpoint: (
+        Annotated[Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]], "surface dewpoint temperature"] | None
+    ) = None,
 ) -> ParcelProfile[float_]:
     # add a nan value to the end of the pressure array
     dtype = pressure.dtype

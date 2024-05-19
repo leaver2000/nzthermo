@@ -5,7 +5,8 @@
 # cython: cdivision=True
 
 # pyright: reportGeneralTypeIssues=false
-
+cimport cython
+import cython
 from cython.parallel cimport parallel, prange
 from cython.view cimport array as cvarray
 
@@ -15,6 +16,7 @@ cimport numpy as np
 from . import const as _const
 
 np.import_array()
+np.import_ufunc()
 OPENMP_ENABLED = bool(OPENMP)
 
 # -------------------------------------------------------------------------------------------------
@@ -416,4 +418,19 @@ def lcl(
         )
 
     return x[0], x[1]
+
+
+# -------------------------------------------------------------------------------------------------
+# wet_bulb_temperature
+# -------------------------------------------------------------------------------------------------
+@cython.ufunc
+cdef floating wet_bulb_temperature(
+    floating pressure, floating temperature, floating dewpoint
+) noexcept nogil:
+    cdef floating r, lcl_p, lcl_t
+    r = mixing_ratio(saturation_vapor_pressure(dewpoint), pressure)
+    lcl_p = lcl_integrator(pressure, temperature, r, 50, eps=0.1)
+    lcl_t = _dewpoint(vapor_pressure(lcl_p, r))
+
+    return moist_lapse_integrator(lcl_p, pressure, lcl_t, 1000.0)
 
