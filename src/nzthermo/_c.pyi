@@ -75,7 +75,7 @@ def lcl[T: np.float_](
 ]: ...
 
 
-class ufunc(Generic[_P, _R, _In, _Out]):
+class _ufunc(np.ufunc,Generic[_P, _R, _In, _Out]): # type: ignore[misc]
     def __init__(self, f: Callable[_P, _R]) -> None: ...
     @property
     def __name__(self) -> str: ...
@@ -93,7 +93,7 @@ class ufunc(Generic[_P, _R, _In, _Out]):
     def signature(self) -> None: ...
 
 
-class _ufunc3x1(ufunc[_P, _R, L[3], L[1]]):
+class _ufunc3x1(_ufunc[_P, _R, L[3], L[1]]):
     @overload
     def __call__(
         self,
