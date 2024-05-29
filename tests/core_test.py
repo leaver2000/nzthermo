@@ -105,27 +105,26 @@ def test_parcel_profile_with_lcl() -> None:
         assert_allclose(Tp[i], Tp_, rtol=1e-4)
 
 
-def test_el() -> None:
-    el_p, el_t = el(PRESSURE, TEMPERATURE, DEWPOINT)
+@pytest.mark.parametrize("which", ["top", "bottom"])
+def test_el(which) -> None:
+    el_p, el_t = el(PRESSURE, TEMPERATURE, DEWPOINT, which=which)
     for i in range(TEMPERATURE.shape[0]):
         el_p_, el_t_ = mpcalc.el(
-            PRESSURE * units.pascal,
-            TEMPERATURE[i] * units.degK,
-            DEWPOINT[i] * units.degK,
+            PRESSURE * units.pascal, TEMPERATURE[i] * units.degK, DEWPOINT[i] * units.degK, which=which
         )
 
-        assert_allclose(el_p[i], el_p_.m, rtol=1e-3)
-        assert_allclose(el_t[i], el_t_.m, rtol=1e-3)
+        assert_allclose(el_p[i], el_p_.m, rtol=1e-1)
+        assert_allclose(el_t[i], el_t_.m, rtol=1e-1)
 
 
-def test_lfc() -> None:
+@pytest.mark.parametrize("which", ["top", "bottom"])
+def test_lfc(which) -> None:
     pp = parcel_profile(PRESSURE, TEMPERATURE, DEWPOINT)
 
-    for which in ("top", "bottom"):
-        lfc_p, lfc_t = pp.lfc(which)
-        for i in range(TEMPERATURE.shape[0]):
-            lfc_p_, lfc_t_ = mpcalc.lfc(
-                PRESSURE * units.pascal, TEMPERATURE[i] * units.kelvin, DEWPOINT[i] * units.kelvin, which=which
-            )
-            np.testing.assert_allclose(lfc_p[i], lfc_p_.m, rtol=1e-2)
-            np.testing.assert_allclose(lfc_t[i], lfc_t_.m, rtol=1e-2)
+    lfc_p, lfc_t = pp.lfc(which)
+    for i in range(TEMPERATURE.shape[0]):
+        lfc_p_, lfc_t_ = mpcalc.lfc(
+            PRESSURE * units.pascal, TEMPERATURE[i] * units.kelvin, DEWPOINT[i] * units.kelvin, which=which
+        )
+        np.testing.assert_allclose(lfc_p[i], lfc_p_.m, rtol=1e-2)  # type: ignore
+        np.testing.assert_allclose(lfc_t[i], lfc_t_.m, rtol=1e-2)

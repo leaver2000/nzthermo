@@ -3,6 +3,7 @@ from __future__ import annotations
 import functools
 from typing import (
     Callable,
+    Any,
     Concatenate,
     Final,
     Generic,
@@ -104,6 +105,10 @@ def nantrapz(
     #     y = np.asarray(y)
     #     ret = np.add.reduce(d * (y[tuple(slice1)] + y[tuple(slice2)]) / 2.0, axis)
     # return ret
+
+
+def monotnicly_increasing(x: NDArray[np.number[Any]]) -> np.ndarray[shape[N], np.dtype[np.bool_]]:
+    return np.all(x[:, 1:] >= x[:, :-1], axis=1)
 
 
 # -------------------------------------------------------------------------------------------------
@@ -305,6 +310,34 @@ def mask_insert(
     return np.ma.masked_array(z, mask=~mask)
 
 
+def zero_crossing(
+    x: np.ndarray[shape[N, Z], np.dtype[float_]],
+    y: np.ndarray[shape[N, Z], np.dtype[float_]],
+    *,
+    log_x: bool = True,
+    prepend: float = -1.0,
+    eps: float = 1e-6,
+) -> tuple[
+    np.ndarray[shape[N, Z], np.dtype[float_]],
+    np.ndarray[shape[N, Z], np.dtype[float_]],
+]:
+    crossing = intersect_nz(x[:, 1:], y[:, 1:], np.zeros_like(y[:, 1:]), direction="all", log_x=log_x).full()
+    x = np.column_stack([x, crossing[0]])  # concatenate
+    y = np.column_stack([y, crossing[1]])  # concatenate
+
+    # Resort so that data are in order
+    sort = np.argsort(x, axis=1)
+    x = np.take_along_axis(x, sort, axis=1)
+    y = np.take_along_axis(y, sort, axis=1)
+
+    # Remove duplicate data points if there are any
+    discard = np.diff(x, axis=1, prepend=prepend) <= eps
+    x[discard] = np.nan
+    y[discard] = np.nan
+
+    return x[:, :], y[:, :]
+
+
 # -------------------------------------------------------------------------------------------------
 # intersect_nz
 # -------------------------------------------------------------------------------------------------
@@ -338,13 +371,19 @@ class Intersection(NamedTuple, Generic[float_]):
         x, y, indices = self
 
         idx = np.flatnonzero(np.diff(indices, append=N))
-        idx[np.isnan(x[idx])] -= 2
+        # idx[np.isnan(x[idx])] -= 2
         idx = np.clip(idx, 0, N)
 
         return cls(x[idx], y[idx], indices[idx])
 
     def to_numpy(self):
         return np.array([self.x, self.y])
+
+    def pick(
+        self, which: Literal["top", "bottom"]
+    ) -> tuple[np.ndarray[shape[N], np.dtype[float_]], np.ndarray[shape[N], np.dtype[float_]]]:
+        x, y, _ = self.bottom() if which == "bottom" else self.top()
+        return x, y
 
     def full(self) -> tuple[np.ndarray[shape[N, Z], np.dtype[float_]], np.ndarray[shape[N, Z], np.dtype[float_]]]:
         """
@@ -388,37 +427,14 @@ class Intersection(NamedTuple, Generic[float_]):
         return x, y
 
 
-def zero_crossing(
-    x: np.ndarray[shape[Z] | shape[N, Z], np.dtype[float_]],
-    y: np.ndarray[shape[N, Z], np.dtype[float_]],
-    *,
-    direction: Literal["increasing", "decreasing"] = "increasing",  # TODO:...
-    log_x: bool = False,
-):
-    crossing = intersect_nz(x[:, 1:], y[:, 1:], np.zeros_like(y[:, 1:]), direction=direction, log_x=log_x).full()
-    x = np.column_stack([x, crossing[0]])  # concatenate
-    y = np.column_stack([y, crossing[1]])  # concatenate
-
-    # Resort so that data are in order
-    sort = np.argsort(x, axis=1)
-    x = np.take_along_axis(x, sort, axis=1)
-    y = np.take_along_axis(y, sort, axis=1)
-
-    # Remove duplicate data points if there are any
-    discard = np.diff(x, axis=1, prepend=1) <= 1e-6
-    x[discard] = np.nan
-    y[discard] = np.nan
-
-    return x, y
-
-
 def intersect_nz(
     x: np.ndarray[shape[Z] | shape[N, Z], np.dtype[float_]],
     a: np.ndarray[shape[N, Z], np.dtype[float_]],
     b: np.ndarray[shape[N, Z], np.dtype[float_]],
     *,
-    direction: Literal["increasing", "decreasing"] = "increasing",  # TODO:...
+    direction: Literal["all", "increasing", "decreasing"] = "increasing",  # TODO:...
     log_x: bool = False,
+    mask_nans: bool = False,
 ) -> Intersection[float_]:
     """interpolate the points on `x` where `a` and `b` intersect.
     >>> x = np.array([1013, 1000,  975,  950])
@@ -440,16 +456,12 @@ def intersect_nz(
       indices=[0 1]
     )
     """
-    x = x.squeeze()
-    Z = x.shape[-1]
+    x = np.atleast_1d(x.squeeze())
+    N, Z = a.shape
     if not (a.shape[-1] == b.shape[-1] == Z):
         raise ValueError("a, b, and x must have the same number of elements")
     elif not (a.shape[0] == b.shape[0]):
         raise ValueError("a and b must have the same number of elements")
-    elif direction != "increasing":
-        import warnings
-
-        warnings.warn("currently there is no implmentation for decreasing.... TODO:...")
 
     if log_x is True:
         x = np.log(x)
@@ -460,7 +472,7 @@ def intersect_nz(
 
     nx, z0 = np.nonzero(mask)
     z1 = np.clip(z0 + 1, 0, Z - 1)
-    # sign_change = np.sign(a[nx, z1] - b[nx, z1])
+    sign_change = np.sign(a[nx, z1] - b[nx, z1])
 
     if x.ndim == 1:
         x0, x1 = x[z0], x[z1]
@@ -479,11 +491,16 @@ def intersect_nz(
         if log_x is True:
             x = np.exp(x)
 
-    # if direction == "increasing":
-    #     mask = sign_change < 0
-    # elif direction == "decreasing":
-    #     mask = sign_change > 0
-    # print(sign_change)
-    # x[mask] = np.nan
-    # y[mask] = np.nan
-    return Intersection(x, y, nx)  # type: ignore
+    if direction == "increasing":
+        mask = sign_change > 0
+        nans = np.diff(nx, prepend=-1).astype(bool)
+    elif direction == "decreasing":
+        mask = sign_change < 0
+        nans = np.diff(nx, append=N + 1).astype(bool)
+    else:  # all
+        return Intersection(x, y, nx)  # type: ignore
+
+    if mask_nans:
+        x[mask & nans] = np.nan
+        y[mask & nans] = np.nan
+    return Intersection(x[mask | nans], y[mask | nans], nx[mask | nans])

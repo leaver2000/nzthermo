@@ -415,12 +415,7 @@ class ParcelProfile(NamedTuple, Generic[float_]):
             log_x=True,
         )
 
-        if which == "top":
-            x, y, _ = intersect.top()
-        elif which == "bottom":
-            x, y, _ = intersect.bottom()
-        else:
-            raise ValueError("which must be 'top' or 'bottom'")
+        x, y = intersect.pick(which)
 
         mask = x < self.lcl_pressure
         return np.where(mask, x, np.nan), np.where(mask, y, np.nan)
@@ -439,18 +434,65 @@ class ParcelProfile(NamedTuple, Generic[float_]):
             direction="increasing",
             log_x=True,
         )
-        if which == "top":
-            x, y, _ = intersect.top()
-        elif which == "bottom":
-            x, y, _ = intersect.bottom()
-        else:
-            raise ValueError("which must be 'top' or 'bottom'")
+        x, y = intersect.pick(which)
 
-        # x, y, _ = intersect.top() if which == "top" else intersect.bottom()
         mask = x >= self.lcl_pressure
         x[mask] = np.nan
         y[mask] = np.nan
+
         return x, y
+
+    def cape_cin(self):
+        # TODO: there is still some bugs in this im pretty sure, but the values are getting closer.
+        pressure, temperature, dewpoint, parcel_profile = self.without_lcl()
+
+        # .........................................................................................
+        lcl_p = self.lcl_pressure  # ✔️
+
+        below_lcl = pressure > lcl_p[:, np.newaxis]  # ✔️
+
+        # The mixing ratio of the parcel comes from the dewpoint below the LCL, is saturated
+        # based on the temperature above the LCL
+        parcel_mixing_ratio = np.where(
+            below_lcl,
+            saturation_mixing_ratio(pressure, dewpoint),
+            saturation_mixing_ratio(pressure, temperature),
+        )
+        # Convert the temperature/parcel profile to virtual temperature
+        temperature = virtual_temperature(temperature, saturation_mixing_ratio(pressure, dewpoint))
+        parcel_profile = virtual_temperature(parcel_profile, parcel_mixing_ratio)
+        # print(temperature, parcel_profile)
+        # Calculate LFC limit of integration
+        lfc_p, _ = self.lfc("bottom")  # ✔️
+
+        # Calculate the EL limit of integration
+        el_p, _ = self.el("top")  # ✔️
+        el_p = np.where(np.isnan(el_p), pressure[:, -1], el_p)
+
+        y = parcel_profile - temperature
+
+        x, y = F.zero_crossing(pressure.copy(), y, log_x=True)  # (N, Z)
+        lfc_p = lfc_p.reshape(-1, 1)
+        el_p = el_p.reshape(-1, 1)
+
+        def _less_or_close(a, value, **kwargs):
+            return (a < value) | np.isclose(a, value, **kwargs)
+
+        def _greater_or_close(a, value, **kwargs):
+            return (a > value) | np.isclose(a, value, **kwargs)
+
+        p_mask = _less_or_close(x, lfc_p) & _greater_or_close(x, el_p)
+        x_clipped = np.where(p_mask, x, np.nan)
+        y_clipped = np.where(p_mask, y, np.nan)
+
+        cape = Rd * F.nantrapz(y_clipped, np.log(x_clipped), axis=1)
+        p_mask = _greater_or_close(x, lfc_p)
+        x_clipped = np.where(p_mask, x, np.nan)
+        y_clipped = np.where(p_mask, y, np.nan)
+
+        cin = Rd * F.nantrapz(y_clipped, np.log(x_clipped), axis=1)
+        cin[cin > 0] = 0
+        return cape, cin
 
     def __repr__(self) -> str:
         text = f"{self.__class__.__name__}(\n"
