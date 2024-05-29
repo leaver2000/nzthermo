@@ -5,8 +5,7 @@ import numpy as np
 import pytest
 from metpy.units import units
 from numpy.testing import assert_allclose
-
-from nzthermo.core import ccl, el, lcl, parcel_profile, wet_bulb_temperature
+from nzthermo.core import ccl, el, lcl, parcel_profile
 
 np.set_printoptions(
     precision=3,
@@ -117,3 +116,16 @@ def test_el() -> None:
 
         assert_allclose(el_p[i], el_p_.m, rtol=1e-3)
         assert_allclose(el_t[i], el_t_.m, rtol=1e-3)
+
+
+def test_lfc() -> None:
+    pp = parcel_profile(PRESSURE, TEMPERATURE, DEWPOINT)
+
+    for which in ("top", "bottom"):
+        lfc_p, lfc_t = pp.lfc(which)
+        for i in range(TEMPERATURE.shape[0]):
+            lfc_p_, lfc_t_ = mpcalc.lfc(
+                PRESSURE * units.pascal, TEMPERATURE[i] * units.kelvin, DEWPOINT[i] * units.kelvin, which=which
+            )
+            np.testing.assert_allclose(lfc_p[i], lfc_p_.m, rtol=1e-2)
+            np.testing.assert_allclose(lfc_t[i], lfc_t_.m, rtol=1e-2)

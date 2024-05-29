@@ -1,4 +1,6 @@
 __all__ = [
+    # ._version
+    "__version__",
     # ._c
     "OPENMP_ENABLED",
     "lcl",
@@ -11,6 +13,7 @@ __all__ = [
     "dry_lapse",
     "el",
     "exner_function",
+    "lfc",
     "parcel_profile",
     "mixing_ratio",
     "mixing_ratio_from_specific_humidity",
@@ -21,6 +24,7 @@ __all__ = [
     "wet_bulb_temperature",
 ]
 from ._c import OPENMP_ENABLED, lcl, moist_lapse, wet_bulb_temperature
+from ._version import __version__
 from .core import (
     ccl,
     dewpoint,
@@ -29,6 +33,7 @@ from .core import (
     dry_lapse,
     el,
     exner_function,
+    lfc,
     mixing_ratio,
     mixing_ratio_from_specific_humidity,
     parcel_profile,

@@ -18,6 +18,9 @@ from typing import (
 import numpy as np
 from numpy.typing import NDArray
 
+from typing import SupportsIndex
+from numpy._typing._array_like import _ArrayLikeComplex_co, _ArrayLikeTD64_co, _ArrayLikeObject_co
+
 try:
     from typing_extensions import deprecated
 except ImportError:
@@ -67,6 +70,40 @@ def interp_nan(x: NDArray[float_], /, copy: bool = True) -> NDArray[float_]:
 
 
 _interp_nan: Final = interp_nan
+
+
+def nantrapz(
+    y: _ArrayLikeComplex_co | _ArrayLikeTD64_co | _ArrayLikeObject_co,
+    x: _ArrayLikeComplex_co | _ArrayLikeTD64_co | _ArrayLikeObject_co | None = None,
+    dx: float = 1.0,
+    axis: SupportsIndex = -1,
+) -> NDArray[np.float_]:
+    y = np.asanyarray(y)
+    if x is None:
+        d = dx
+    else:
+        x = np.asanyarray(x)
+        if x.ndim == 1:
+            d = np.diff(x)
+            # reshape to correct shape
+            shape = [1] * y.ndim
+            shape[axis] = d.shape[0]
+            d = d.reshape(shape)
+        else:
+            d = np.diff(x, axis=axis)
+    nd = y.ndim
+    slice1 = [slice(None)] * nd
+    slice2 = [slice(None)] * nd
+    slice1[axis] = slice(1, None)
+    slice2[axis] = slice(None, -1)
+    return np.nansum(d * (y[tuple(slice1)] + y[tuple(slice2)]) / 2.0, axis=axis)
+    # try:
+    # except ValueError:
+    #     # Operations didn't work, cast to ndarray
+    #     d = np.asarray(d)
+    #     y = np.asarray(y)
+    #     ret = np.add.reduce(d * (y[tuple(slice1)] + y[tuple(slice2)]) / 2.0, axis)
+    # return ret
 
 
 # -------------------------------------------------------------------------------------------------
@@ -301,13 +338,78 @@ class Intersection(NamedTuple, Generic[float_]):
         x, y, indices = self
 
         idx = np.flatnonzero(np.diff(indices, append=N))
-        idx[np.isnan(x[idx])] -= 1
-        idx = np.clip(idx, 0, N - 1)
+        idx[np.isnan(x[idx])] -= 2
+        idx = np.clip(idx, 0, N)
 
         return cls(x[idx], y[idx], indices[idx])
 
     def to_numpy(self):
         return np.array([self.x, self.y])
+
+    def full(self) -> tuple[np.ndarray[shape[N, Z], np.dtype[float_]], np.ndarray[shape[N, Z], np.dtype[float_]]]:
+        """
+        TODO: DOCUMENTAITON!!
+        ```python
+        x = [99644.14784044            nan 99748.45094803            nan
+        91844.40614874 76853.41182469            nan 91977.69836503
+        88486.6306099  55503.21680679 45348.18988747            nan]
+        y = [ 3.76088050e-15             nan -3.96765953e-14             nan
+        1.52655666e-15 -3.96904731e-14             nan -7.35522754e-15
+        -5.77315973e-14 -5.55111512e-15  1.04360964e-14             nan]
+            indices = [0 0 1 1 2 2 2 3 3 3 3 3]
+
+        full(x, y, indices)
+        [[99644.14784044,            nan,            nan,           nan],
+        [99748.45094803,            nan,            nan,            nan],
+        [76853.41182469, 91844.40614874,            nan,            nan],
+        [45348.18988747, 55503.21680679, 88486.6306099 , 91977.69836503]]
+
+        [[ 3.76088050e-15,             nan,             nan,            nan],
+        [-3.96765953e-14,             nan,             nan,             nan],
+        [-3.96904731e-14,  1.52655666e-15,             nan,             nan],
+        [ 1.04360964e-14, -5.55111512e-15, -5.77315973e-14, -7.35522754e-15]]
+        ```
+        """
+        x = self.x
+        y = self.y
+        idx = self.indices
+
+        N = np.unique(self.indices).size
+
+        mask = np.arange(N)[:, None] == idx[None]
+        x, y = np.where(mask, x, np.nan), np.where(mask, y, np.nan)
+
+        sort = np.argsort(x, axis=1)[:, ::-1]
+        x = np.take_along_axis(x, sort, axis=1)[:, ::-1]
+        y = np.take_along_axis(y, sort, axis=1)[:, ::-1]
+        cap = np.argmax(np.isnan(x), axis=1).max()
+        x, y = x[:, :cap], y[:, :cap]
+
+        return x, y
+
+
+def zero_crossing(
+    x: np.ndarray[shape[Z] | shape[N, Z], np.dtype[float_]],
+    y: np.ndarray[shape[N, Z], np.dtype[float_]],
+    *,
+    direction: Literal["increasing", "decreasing"] = "increasing",  # TODO:...
+    log_x: bool = False,
+):
+    crossing = intersect_nz(x[:, 1:], y[:, 1:], np.zeros_like(y[:, 1:]), direction=direction, log_x=log_x).full()
+    x = np.column_stack([x, crossing[0]])  # concatenate
+    y = np.column_stack([y, crossing[1]])  # concatenate
+
+    # Resort so that data are in order
+    sort = np.argsort(x, axis=1)
+    x = np.take_along_axis(x, sort, axis=1)
+    y = np.take_along_axis(y, sort, axis=1)
+
+    # Remove duplicate data points if there are any
+    discard = np.diff(x, axis=1, prepend=1) <= 1e-6
+    x[discard] = np.nan
+    y[discard] = np.nan
+
+    return x, y
 
 
 def intersect_nz(
@@ -344,6 +446,10 @@ def intersect_nz(
         raise ValueError("a, b, and x must have the same number of elements")
     elif not (a.shape[0] == b.shape[0]):
         raise ValueError("a and b must have the same number of elements")
+    elif direction != "increasing":
+        import warnings
+
+        warnings.warn("currently there is no implmentation for decreasing.... TODO:...")
 
     if log_x is True:
         x = np.log(x)
@@ -354,6 +460,7 @@ def intersect_nz(
 
     nx, z0 = np.nonzero(mask)
     z1 = np.clip(z0 + 1, 0, Z - 1)
+    # sign_change = np.sign(a[nx, z1] - b[nx, z1])
 
     if x.ndim == 1:
         x0, x1 = x[z0], x[z1]
@@ -372,4 +479,11 @@ def intersect_nz(
         if log_x is True:
             x = np.exp(x)
 
+    # if direction == "increasing":
+    #     mask = sign_change < 0
+    # elif direction == "decreasing":
+    #     mask = sign_change > 0
+    # print(sign_change)
+    # x[mask] = np.nan
+    # y[mask] = np.nan
     return Intersection(x, y, nx)  # type: ignore
