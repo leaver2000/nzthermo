@@ -33,7 +33,21 @@ ctypedef fused floating:
     double
 
 
+ctypedef fused integer:
+    short
+    long
+
+
 cdef enum BroadcastMode:
     BROADCAST = 1
     MATRIX = 2
     ELEMENT_WISE = 3
+
+
+cdef inline floating degrees(floating rad) noexcept nogil:
+    return rad * 180 / pi
+
+
+cdef inline floating radians(floating deg) noexcept nogil:
+    return deg * pi / 180
+

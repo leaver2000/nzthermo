@@ -3,6 +3,8 @@ __all__ = [
     "OPENMP_ENABLED",
     "lcl",
     "moist_lapse",
+    "wet_bulb_temperature",
+    "delta_t",
     # .core
     "ccl",
     "dewpoint",
@@ -18,9 +20,10 @@ __all__ = [
     "saturation_vapor_pressure",
     "vapor_pressure",
     "virtual_temperature",
-    "wet_bulb_temperature",
+    # .utils
+    "timeseries",
 ]
-from ._c import OPENMP_ENABLED, lcl, moist_lapse, wet_bulb_temperature
+from ._c import OPENMP_ENABLED, lcl, moist_lapse, wet_bulb_temperature, delta_t
 from .core import (
     ccl,
     dewpoint,
@@ -37,3 +40,4 @@ from .core import (
     vapor_pressure,
     virtual_temperature,
 )
+from .utils import timeseries
