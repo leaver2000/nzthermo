@@ -548,3 +548,17 @@ cdef double delta_t(integer year, integer month) noexcept nogil:
     return delta_t
 
 
+
+
+# -------------------------------------------------------------------------------------------------
+# cape_cin
+# -------------------------------------------------------------------------------------------------
+cdef floating _cape_cin(
+    floating[:] pressure, floating[:] temperature, floating[:] dewpoint
+) noexcept nogil:
+    ...
+
+def cape_cin(
+    np.ndarray[floating, ndim=2] pressure, np.ndarray[floating, ndim=2] temperature, np.ndarray[floating, ndim=2] dewpoint
+):
+    cdef size_t N, Z

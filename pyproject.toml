@@ -26,6 +26,9 @@ write_to = "src/nzthermo/_version.py"
 [tool.pytest]
 testpaths = ["tests/"]
 
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
 [tool.coverage.run]
 plugins = ["Cython.Coverage"]
 source = ["nzthermo/"]

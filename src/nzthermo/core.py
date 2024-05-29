@@ -270,16 +270,7 @@ def downdraft_cape(
 
     delta = e_vt - p_vt
     logp = np.log(pressure)
-
-    # the np.trapz function does not support np.nan values, but we only really have a couple of unique
-    # levels in the gridded dataset. So this is really just like a loop of 4, 5 iterations
-    dcape = np.zeros(N, dtype=dtype)  # (N,)
-    batch, levels = np.nonzero(np.diff(pressure > p_top[:, newaxis], prepend=True, append=False))
-    for lvl in np.unique(levels):
-        above = levels == lvl
-        nx = batch[above]  # the sample indices
-        zx = np.s_[: np.argmin(~np.isnan(pressure[above]).any(axis=0))]
-        dcape[nx] = -(Rd * np.trapz(delta[nx, zx], logp[nx, zx], axis=1))
+    dcape = -(Rd * F.nantrapz(delta, logp, axis=1))
 
     return dcape
 
@@ -327,6 +318,15 @@ class ParcelProfile(NamedTuple, Generic[float_]):
     ]
 
     @property
+    def profile(
+        self,
+    ) -> Annotated[
+        Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+        Doc("[N, [...dry_lapse, LCL, ...moist_lapse]]"),
+    ]:
+        return self.temperature_profile
+
+    @property
     def lcl_pressure(self) -> np.ndarray[shape[N], np.dtype[float_]]:
         return self.pressure[self.lcl_index]
 
@@ -362,6 +362,25 @@ class ParcelProfile(NamedTuple, Generic[float_]):
     def shape(self) -> shape[N, Z]:
         return self.pressure.shape  # type: ignore
 
+    def without_lcl(
+        self,
+    ) -> tuple[
+        Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
+        Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+        Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
+        Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+    ]:
+        nx, zx = self.profile.shape
+        index = np.arange(zx)[np.newaxis] != self.lcl_index[1][:, np.newaxis]
+        shape = (nx, zx - 1)
+
+        return (
+            self.pressure[index].reshape(shape),
+            self.temperature[index].reshape(shape),
+            self.dewpoint[index].reshape(shape),
+            self.temperature_profile[index].reshape(shape),
+        )
+
     def with_lcl(
         self,
     ) -> tuple[
@@ -378,30 +397,108 @@ class ParcelProfile(NamedTuple, Generic[float_]):
             self.temperature_profile,
         )
 
-    def el(self, which: Literal["top", "bottom"] = "top") -> tuple[
+    def el(
+        self,
+        which: Literal["top", "bottom"] = "top",
+        log_p=False,
+    ) -> tuple[
         Pascal[np.ndarray[shape[N], np.dtype[float_]]],
         Kelvin[np.ndarray[shape[N], np.dtype[float_]]],
     ]:
-        pressure, temperature, dewpoint = self.pressure, self.temperature, self.dewpoint
-        parcel_temperature_profile = self.temperature_profile
-        shape = temperature.shape
-        assert pressure.shape == shape == dewpoint.shape == parcel_temperature_profile.shape
-        lcl_p = self.lcl_pressure
+        pressure, temperature, _, parcel_temperature_profile = self.with_lcl()
 
         intersect = F.intersect_nz(
             pressure[:, 1:],
             temperature[:, 1:],
             parcel_temperature_profile[:, 1:],
-            log_x=True,
+            direction="decreasing",
+            log_x=log_p,
         )
-        if which == "top":
-            x, y, _ = intersect.top()
-        elif which == "bottom":
-            x, y, _ = intersect.bottom()
-        else:
-            raise ValueError("which must be 'top' or 'bottom'")
-        mask = x < lcl_p
+
+        x, y = intersect.pick(which)
+
+        mask = x <= self.lcl_pressure
         return np.where(mask, x, np.nan), np.where(mask, y, np.nan)
+
+    def lfc(
+        self,
+        which: Literal["top", "bottom"] = "top",
+        log_p=False,
+    ) -> tuple[
+        Pascal[np.ndarray[shape[N], np.dtype[float_]]],
+        Kelvin[np.ndarray[shape[N], np.dtype[float_]]],
+    ]:
+        pressure, temperature, _, parcel_temperature_profile = self.with_lcl()
+
+        intersect = F.intersect_nz(
+            pressure[:, 1:],
+            parcel_temperature_profile[:, 1:],
+            temperature[:, 1:],
+            direction="increasing",
+            log_x=log_p,
+        )
+
+        x, y = intersect.pick(which)
+
+        mask = x >= self.lcl_pressure
+        x[mask] = np.nan
+        y[mask] = np.nan
+
+        return x, y
+
+    def cape_cin(self):
+        # TODO: there is still some bugs in this im pretty sure, but the values are getting closer.
+        pressure, temperature, dewpoint, parcel_profile = self.without_lcl()
+
+        # .........................................................................................
+        lcl_p = self.lcl_pressure  # ✔️
+
+        below_lcl = pressure > lcl_p[:, np.newaxis]  # ✔️
+
+        # The mixing ratio of the parcel comes from the dewpoint below the LCL, is saturated
+        # based on the temperature above the LCL
+        parcel_mixing_ratio = np.where(
+            below_lcl,
+            saturation_mixing_ratio(pressure, dewpoint),
+            saturation_mixing_ratio(pressure, temperature),
+        )
+        # Convert the temperature/parcel profile to virtual temperature
+        temperature = virtual_temperature(temperature, saturation_mixing_ratio(pressure, dewpoint))
+        parcel_profile = virtual_temperature(parcel_profile, parcel_mixing_ratio)
+        # print(temperature, parcel_profile)
+        # Calculate LFC limit of integration
+        lfc_p, _ = self.lfc("bottom")  # ✔️
+
+        # Calculate the EL limit of integration
+        el_p, _ = self.el("top")  # ✔️
+        el_p = np.where(np.isnan(el_p), pressure[:, -1], el_p)
+
+        y = parcel_profile - temperature
+
+        x, y = F.zero_crossing(pressure.copy(), y, log_x=True)  # (N, Z)
+        lfc_p = lfc_p.reshape(-1, 1)
+        el_p = el_p.reshape(-1, 1)
+
+        def _less_or_close(a, value, **kwargs):
+            return (a < value) | np.isclose(a, value, **kwargs)
+
+        def _greater_or_close(a, value, **kwargs):
+            return (a > value) | np.isclose(a, value, **kwargs)
+
+        p_mask = _less_or_close(x, lfc_p) & _greater_or_close(x, el_p)
+        x_clipped = np.where(p_mask, x, np.nan)
+        y_clipped = np.where(p_mask, y, np.nan)
+
+        cape = Rd * F.nantrapz(y_clipped, np.log(x_clipped), axis=1)
+
+        p_mask = _greater_or_close(x, lfc_p)
+        x_clipped = np.where(p_mask, x, np.nan)
+        y_clipped = np.where(p_mask, y, np.nan)
+
+        cin = Rd * F.nantrapz(y_clipped, np.log(x_clipped), axis=1)
+        cin[cin > 0] = 0
+
+        return cape, cin
 
     def __repr__(self) -> str:
         text = f"{self.__class__.__name__}(\n"
@@ -487,23 +584,77 @@ def el(
     ],  # TODO: add support for (N, Z) pressure arrays...
     temperature: Annotated[Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]], "isobaric temperature"],
     dewpoint: Annotated[Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]], "isobaric dewpoint temperature"],
-    *,
-    parcel_profile: Annotated[ParcelProfile[float_], "parcel profile"] | None = None,
+    which: Literal["top", "bottom"] = "top",
 ) -> tuple[
     Pascal[np.ndarray[shape[N], np.dtype[float_]]],
     Kelvin[np.ndarray[shape[N], np.dtype[float_]]],
 ]:
-    if parcel_profile is None:
-        parcel_profile = _parcel_profile(pressure, temperature, dewpoint)
-    return parcel_profile.el()
+    return parcel_profile(pressure, temperature, dewpoint).el(which)
 
 
-# TODO:...
 # -------------------------------------------------------------------------------------------------
 # lfc
 # -------------------------------------------------------------------------------------------------
+def lfc(
+    pressure: Annotated[
+        Pascal[np.ndarray[shape[Z], np.dtype[float_]]], "isobaric pressure levels"
+    ],  # TODO: add support for (N, Z) pressure arrays...
+    temperature: Annotated[Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]], "isobaric temperature"],
+    dewpoint: Annotated[Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]], "isobaric dewpoint temperature"],
+    which: Literal["top", "bottom"] = "top",
+) -> tuple[
+    Pascal[np.ndarray[shape[N], np.dtype[float_]]],
+    Kelvin[np.ndarray[shape[N], np.dtype[float_]]],
+]:
+    return parcel_profile(pressure, temperature, dewpoint).lfc(which)
+
+
 # TODO:...
 # -------------------------------------------------------------------------------------------------
-# cape
+# cape_cin
 # -------------------------------------------------------------------------------------------------
-# TODO:...
+def cape_cin(
+    pressure: Annotated[
+        Pascal[np.ndarray[shape[Z], np.dtype[float_]]], "isobaric pressure levels"
+    ],  # TODO: add support for (N, Z) pressure arrays...
+    temperature: Annotated[Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]], "isobaric temperature"],
+    dewpoint: Annotated[Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]], "isobaric dewpoint temperature"],
+    which: Literal["top", "bottom"] = "top",
+):
+    # prof = mpcalc.parcel_profile(PRESSURE * pascal, TEMPERATURE[3, 0] * kelvin, DEWPOINT[3, 0] * kelvin)
+    # cape_cin = mpcalc.cape_cin(PRESSURE * pascal, TEMPERATURE[3] * kelvin, DEWPOINT[3] * kelvin, prof)
+    # print(cape_cin)
+    self = _parcel_profile(pressure, temperature, dewpoint)
+    pressure, temperature, dewpoint, parcel_profile = self.without_lcl()
+    # PRESSURE, TEMPERATURE, DEWPOINT, nzt.parcel_profile(PRESSURE, TEMPERATURE, DEWPOINT)
+    # pp = parcel_profile
+    # self = parcel_profile
+    lfc_pressure = lcl_p = pressure_lcl = self.lcl_pressure
+    below_lcl = pressure > pressure_lcl[:, np.newaxis]
+    # The mixing ratio of the parcel comes from the dewpoint below the LCL, is saturated
+    # based on the temperature above the LCL
+    # print(below_lcl.shape)
+    parcel_mixing_ratio = np.where(
+        below_lcl, saturation_mixing_ratio(pressure, dewpoint), saturation_mixing_ratio(pressure, temperature)
+    )
+    # Convert the temperature/parcel profile to virtual temperature
+    temperature = virtual_temperature(temperature, saturation_mixing_ratio(pressure, dewpoint))
+    parcel_profile = virtual_temperature(parcel_profile, parcel_mixing_ratio)
+
+    # Calculate LFC limit of integration
+    lfc_pressure, _ = self.lfc(which)
+    # lfc(pressure, temperature, dewpoint, parcel_temperature_profile=parcel_profile, which=which_lfc)
+    # parcel_mixing_ratio
+    # Convert the temperature/parcel profile to virtual temperature
+    # mpcalc.virtual_temperature_from_dewpoint
+
+    #     # Convert dewpoint to mixing ratio
+    #     # mixing_ratio = saturation_mixing_ratio(pressure, dewpoint)
+
+    #     # # Calculate virtual temperature with given parameters
+    #     # return virtual_temperature(temperature, mixing_ratio, molecular_weight_ratio)
+
+    el_p, el_t = self.el()
+    y = parcel_profile - temperature
+    el_p = np.where(np.isnan(el_p), pressure[:, -1], el_p)
+    x, y = F.zero_crossing(pressure.copy(), y, log_x=True)
