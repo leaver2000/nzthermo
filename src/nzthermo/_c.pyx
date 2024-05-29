@@ -434,3 +434,17 @@ cdef floating wet_bulb_temperature(
 
     return moist_lapse_integrator(lcl_p, pressure, lcl_t, 1000.0)
 
+
+
+# -------------------------------------------------------------------------------------------------
+# cape_cin
+# -------------------------------------------------------------------------------------------------
+cdef floating _cape_cin(
+    floating[:] pressure, floating[:] temperature, floating[:] dewpoint
+) noexcept nogil:
+    ...
+
+def cape_cin(
+    np.ndarray[floating, ndim=2] pressure, np.ndarray[floating, ndim=2] temperature, np.ndarray[floating, ndim=2] dewpoint
+):
+    cdef size_t N, Z

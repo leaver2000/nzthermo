@@ -398,42 +398,46 @@ class ParcelProfile(NamedTuple, Generic[float_]):
         )
 
     def el(
-        self, which: Literal["top", "bottom"] = "top"
+        self,
+        which: Literal["top", "bottom"] = "top",
+        log_p=False,
     ) -> tuple[
         Pascal[np.ndarray[shape[N], np.dtype[float_]]],
         Kelvin[np.ndarray[shape[N], np.dtype[float_]]],
     ]:
-        pressure, temperature, dewpoint, parcel_temperature_profile = self.with_lcl()
-        shape = temperature.shape
-        assert pressure.shape == shape == dewpoint.shape == parcel_temperature_profile.shape
+        pressure, temperature, _, parcel_temperature_profile = self.with_lcl()
 
         intersect = F.intersect_nz(
             pressure[:, 1:],
             temperature[:, 1:],
             parcel_temperature_profile[:, 1:],
             direction="decreasing",
-            log_x=True,
+            log_x=log_p,
         )
 
         x, y = intersect.pick(which)
 
-        mask = x < self.lcl_pressure
+        mask = x <= self.lcl_pressure
         return np.where(mask, x, np.nan), np.where(mask, y, np.nan)
 
     def lfc(
-        self, which: Literal["top", "bottom"] = "top"
+        self,
+        which: Literal["top", "bottom"] = "top",
+        log_p=False,
     ) -> tuple[
         Pascal[np.ndarray[shape[N], np.dtype[float_]]],
         Kelvin[np.ndarray[shape[N], np.dtype[float_]]],
     ]:
         pressure, temperature, _, parcel_temperature_profile = self.with_lcl()
+
         intersect = F.intersect_nz(
             pressure[:, 1:],
             parcel_temperature_profile[:, 1:],
             temperature[:, 1:],
             direction="increasing",
-            log_x=True,
+            log_x=log_p,
         )
+
         x, y = intersect.pick(which)
 
         mask = x >= self.lcl_pressure
@@ -486,12 +490,14 @@ class ParcelProfile(NamedTuple, Generic[float_]):
         y_clipped = np.where(p_mask, y, np.nan)
 
         cape = Rd * F.nantrapz(y_clipped, np.log(x_clipped), axis=1)
+
         p_mask = _greater_or_close(x, lfc_p)
         x_clipped = np.where(p_mask, x, np.nan)
         y_clipped = np.where(p_mask, y, np.nan)
 
         cin = Rd * F.nantrapz(y_clipped, np.log(x_clipped), axis=1)
         cin[cin > 0] = 0
+
         return cape, cin
 
     def __repr__(self) -> str:
