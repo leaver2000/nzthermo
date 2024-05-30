@@ -1,9 +1,9 @@
 # Use clang-format -dump-config -style=google to get the base configuration
 ---
 Language: Cpp
-AccessModifierOffset: -2  # MARK: Adjustable
+AccessModifierOffset: -2 # MARK: Adjustable
 AlignAfterOpenBracket: BlockIndent
-AlignArrayOfStructures: None  # MARK: Adjustable
+AlignArrayOfStructures: None # MARK: Adjustable
 AlignConsecutiveAssignments:
   Enabled: false
   AcrossEmptyLines: false
@@ -31,7 +31,7 @@ AlignConsecutiveMacros:
 AlignEscapedNewlines: Left
 AlignOperands: DontAlign
 AlignTrailingComments:
-  Kind: Never  # MARK: Adjustable
+  Kind: Never # MARK: Adjustable
   OverEmptyLines: 0
 AllowAllArgumentsOnNextLine: true
 AllowAllParametersOfDeclarationOnNextLine: true
@@ -78,11 +78,11 @@ BreakBeforeTernaryOperators: true
 BreakConstructorInitializers: BeforeColon
 BreakInheritanceList: BeforeColon
 BreakStringLiterals: false
-ColumnLimit: 99  # MARK: Adjustable
+ColumnLimit: 99 # MARK: Adjustable
 CommentPragmas: "^ IWYU pragma:"
 CompactNamespaces: false
-ConstructorInitializerIndentWidth: 4  # MARK: Adjustable
-ContinuationIndentWidth: 2  # MARK: Adjustable
+ConstructorInitializerIndentWidth: 4 # MARK: Adjustable
+ContinuationIndentWidth: 2 # MARK: Adjustable
 Cpp11BracedListStyle: true
 DerivePointerAlignment: false
 DisableFormat: false
@@ -122,7 +122,7 @@ IndentExternBlock: AfterExternBlock
 IndentGotoLabels: true
 IndentPPDirectives: None
 IndentRequiresClause: true
-IndentWidth: 2  # MARK: Adjustable
+IndentWidth: 4 # MARK: Adjustable
 IndentWrappedFunctionNames: false
 InsertBraces: false
 InsertNewlineAtEOF: false
@@ -191,14 +191,14 @@ RawStringFormats:
     CanonicalDelimiter: pb
     BasedOnStyle: google
 ReferenceAlignment: Pointer
-ReflowComments: false  # MARK: Adjustable
+ReflowComments: false # MARK: Adjustable
 RemoveBracesLLVM: false
 RemoveSemicolon: false
 RequiresClausePosition: OwnLine
 RequiresExpressionIndentation: OuterScope
 SeparateDefinitionBlocks: Leave
 ShortNamespaceLines: 1
-SortIncludes: Never  # MARK: Adjustable
+SortIncludes: Never # MARK: Adjustable
 SortJavaStaticImport: Before
 SortUsingDeclarations: LexicographicNumeric
 SpaceAfterCStyleCast: false

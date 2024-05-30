@@ -6,7 +6,8 @@ build/
 *.so
 *.egg-info/
 *.dist-info/
-src/**/*.c
+src/**/_ufunc.cpp
+src/**/_c.cpp
 src/**/_version.py
 .egg/
 .vscode/

@@ -5,15 +5,34 @@
 # cython: cdivision=True
 
 # pyright: reportGeneralTypeIssues=false
+"""
+This is the Cython implementation of the parcel analysis functions.
+
+The header file makes avalaible several atmospheric functions in the _core.cpp file. The function
+templates support `std::floating_point` types. Additonaly in the header is a fused type `T` which
+can be assumed to suport either ``float`` or ``double`` types.
+
+```cpp
+template <typename T>
+    requires std::floating_point<T>
+T fn(T ...){...}
+```
+"""
 cimport cython
 import cython
+
 from cython.parallel cimport parallel, prange
 from cython.view cimport array as cvarray
 
 import numpy as np
 cimport numpy as np
-
+from libcpp.vector cimport vector
+from cython.operator cimport dereference, preincrement
+from libcpp.vector cimport vector
+from libc.stdlib cimport malloc, free
+from libc.math cimport log, exp, ceil
 from . import const as _const
+
 
 np.import_array()
 np.import_ufunc()
@@ -31,6 +50,20 @@ cdef:
     float T0        = _const.T0
     float E0        = _const.E0
 
+
+
+# cdef float epsilon = 0.622  # epsilon=Rd/Rs_v; The ratio of the gas constants
+cdef float degCtoK = 273.15  # Temperature offset between K and C (deg C)
+# cdef float T0 = 273.15  # Temperature offset between K and C (deg C)
+cdef float Cp = 1004.6  # Specific heat at constant pressure for dry air
+# cdef float Rd = 287.05  # Specific gas const for dry air, J kg^{-1} K^{-1} 
+# cdef float (Cp / Rd) = Cp / Rd 
+# cdef float (Rd / Cp) = Rd / Cp
+cdef float Rstar_a = 8.31432  # Universal gas constant for air (N m /(mol K))
+cdef float g = 9.81
+cdef float airMolarMass = 28.9644e-3  # Mean molar mass of air(kg/mol)
+
+
 del _const
 
 
@@ -43,81 +76,19 @@ cdef cvarray nzarray((size_t, size_t) shape, size_t size):
         allocate_buffer=True,
     )
 
-
+cdef T linear_interpolate(T x, T x0, T x1, T y0, T y1) noexcept nogil:
+    return y0 + (x - x0) * (y1 - y0) / (x1 - x0)
+    
+    
 # -------------------------------------------------------------------------------------------------
 # thermodynamic functions
 # -------------------------------------------------------------------------------------------------
-cdef floating saturation_mixing_ratio(floating pressure, floating temperature) noexcept nogil:
-    cdef floating P
-    P = E0 * exp(17.67 * (temperature - T0) / (temperature - 29.65)) # saturation vapor pressure
-    return (Rd / Rv) * P / (pressure - P)
-
-
-cdef floating vapor_pressure(floating pressure, floating mixing_ratio) noexcept nogil:
-    return pressure * mixing_ratio / (Rd / Rv + mixing_ratio)
-
-
-cdef floating _dewpoint(floating vapor_pressure) noexcept nogil:
-    cdef floating ln
-    ln = log(vapor_pressure / E0)
-    return T0 + 243.5 * ln / (17.67 - ln)
-
-
-cdef floating mixing_ratio(
-    floating partial_press, floating total_press, floating molecular_weight_ratio = Rd / Rv
-) noexcept nogil:
-    return molecular_weight_ratio * partial_press / (total_press - partial_press)
-
-
-cdef floating saturation_vapor_pressure(floating temperature) noexcept nogil:
-    """
-    >>> saturation_mixing_ratio = mixing_ratio(saturation_vapor_pressure(temperature), pressure)
-    """  
-    return E0 * exp(17.67 * (temperature - T0) / (temperature - 29.65))
-
-
-# -------------------------------------------------------------------------------------------------
-# moist_lapse
-# -------------------------------------------------------------------------------------------------
-cdef floating moist_lapse_solver(floating pressure, floating temperature) noexcept nogil:
-    cdef floating r
-    r = saturation_mixing_ratio(pressure, temperature)
-    r = (Rd * temperature + Lv * r) / (Cpd + (Lv * Lv * r * epsilon / (Rd * temperature**2)))
-    r /= pressure
-    return r
-
-
-cdef floating moist_lapse_integrator(
-    floating pressure, floating next_pressure, floating temperature, floating step
-) noexcept nogil:
-    """``2nd order Runge-Kutta (RK2)``
-
-    Integrate the moist lapse rate ODE, using a RK2 method, from an initial pressure lvl
-    to a final one.
-    """
-    cdef int N
-    cdef floating delta, abs_delta, k1
-
-    N = 1
-    delta = next_pressure - pressure
-    if (abs_delta := abs(delta)) > step:
-        N =  <int> ceil(abs_delta / step)
-        delta = delta / <floating> N
-
-    for _ in range(N):
-        k1 = delta * moist_lapse_solver(pressure, temperature)
-        temperature += delta * moist_lapse_solver(pressure + delta * 0.5, temperature + k1 * 0.5)
-        pressure += delta
-
-    return temperature
-
-
 cdef void moist_lapse_1d_(
-    floating[:] out, floating[:] pressure, floating reference_pressure, floating temperature, floating step
+    T[:] out, T[:] pressure, T reference_pressure, T temperature, T step
 ) noexcept nogil:
     """Moist adiabatic lapse rate for a 1D array of pressure levels."""
     cdef size_t Z, i
-    cdef floating next_pressure
+    cdef T next_pressure
 
     Z = pressure.shape[0]
     if isnan(temperature) or isnan(reference_pressure): # don't bother with the computation
@@ -132,21 +103,17 @@ cdef void moist_lapse_1d_(
             # The solver will start at the first non nan value
             out[i] = NaN
         else:
-            out[i] = temperature = moist_lapse_integrator(
-                reference_pressure, next_pressure, temperature, step=step
+            out[i] = temperature = c_moist_lapse(
+                reference_pressure, next_pressure, temperature, step
             )
             reference_pressure = next_pressure
 
 
-cdef floating[:, :] _moist_lapse(
-    floating[:, :] pressure, 
-    floating[:] reference_pressure, 
-    floating[:] temperature, 
-    floating step,
-    BroadcastMode mode,
+cdef T[:, :] _moist_lapse(T[:, :] pressure, 
+    T[:] reference_pressure, T[:] temperature, T step, BroadcastMode mode,
 ) noexcept:
     cdef size_t N, Z, i
-    cdef floating[:, :] out
+    cdef T[:, :] out
 
     N, Z = temperature.shape[0], pressure.shape[1]
 
@@ -170,7 +137,7 @@ def moist_lapse(
     np.ndarray temperature,
     np.ndarray reference_pressure = None,
     *,
-    floating step = 1000.0,
+    T step = 1000.0,
     object dtype = None,
 ):
     """
@@ -312,57 +279,22 @@ def moist_lapse(
 # -------------------------------------------------------------------------------------------------
 # lcl
 # -------------------------------------------------------------------------------------------------
-cdef floating lcl_solver(
-    floating pressure, floating reference_pressure, floating temperature, floating mixing_ratio
-) noexcept nogil:
-    cdef floating Td, P
-
-    Td = _dewpoint(vapor_pressure(pressure, mixing_ratio))
-    if isnan(P := reference_pressure * (Td / temperature) ** (1.0 / (Rd / Cpd))):
-        return pressure
-
-    return P
-
-
-cdef floating lcl_integrator(
-    floating pressure, floating temperature, floating mixing_ratio, size_t max_iters, floating eps
-) noexcept nogil:
-    cdef floating p0, p1, p2, delta, err
-
-    p0 = pressure
-    for _ in range(max_iters):
-        p1 = lcl_solver(p0, pressure, temperature, mixing_ratio)
-        p2 = lcl_solver(p1, pressure, temperature, mixing_ratio)
-
-        if (delta := p2 - 2.0 * p1 + p0):
-            p2 = p0 - (p1 - p0) ** 2 / delta    # delta squared
-
-        err = abs((p2 - p0) / p0) if p0 else p2 # absolute relative error
-
-        if err < eps:
-            return p2
-
-        p0 = p2
-
-    return NaN
-
-
-cdef floating[:, :] _lcl(
-    floating[:] pressure, floating[:] temperature, floating[:] dewpoint, size_t max_iters, floating eps
+cdef T[:, :] view_lcl(
+    T[:] pressure, T[:] temperature, T[:] dewpoint, T eps, size_t max_iters
 ) noexcept:
-    cdef size_t N, i
-    cdef floating P, lcl_p, r
-    cdef floating[:, :] out
+    cdef:
+        size_t N, i
+        pair[T, T] result
+        T[:, :] out
 
     N = pressure.shape[0]
-
     out = nzarray((2, N), pressure.itemsize)
+
     with nogil, parallel():
         for i in prange(N, schedule='dynamic'):
-            P = pressure[i]
-            r = mixing_ratio(saturation_vapor_pressure(dewpoint[i]), P)
-            out[0, i] = lcl_p = lcl_integrator(P, temperature[i], r, max_iters, eps=eps)
-            out[1, i] = _dewpoint(vapor_pressure(lcl_p, r))
+            result = c_lcl(pressure[i], temperature[i], dewpoint[i], eps, max_iters)
+            out[0, i] = result.pressure
+            out[1, i] = result.temperature
 
     return out
 
@@ -373,7 +305,7 @@ def lcl(
     np.ndarray dewpoint,
     *,
     size_t max_iters = 50,
-    floating eps = 0.1,
+    T eps = 0.1,
     object dtype = None,
 ):
     """
@@ -401,38 +333,24 @@ def lcl(
 
     x = np.empty((2, N), dtype=dtype)
     if np.float32 == dtype:
-        x[...] = _lcl[float](
+        x[...] = view_lcl[float](
             pressure.astype(np.float32), 
             temperature.astype(np.float32),
             dewpoint.astype(np.float32),
-            max_iters,
             eps,
+            max_iters,
         )
     else:
-        x[...] = _lcl[double](
+        x[...] = view_lcl[double](
             pressure.astype(np.float64),
             temperature.astype(np.float64),
             dewpoint.astype(np.float64),
-            max_iters,
             eps,
+            max_iters,
         )
 
     return x[0], x[1]
 
-
-# -------------------------------------------------------------------------------------------------
-# wet_bulb_temperature
-# -------------------------------------------------------------------------------------------------
-@cython.ufunc
-cdef floating wet_bulb_temperature(
-    floating pressure, floating temperature, floating dewpoint
-) noexcept nogil:
-    cdef floating r, lcl_p, lcl_t
-    r = mixing_ratio(saturation_vapor_pressure(dewpoint), pressure)
-    lcl_p = lcl_integrator(pressure, temperature, r, 50, eps=0.1)
-    lcl_t = _dewpoint(vapor_pressure(lcl_p, r))
-
-    return moist_lapse_integrator(lcl_p, pressure, lcl_t, 1000.0)
 
 # -------------------------------------------------------------------------------------------------
 # time
@@ -548,17 +466,102 @@ cdef double delta_t(integer year, integer month) noexcept nogil:
     return delta_t
 
 
-
-
 # -------------------------------------------------------------------------------------------------
-# cape_cin
+# parcel_profile
 # -------------------------------------------------------------------------------------------------
-cdef floating _cape_cin(
-    floating[:] pressure, floating[:] temperature, floating[:] dewpoint
-) noexcept nogil:
-    ...
+cdef T[:, :] surface_based_parcel_profile(
+    T[:] pressure, 
+    T[:] temperature, 
+    T[:] dewpoint,
+    T step = 1000.0
+) noexcept:
+    cdef:
+        size_t N, Z, n, z
+        T[:, :] profile
+        T lcl_p, lcl_t, r, p, t, p0
+        T eps = 0.1
+        size_t max_iters = 50
+        pair[T, T] lcl
 
-def cape_cin(
-    np.ndarray[floating, ndim=2] pressure, np.ndarray[floating, ndim=2] temperature, np.ndarray[floating, ndim=2] dewpoint
+    N = temperature.shape[0]
+    Z = pressure.shape[0]
+    profile = nzarray((N, Z), pressure.itemsize)
+    with nogil, parallel():
+        p0 = pressure[0]
+        for n in prange(N, schedule='dynamic'):
+            # - parcel temperature from the surface up to the LCL ( dry ascent ) 
+            lcl = c_lcl(p0, temperature[n], dewpoint[n], eps, max_iters)
+            p = p0
+            for z in range(Z):
+                if p >= lcl.pressure:
+                    break
+                profile[n, z] = temperature[n] * (p / p0) ** (Rd / Cpd) # dry adiabatic lapse rate
+                p = pressure[z]
+
+            # - parcel temperature from the LCL to the top of the atmosphere ( moist ascent )
+            p = lcl.pressure
+            t = lcl.temperature
+            for z in range(z, Z):
+                profile[n, z] = t = c_moist_lapse(p, pressure[z], t, step)
+                p = pressure[z]
+
+    return profile
+
+cdef T[:, :] mu_parcel_profile(T[:] pressure, T[:] temperature,  T[:] dewpoint) noexcept:
+    cdef: # TODO:...
+        size_t N, Z, n, z
+        T[:, :] profile
+        T lcl_p, lcl_t, r, p, t, p0
+        T eps = 0.1
+        size_t max_iters = 50
+        pair[T, T] lcl
+
+    N = temperature.shape[0]
+    Z = pressure.shape[0]
+    profile = nzarray((N, Z), pressure.itemsize)
+    with nogil, parallel():
+        p0 = pressure[0]
+        for n in prange(N, schedule='dynamic'):
+            # - parcel temperature from the surface up to the LCL ( dry ascent ) 
+            lcl = c_lcl(p0, temperature[n], dewpoint[n], eps, max_iters)
+            p = p0
+            for z in range(Z):
+                if p >= lcl.pressure:
+                    break
+                profile[n, z] = temperature[n] * (p / p0) ** (Rd / Cpd) # dry adiabatic lapse rate
+                p = pressure[z]
+
+            # - parcel temperature from the LCL to the top of the atmosphere ( moist ascent )
+            p = lcl.pressure
+            t = lcl.temperature#dewpoint_from_mixing_ratio(lcl_p, r)
+            for z in range(z, Z):
+                profile[n, z] = t = c_moist_lapse(p, pressure[z], t, <T>1000.0)
+                p = pressure[z]
+
+    return profile
+
+
+
+def parcel_profile(
+    np.ndarray pressure,
+    np.ndarray temperature,
+    np.ndarray dewpoint,
+    *,
+    ProfileStrategy strategy = SURFACE_BASED,
 ):
-    cdef size_t N, Z
+    cdef np.ndarray profile = np.empty((temperature.size, pressure.size), dtype=pressure.dtype)
+    if strategy == SURFACE_BASED:
+        if pressure.dtype == np.float64:
+            profile[...] = surface_based_parcel_profile[double](pressure, temperature, dewpoint)
+        else:
+            profile[...] = surface_based_parcel_profile[float](pressure, temperature, dewpoint)
+    elif strategy == MOST_UNSTABLE:
+        if pressure.dtype == np.float64:
+            profile[...] = mu_parcel_profile[double](pressure, temperature, dewpoint)
+        else:
+            profile[...] = mu_parcel_profile[float](pressure, temperature, dewpoint)
+
+    else:
+        raise ValueError("Invalid strategy.")
+
+    return profile

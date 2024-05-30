@@ -26,7 +26,8 @@ if TYPE_CHECKING:
     from typing_extensions import Doc
 
 from . import functional as F
-from ._c import lcl, moist_lapse, wet_bulb_temperature
+from ._c import lcl, moist_lapse
+from ._ufunc import wet_bulb_temperature, equivalent_potential_temperature
 from ._typing import Kelvin, Kilogram, N, Pascal, Ratio, Z, shape
 from .const import E0, P0, T0, Cpd, Rd, Rv
 
@@ -106,28 +107,6 @@ def saturation_mixing_ratio(
     pressure: Pascal[NDArray[float_]], temperature: Kelvin[NDArray[float_]]
 ) -> Ratio[NDArray[float_]]:
     return mixing_ratio(saturation_vapor_pressure(temperature), pressure)
-
-
-# .....{ theta }.....
-Theta = Annotated[T, "Potential temperature"]
-ThetaE = Annotated[T, "Equivalent potential temperature"]
-ThetaW = Annotated[T, "Wet bulb potential temperature"]
-
-
-def potential_temperature(
-    pressure: Pascal[NDArray[float_]], temperature: Kelvin[NDArray[float_]]
-) -> Theta[Kelvin[NDArray[float_]]]:
-    return temperature / exner_function(pressure)
-
-
-def equivalent_potential_temperature(
-    pressure: Pascal[NDArray[float_]], temperature: Kelvin[NDArray[float_]], dewpoint: Kelvin[NDArray[float_]]
-) -> ThetaE[Kelvin[NDArray[float_]]]:
-    r = saturation_mixing_ratio(pressure, dewpoint)
-    e = saturation_vapor_pressure(dewpoint)
-    t_l = 56 + 1.0 / (1.0 / (dewpoint - 56) + np.log(temperature / dewpoint) / 800.0)
-    th_l = potential_temperature(pressure - e, temperature) * (temperature / t_l) ** (0.28 * r)
-    return th_l * np.exp(r * (1 + 0.448 * r) * (3036.0 / t_l - 1.78))
 
 
 # .....{ virtual temperature }.....
@@ -465,12 +444,11 @@ class ParcelProfile(NamedTuple, Generic[float_]):
         # Convert the temperature/parcel profile to virtual temperature
         temperature = virtual_temperature(temperature, saturation_mixing_ratio(pressure, dewpoint))
         parcel_profile = virtual_temperature(parcel_profile, parcel_mixing_ratio)
-        # print(temperature, parcel_profile)
         # Calculate LFC limit of integration
-        lfc_p, _ = self.lfc("bottom")  # ✔️
+        lfc_p, _ = self.lfc("bottom", log_p=True)  # ✔️
 
         # Calculate the EL limit of integration
-        el_p, _ = self.el("top")  # ✔️
+        el_p, _ = self.el("top", log_p=True)  # ✔️
         el_p = np.where(np.isnan(el_p), pressure[:, -1], el_p)
 
         y = parcel_profile - temperature
@@ -619,42 +597,5 @@ def cape_cin(
     ],  # TODO: add support for (N, Z) pressure arrays...
     temperature: Annotated[Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]], "isobaric temperature"],
     dewpoint: Annotated[Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]], "isobaric dewpoint temperature"],
-    which: Literal["top", "bottom"] = "top",
 ):
-    # prof = mpcalc.parcel_profile(PRESSURE * pascal, TEMPERATURE[3, 0] * kelvin, DEWPOINT[3, 0] * kelvin)
-    # cape_cin = mpcalc.cape_cin(PRESSURE * pascal, TEMPERATURE[3] * kelvin, DEWPOINT[3] * kelvin, prof)
-    # print(cape_cin)
-    self = _parcel_profile(pressure, temperature, dewpoint)
-    pressure, temperature, dewpoint, parcel_profile = self.without_lcl()
-    # PRESSURE, TEMPERATURE, DEWPOINT, nzt.parcel_profile(PRESSURE, TEMPERATURE, DEWPOINT)
-    # pp = parcel_profile
-    # self = parcel_profile
-    lfc_pressure = lcl_p = pressure_lcl = self.lcl_pressure
-    below_lcl = pressure > pressure_lcl[:, np.newaxis]
-    # The mixing ratio of the parcel comes from the dewpoint below the LCL, is saturated
-    # based on the temperature above the LCL
-    # print(below_lcl.shape)
-    parcel_mixing_ratio = np.where(
-        below_lcl, saturation_mixing_ratio(pressure, dewpoint), saturation_mixing_ratio(pressure, temperature)
-    )
-    # Convert the temperature/parcel profile to virtual temperature
-    temperature = virtual_temperature(temperature, saturation_mixing_ratio(pressure, dewpoint))
-    parcel_profile = virtual_temperature(parcel_profile, parcel_mixing_ratio)
-
-    # Calculate LFC limit of integration
-    lfc_pressure, _ = self.lfc(which)
-    # lfc(pressure, temperature, dewpoint, parcel_temperature_profile=parcel_profile, which=which_lfc)
-    # parcel_mixing_ratio
-    # Convert the temperature/parcel profile to virtual temperature
-    # mpcalc.virtual_temperature_from_dewpoint
-
-    #     # Convert dewpoint to mixing ratio
-    #     # mixing_ratio = saturation_mixing_ratio(pressure, dewpoint)
-
-    #     # # Calculate virtual temperature with given parameters
-    #     # return virtual_temperature(temperature, mixing_ratio, molecular_weight_ratio)
-
-    el_p, el_t = self.el()
-    y = parcel_profile - temperature
-    el_p = np.where(np.isnan(el_p), pressure[:, -1], el_p)
-    x, y = F.zero_crossing(pressure.copy(), y, log_x=True)
+    return parcel_profile(pressure, temperature, dewpoint).cape_cin()

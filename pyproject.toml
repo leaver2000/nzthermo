@@ -20,6 +20,9 @@ requires-python = ">=3.10"
 where = ["src"]
 include = ["nzthermo"]
 
+[tool.setuptools.package-data]
+nzthermo = ["py.typed", "*.pyi", "*.pyx"]
+
 [tool.setuptools_scm]
 write_to = "src/nzthermo/_version.py"
 
