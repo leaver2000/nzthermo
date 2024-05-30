@@ -26,45 +26,15 @@ from cython.view cimport array as cvarray
 
 import numpy as np
 cimport numpy as np
-from libcpp.vector cimport vector
-from cython.operator cimport dereference, preincrement
-from libcpp.vector cimport vector
-from libc.stdlib cimport malloc, free
-from libc.math cimport log, exp, ceil
-from . import const as _const
 
+cimport nzthermo._api as C
 
 np.import_array()
 np.import_ufunc()
+
 OPENMP_ENABLED = bool(OPENMP)
 
-# -------------------------------------------------------------------------------------------------
-# constant declarations
-# -------------------------------------------------------------------------------------------------
-cdef:
-    float Rd        = _const.Rd
-    float Rv        = _const.Rv
-    float Lv        = _const.Lv
-    float Cpd       = _const.Cpd
-    float epsilon   = _const.epsilon
-    float T0        = _const.T0
-    float E0        = _const.E0
 
-
-
-# cdef float epsilon = 0.622  # epsilon=Rd/Rs_v; The ratio of the gas constants
-cdef float degCtoK = 273.15  # Temperature offset between K and C (deg C)
-# cdef float T0 = 273.15  # Temperature offset between K and C (deg C)
-cdef float Cp = 1004.6  # Specific heat at constant pressure for dry air
-# cdef float Rd = 287.05  # Specific gas const for dry air, J kg^{-1} K^{-1} 
-# cdef float (Cp / Rd) = Cp / Rd 
-# cdef float (Rd / Cp) = Rd / Cp
-cdef float Rstar_a = 8.31432  # Universal gas constant for air (N m /(mol K))
-cdef float g = 9.81
-cdef float airMolarMass = 28.9644e-3  # Mean molar mass of air(kg/mol)
-
-
-del _const
 
 
 cdef cvarray nzarray((size_t, size_t) shape, size_t size):
@@ -103,7 +73,7 @@ cdef void moist_lapse_1d_(
             # The solver will start at the first non nan value
             out[i] = NaN
         else:
-            out[i] = temperature = c_moist_lapse(
+            out[i] = temperature = C.moist_lapse(
                 reference_pressure, next_pressure, temperature, step
             )
             reference_pressure = next_pressure
@@ -284,7 +254,7 @@ cdef T[:, :] view_lcl(
 ) noexcept:
     cdef:
         size_t N, i
-        pair[T, T] result
+        C.pair[T, T] result
         T[:, :] out
 
     N = pressure.shape[0]
@@ -292,7 +262,7 @@ cdef T[:, :] view_lcl(
 
     with nogil, parallel():
         for i in prange(N, schedule='dynamic'):
-            result = c_lcl(pressure[i], temperature[i], dewpoint[i], eps, max_iters)
+            result = C.lcl(pressure[i], temperature[i], dewpoint[i], eps, max_iters)
             out[0, i] = result.pressure
             out[1, i] = result.temperature
 
@@ -470,10 +440,7 @@ cdef double delta_t(integer year, integer month) noexcept nogil:
 # parcel_profile
 # -------------------------------------------------------------------------------------------------
 cdef T[:, :] surface_based_parcel_profile(
-    T[:] pressure, 
-    T[:] temperature, 
-    T[:] dewpoint,
-    T step = 1000.0
+    T[:] pressure, T[:] temperature, T[:] dewpoint, T step = 1000.0
 ) noexcept:
     cdef:
         size_t N, Z, n, z
@@ -481,7 +448,7 @@ cdef T[:, :] surface_based_parcel_profile(
         T lcl_p, lcl_t, r, p, t, p0
         T eps = 0.1
         size_t max_iters = 50
-        pair[T, T] lcl
+        C.pair[T, T] lcl
 
     N = temperature.shape[0]
     Z = pressure.shape[0]
@@ -490,19 +457,19 @@ cdef T[:, :] surface_based_parcel_profile(
         p0 = pressure[0]
         for n in prange(N, schedule='dynamic'):
             # - parcel temperature from the surface up to the LCL ( dry ascent ) 
-            lcl = c_lcl(p0, temperature[n], dewpoint[n], eps, max_iters)
+            lcl = C.lcl(p0, temperature[n], dewpoint[n], eps, max_iters)
             p = p0
-            for z in range(Z):
-                if p >= lcl.pressure:
-                    break
-                profile[n, z] = temperature[n] * (p / p0) ** (Rd / Cpd) # dry adiabatic lapse rate
+            z = 0
+            while p < lcl.pressure:
+                profile[n, z] = C.dry_lapse(p, p0, temperature[n])
                 p = pressure[z]
+                z += 1
 
             # - parcel temperature from the LCL to the top of the atmosphere ( moist ascent )
             p = lcl.pressure
             t = lcl.temperature
             for z in range(z, Z):
-                profile[n, z] = t = c_moist_lapse(p, pressure[z], t, step)
+                profile[n, z] = t = C.moist_lapse(p, pressure[z], t, step)
                 p = pressure[z]
 
     return profile
@@ -514,7 +481,7 @@ cdef T[:, :] mu_parcel_profile(T[:] pressure, T[:] temperature,  T[:] dewpoint) 
         T lcl_p, lcl_t, r, p, t, p0
         T eps = 0.1
         size_t max_iters = 50
-        pair[T, T] lcl
+        C.pair[T, T] lcl
 
     N = temperature.shape[0]
     Z = pressure.shape[0]
@@ -523,19 +490,19 @@ cdef T[:, :] mu_parcel_profile(T[:] pressure, T[:] temperature,  T[:] dewpoint) 
         p0 = pressure[0]
         for n in prange(N, schedule='dynamic'):
             # - parcel temperature from the surface up to the LCL ( dry ascent ) 
-            lcl = c_lcl(p0, temperature[n], dewpoint[n], eps, max_iters)
+            lcl = C.lcl(p0, temperature[n], dewpoint[n], eps, max_iters)
             p = p0
-            for z in range(Z):
-                if p >= lcl.pressure:
-                    break
-                profile[n, z] = temperature[n] * (p / p0) ** (Rd / Cpd) # dry adiabatic lapse rate
+            z = 0
+            while p < lcl.pressure:
+                profile[n, z] = C.dry_lapse(p, p0, temperature[n])
                 p = pressure[z]
+                z += 1
 
             # - parcel temperature from the LCL to the top of the atmosphere ( moist ascent )
             p = lcl.pressure
             t = lcl.temperature#dewpoint_from_mixing_ratio(lcl_p, r)
             for z in range(z, Z):
-                profile[n, z] = t = c_moist_lapse(p, pressure[z], t, <T>1000.0)
+                profile[n, z] = t = C.moist_lapse(p, pressure[z], t, <T>1000.0)
                 p = pressure[z]
 
     return profile
