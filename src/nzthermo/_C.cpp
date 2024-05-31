@@ -177,8 +177,21 @@ constexpr T rk2(Fn<T, T, T> fn, T x0, T x1, T y, T step /* = .1 */) noexcept {
     return y;
 }
 
-/* fixed_point */
-
+/**
+ * @brief A fixed point of a function is the point at which evaluation of the function returns the
+ *  point.
+ * @ref https://docs.scipy.org/doc/scipy/tutorial/optimize.html#fixed-point-solving
+ * 
+ * @tparam T (floating point)
+ * @tparam Args (...floating point)
+ * @param fn 
+ * @param max_iters 
+ * @param eps 
+ * @param x0 
+ * @param args 
+ * 
+ * @return (T) fixed point (T) (if found, else NaN)
+ */
 template <typename T, typename... Args>
     requires std::floating_point<T>
 constexpr T fixed_point(
@@ -190,8 +203,7 @@ constexpr T fixed_point(
 ) noexcept {
     T p0, p1, p2, delta, err;
 
-    // p0 = (T)args[0];
-    p0 = x0;
+        p0 = x0;
     for (size_t i = 0; i < max_iters; i++) {
         p1 = fn(p0, x0, args...);
         p2 = fn(p1, x0, args...);
