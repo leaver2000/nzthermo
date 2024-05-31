@@ -203,7 +203,7 @@ constexpr T fixed_point(
 ) noexcept {
     T p0, p1, p2, delta, err;
 
-        p0 = x0;
+    p0 = x0;
     for (size_t i = 0; i < max_iters; i++) {
         p1 = fn(p0, x0, args...);
         p2 = fn(p1, x0, args...);
