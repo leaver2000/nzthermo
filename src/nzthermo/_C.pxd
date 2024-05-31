@@ -17,6 +17,13 @@ cdef extern from "<utility>" namespace "std" nogil:
         # bint operator>=(pair&, pair&)
 
 cdef extern from "_C.cpp" namespace "nzt" nogil:
+    # ........................................................................................... #
+    #  - common functions
+    # ........................................................................................... #
+    T linear_interpolate[T](T x, T x0, T x1, T y0, T y1) noexcept
+    # ........................................................................................... #
+    #  - thermodynamic functions
+    # ........................................................................................... #
     T mixing_ratio[T](T pressure, T vapor_pressure) noexcept
     T saturation_vapor_pressure[T](T temperature) noexcept
     T mixing_ratio_from_dewpoint[T](T pressure, T dewpoint) noexcept
@@ -28,6 +35,9 @@ cdef extern from "_C.cpp" namespace "nzt" nogil:
     T dewpoint[T](T vapor_pressure) noexcept
     # @overload
     T dewpoint_from_mixing_ratio "nzt::dewpoint" [T](T pressure, T mixing_ratio) noexcept
+    # ........................................................................................... #
+    #  - adiabatic processes
+    # ........................................................................................... #
     pair[T, T] lcl[T](T pressure, T temperature, T dewpoint, T eps, size_t max_iters) noexcept
     T lcl_pressure[T](T pressure, T temperature, T dewpoint, T eps, size_t max_iters) noexcept
     T moist_lapse[T](T pressure, T next_pressure, T temperature, T step) noexcept

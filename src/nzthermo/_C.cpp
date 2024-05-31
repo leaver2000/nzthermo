@@ -30,6 +30,18 @@ static constexpr double epsilon = Rd / Rv;  // ratio of gas constants
 static constexpr double P0 = 100000.0;  // `(Pa)` - standard pressure at sea level
 
 /* ................................................................................................
+ - common functions
+................................................................................................ */
+
+template <typename T>
+    requires std::floating_point<T>
+constexpr T linear_interpolate(
+  const T x, const T x0, const T x1, const T y0, const T y1
+) noexcept {
+    return y0 + (x - x0) * (y1 - y0) / (x1 - x0);
+}
+
+/* ................................................................................................
  - thermodynamic functions
 ................................................................................................ */
 
@@ -166,22 +178,23 @@ constexpr T rk2(Fn<T, T, T> fn, T x0, T x1, T y, T step /* = .1 */) noexcept {
 }
 
 /* fixed_point */
-template <typename T>
+
+template <typename T, typename... Args>
     requires std::floating_point<T>
 constexpr T fixed_point(
-  const Fn<T, T, T, T, T> fn,
-  const T x0,
-  const T x1,
-  const T x2,
+  const Fn<T, T, T, Args...> fn,
+  const size_t max_iters,
   const T eps,
-  const size_t max_iters
+  const T x0,
+  const Args... args
 ) noexcept {
     T p0, p1, p2, delta, err;
 
+    // p0 = (T)args[0];
     p0 = x0;
     for (size_t i = 0; i < max_iters; i++) {
-        p1 = fn(p0, x0, x1, x2);
-        p2 = fn(p1, x0, x1, x2);
+        p1 = fn(p0, x0, args...);
+        p2 = fn(p1, x0, args...);
         delta = p2 - 2.0 * p1 + p0;
         if (delta)
             p2 = p0 - pow(p1 - p0, 2) / delta; /* delta squared */
@@ -228,7 +241,7 @@ template <typename T>
     requires std::floating_point<T>
 constexpr T lcl_solver(T pressure, T reference_pressure, T temperature, T mixing_ratio) noexcept {
     const T td = dewpoint(pressure, mixing_ratio);
-    const T p = reference_pressure * std::pow(td / temperature, 1.0 / (Rd / Cpd));
+    const T p = reference_pressure * pow(td / temperature, 1.0 / (Rd / Cpd));
 
     return std::isnan(p) ? pressure : p;
 }
@@ -240,7 +253,7 @@ constexpr T lcl_pressure(
 ) noexcept {
     const T r = mixing_ratio(saturation_vapor_pressure(dewpoint), pressure);
 
-    return fixed_point(lcl_solver<T>, pressure, temperature, r, eps, max_iters);
+    return fixed_point(lcl_solver<T>, max_iters, eps, pressure, temperature, r);
 }
 
 template <typename T>
@@ -249,7 +262,7 @@ constexpr std::pair<T, T> lcl(
   const T pressure, const T temperature, const T dewpoint, const T eps, const size_t max_iters
 ) noexcept {
     const T r = mixing_ratio(saturation_vapor_pressure(dewpoint), pressure);
-    const T lcl_p = fixed_point(lcl_solver<T>, pressure, temperature, r, eps, max_iters);
+    const T lcl_p = fixed_point(lcl_solver<T>, max_iters, eps, pressure, temperature, r);
     const T lcl_t = nzt::dewpoint(lcl_p, r);
 
     return std::make_pair(lcl_p, lcl_t);
