@@ -61,6 +61,7 @@ template <typename T>
     requires std::floating_point<T>
 constexpr T saturation_mixing_ratio(const T pressure, const T temperature) noexcept {
     const T e = saturation_vapor_pressure(temperature);
+
     return epsilon * e / (pressure - e);
 }
 
@@ -80,6 +81,7 @@ template <typename T>
     requires std::floating_point<T>
 constexpr T dewpoint(const T vapor_pressure) noexcept {
     const T ln = log(vapor_pressure / E0);
+
     return T0 + 243.5 * ln / (17.67 - ln);
 }
 
@@ -113,8 +115,10 @@ constexpr T equivalent_potential_temperature(
     const T t_l = 56 + 1.0 / (1.0 / (dewpoint - 56) + log(temperature / dewpoint) / 800.0);
     const T th_l =
       potential_temperature(pressure - e, temperature) * pow(temperature / t_l, 0.28 * r);
+
     return th_l * exp(r * (1 + 0.448 * r) * (3036.0 / t_l - 1.78));
 }
+
 /* theta_w */
 template <typename T>
     requires std::floating_point<T>
@@ -131,6 +135,7 @@ constexpr T wet_bulb_potential_temperature(
     const T a = 7.101574 - 20.68208 * x + 16.11182 * x2 + 2.574631 * x3 - 5.205688 * x4;
     const T b = 1 - 3.552497 * x + 3.781782 * x2 - 0.6899655 * x3 - 0.5929340 * x4;
     const T theta_w = theta_e - exp(a / b);
+
     return theta_w;
 }
 
@@ -195,7 +200,7 @@ constexpr T fixed_point(
 }
 
 /* ................................................................................................
- - moist adiabatic processes
+ - adiabatic processes
 ................................................................................................ */
 
 /* using the rk2 method we can solve the ivp problem by integrating the moist lapse rate
@@ -204,6 +209,7 @@ template <typename T>
     requires std::floating_point<T>
 constexpr T moist_lapse_solver(const T pressure, const T temperature) noexcept {
     const T r = saturation_mixing_ratio(pressure, temperature);
+
     return (Rd * temperature + Lv * r) /
       (Cpd + (Lv * Lv * r * epsilon / (Rd * temperature * temperature))) / pressure;
 }
@@ -216,13 +222,14 @@ constexpr T moist_lapse(
     return rk2<T>(moist_lapse_solver<T>, pressure, next_pressure, temperature, step);
 }
 
-/* { LCL } */
+/* LCL */
 
 template <typename T>
     requires std::floating_point<T>
 constexpr T lcl_solver(T pressure, T reference_pressure, T temperature, T mixing_ratio) noexcept {
     const T td = dewpoint(pressure, mixing_ratio);
     const T p = reference_pressure * std::pow(td / temperature, 1.0 / (Rd / Cpd));
+
     return std::isnan(p) ? pressure : p;
 }
 
@@ -232,6 +239,7 @@ constexpr T lcl_pressure(
   const T pressure, const T temperature, const T dewpoint, const T eps, const size_t max_iters
 ) noexcept {
     const T r = mixing_ratio(saturation_vapor_pressure(dewpoint), pressure);
+
     return fixed_point(lcl_solver<T>, pressure, temperature, r, eps, max_iters);
 }
 
@@ -258,6 +266,7 @@ constexpr T wet_bulb_temperature(
   const size_t max_iters
 ) noexcept {
     const auto [lcl_p, lcl_t] = lcl(pressure, temperature, dewpoint, eps, max_iters);
+
     return moist_lapse(lcl_p, pressure, lcl_t, step);
 }
 

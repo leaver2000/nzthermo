@@ -56,8 +56,8 @@ else:
 
 extension_modules = [
     setuptools.Extension(
-        "nzthermo._c",
-        ["src/nzthermo/_c.pyx"],
+        "nzthermo._core",
+        ["src/nzthermo/_core.pyx"],
         include_dirs=include_dirs,
         define_macros=define_macros,
         extra_compile_args=extra_compile_args,

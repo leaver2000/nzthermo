@@ -33,7 +33,7 @@ __all__ = [
     "timeseries",
 ]
 
-from ._c import OPENMP_ENABLED, lcl, moist_lapse, delta_t
+from ._core import OPENMP_ENABLED, lcl, moist_lapse, delta_t
 from ._ufunc import (
     potential_temperature,
     equivalent_potential_temperature,

@@ -6,7 +6,7 @@ import numpy as np
 from numpy.typing import NDArray
 import datetime
 
-from ._c import delta_t
+from ._core import delta_t
 from ._typing import SupportsArray, NestedSequence
 
 

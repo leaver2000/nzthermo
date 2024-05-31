@@ -6,7 +6,7 @@
 
 # pyright: reportGeneralTypeIssues=false
 
-cimport nzthermo._api as C
+cimport nzthermo._C as C
 
 cimport cython
 cimport numpy as np

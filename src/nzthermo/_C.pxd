@@ -16,7 +16,7 @@ cdef extern from "<utility>" namespace "std" nogil:
         # bint operator<=(pair&, pair&)
         # bint operator>=(pair&, pair&)
 
-cdef extern from "_core.cpp" namespace "nzt" nogil:
+cdef extern from "_C.cpp" namespace "nzt" nogil:
     T mixing_ratio[T](T pressure, T vapor_pressure) noexcept
     T saturation_vapor_pressure[T](T temperature) noexcept
     T mixing_ratio_from_dewpoint[T](T pressure, T dewpoint) noexcept
@@ -31,9 +31,6 @@ cdef extern from "_core.cpp" namespace "nzt" nogil:
     pair[T, T] lcl[T](T pressure, T temperature, T dewpoint, T eps, size_t max_iters) noexcept
     T lcl_pressure[T](T pressure, T temperature, T dewpoint, T eps, size_t max_iters) noexcept
     T moist_lapse[T](T pressure, T next_pressure, T temperature, T step) noexcept
-    # .............................................................................................
-    # ufunc definitions
-    # .............................................................................................
     T potential_temperature[T](T pressure, T temperature) noexcept # theta
     T equivalent_potential_temperature[T](T pressure, T temperature, T dewpoint) noexcept # theta_e
     T wet_bulb_potential_temperature[T](T pressure, T temperature, T dewpoint) noexcept # theta_w

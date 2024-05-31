@@ -272,6 +272,8 @@ Theta = Annotated[_T, "Potential temperature"]
 ThetaE = Annotated[_T, "Equivalent potential temperature"]
 ThetaW = Annotated[_T, "Wet bulb potential temperature"]
 
+# ............................................................................................... #
+# ............................................................................................... #
 @_ufunc2x1
 def potential_temperature(pressure: Pascal[float], temperature: Kelvin[float]) -> Theta[Kelvin[float]]: ...
 @_ufunc3x1

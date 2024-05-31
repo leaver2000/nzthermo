@@ -27,14 +27,12 @@ from cython.view cimport array as cvarray
 import numpy as np
 cimport numpy as np
 
-cimport nzthermo._api as C
+cimport nzthermo._C as C
 
 np.import_array()
 np.import_ufunc()
 
 OPENMP_ENABLED = bool(OPENMP)
-
-
 
 
 cdef cvarray nzarray((size_t, size_t) shape, size_t size):
