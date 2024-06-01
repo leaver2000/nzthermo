@@ -9,6 +9,9 @@ __all__ = [
     "delta_t",
     # ._ufunc
     "potential_temperature",
+    "wind_direction",
+    "wind_components",
+    "wind_magnitude",
     "equivalent_potential_temperature",
     "wet_bulb_potential_temperature",
     "wet_bulb_temperature",
@@ -31,12 +34,17 @@ __all__ = [
     "virtual_temperature",
     # .utils
     "timeseries",
+    "parcel_profile",
 ]
 
-from ._core import OPENMP_ENABLED, lcl, moist_lapse, delta_t
+from ._core import OPENMP_ENABLED, lcl, moist_lapse, parcel_profile
 from ._ufunc import (
+    delta_t,
     potential_temperature,
     equivalent_potential_temperature,
+    wind_direction,
+    wind_components,
+    wind_magnitude,
     wet_bulb_potential_temperature,
     wet_bulb_temperature,
 )
@@ -53,7 +61,7 @@ from .core import (
     lfc,
     mixing_ratio,
     mixing_ratio_from_specific_humidity,
-    parcel_profile,
+    # parcel_profile,
     saturation_mixing_ratio,
     saturation_vapor_pressure,
     vapor_pressure,

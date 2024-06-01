@@ -7,7 +7,7 @@ import numpy as np
 import setuptools
 from Cython.Build import cythonize
 
-include_dirs: list[str] = [np.get_include()]
+include_dirs: list[str] = [np.get_include(), "src/lib/"]
 compiler_directives: dict[str, int | bool] = {"language_level": 3}
 define_macros: list[tuple[str, str | None]] = [("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")]
 extra_link_args: list[str] = []

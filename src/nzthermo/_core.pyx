@@ -18,11 +18,11 @@ template <typename T>
 T fn(T ...){...}
 ```
 """
-cimport cython
-import cython
 
 from cython.parallel cimport parallel, prange
 from cython.view cimport array as cvarray
+# from libcpp.memory cimport unique_ptr, make_unique
+# from libcpp.vector cimport vector
 
 import numpy as np
 cimport numpy as np
@@ -84,10 +84,6 @@ cdef cvarray nzarray((size_t, size_t) shape, size_t size):
         allocate_buffer=True,
     )
 
-cdef T linear_interpolate(T x, T x0, T x1, T y0, T y1) noexcept nogil:
-    return y0 + (x - x0) * (y1 - y0) / (x1 - x0)
-    
-    
 # -------------------------------------------------------------------------------------------------
 # thermodynamic functions
 # -------------------------------------------------------------------------------------------------
@@ -292,7 +288,7 @@ cdef T[:, :] view_lcl(
 ) noexcept:
     cdef:
         size_t N, i
-        C.pair[T, T] result
+        C.LCL[T] result
         T[:, :] out
 
     N = pressure.shape[0]
@@ -360,191 +356,59 @@ def lcl(
     return x[0], x[1]
 
 
-# -------------------------------------------------------------------------------------------------
-# time
-# -------------------------------------------------------------------------------------------------
-@cython.ufunc
-cdef double delta_t(integer year, integer month) noexcept nogil:
-    """
-    POLYNOMIAL EXPRESSIONS FOR DELTA T (ΔT)
-    see: https://eclipse.gsfc.nasa.gov/SEcat5/deltatpoly.html
-    Using the ΔT values derived from the historical record and from direct observations
-    (see: Table 1 and Table 2), a series of polynomial expressions have been created to simplify
-    the evaluation of ΔT for any time during the interval -1999 to +3000.
-    """
-    cdef double y, u, delta_t
-    y = year + (month - 0.5) / 12
-
-    if year < -500:
-        u = (y - 1820) / 100
-        delta_t = -20 + 32 * u**2
-    elif year < 500:
-        u = y / 100
-        delta_t = (
-            10583.6
-            - 1014.41 * u
-            + 33.78311 * u**2
-            - 5.952053 * u**3
-            - 0.1798452 * u**4
-            + 0.022174192 * u**5
-            + 0.0090316521 * u**6
-        )
-    elif year < 1600:
-        u = (y - 1000) / 100
-        delta_t = (
-            1574.2
-            - 556.01 * u
-            + 71.23472 * u**2
-            + 0.319781 * u**3
-            - 0.8503463 * u**4
-            - 0.005050998 * u**5
-            + 0.0083572073 * u**6
-        )
-    elif year < 1700:
-        t = y - 1600
-        delta_t = 120 - 0.9808 * t - 0.01532 * t**2 + t**3 / 7129
-    elif year < 1800:
-        t = y - 1700
-        delta_t = (
-            8.83
-            + 0.1603 * t
-            - 0.0059285 * t**2
-            + 0.00013336 * t**3
-            - t**4 / 1174000
-        )
-    elif year < 1860:
-        t = y - 1800
-        delta_t = (
-            13.72
-            - 0.332447 * t
-            + 0.0068612 * t**2
-            + 0.0041116 * t**3
-            - 0.00037436 * t**4
-            + 0.0000121272 * t**5
-            - 0.0000001699 * t**6
-            + 0.000000000875 * t**7
-        )
-    elif year < 1900:
-        t = y - 1860
-        delta_t = (
-            7.62
-            + 0.5737 * t
-            - 0.251754 * t**2
-            + 0.01680668 * t**3
-            - 0.0004473624 * t**4
-            + t**5 / 233174
-        )
-    elif year < 1920:
-        t = y - 1900
-        delta_t = (
-            -2.79
-            + 1.494119 * t
-            - 0.0598939 * t**2
-            + 0.0061966 * t**3
-            - 0.000197 * t**4
-        )
-    elif year < 1941:
-        t = y - 1920
-        delta_t = 21.20 + 0.84493 * t - 0.076100 * t**2 + 0.0020936 * t**3
-    elif year < 1961:
-        t = y - 1950
-        delta_t = 29.07 + 0.407 * t - t**2 / 233 + t**3 / 2547
-    elif year < 1986:
-        t = y - 1975
-        delta_t = 45.45 + 1.067 * t - t**2 / 260 - t**3 / 718
-    elif year < 2005:
-        t = y - 2000
-        delta_t = (
-            63.86
-            + 0.3345 * t
-            - 0.060374 * t**2
-            + 0.0017275 * t**3
-            + 0.000651814 * t**4
-            + 0.00002373599 * t**5
-        )
-    elif year < 2050:
-        t = y - 2000
-        delta_t = 62.92 + 0.32217 * t + 0.005589 * t**2
-    elif year < 2150:
-        delta_t = -20 + 32 * ((y - 1820) / 100) ** 2 - 0.5628 * (2150 - y)
-    else:
-        u = (y - 1820) / 100
-        delta_t = -20 + 32 * u**2
-
-    return delta_t
-
 
 # -------------------------------------------------------------------------------------------------
 # parcel_profile
 # -------------------------------------------------------------------------------------------------
-cdef T[:, :] surface_based_parcel_profile(
-    T[:] pressure, T[:] temperature, T[:] dewpoint, T step = 1000.0
+cdef surface_based_parcel_profile(
+    T[:] pressure, T[:] temperature, T[:] dewpoint, T step = 1000.0, T eps = 0.1, size_t max_iters = 50
 ) noexcept:
     cdef:
         size_t N, Z, n, z
-        T[:, :] profile
-        T lcl_p, lcl_t, r, p, t, p0
-        T eps = 0.1
-        size_t max_iters = 50
-        C.pair[T, T] lcl
+        T r, p, t, td, p0
+        T[:, :] profile_t
+        C.LCL[T] lcl
+        size_t[:] lcl_index
+        T[:] lcl_p
+        T[:] lcl_t
 
     N = temperature.shape[0]
     Z = pressure.shape[0]
-    profile = nzarray((N, Z), pressure.itemsize)
+
+    profile_t = nzarray((N, Z), pressure.itemsize)
+    dtype = np.float32 if sizeof(float) == pressure.itemsize else np.float64
+    lcl_p, lcl_t, lcl_index = np.empty(N, dtype=dtype), np.empty(N, dtype=dtype), np.empty(N, dtype=np.uintp)
+    profile_t[:, 0] = temperature
+    
     with nogil, parallel():
         p0 = pressure[0]
         for n in prange(N, schedule='dynamic'):
+            # compute lcl
+            t, td = temperature[n], dewpoint[n]
+            lcl = C.lcl(p0, t, td, eps, max_iters)
+            lcl_p[n], lcl_t[n] = lcl.pressure, lcl.temperature
+            
             # - parcel temperature from the surface up to the LCL ( dry ascent ) 
-            lcl = C.lcl(p0, temperature[n], dewpoint[n], eps, max_iters)
-            p = p0
-            z = 0
-            while p < lcl.pressure:
-                profile[n, z] = C.dry_lapse(p, p0, temperature[n])
-                p = pressure[z]
+            p, z = pressure[1], 1 # we start at the second level
+            while p >= lcl_p[n]:
+                profile_t[n, z] = C.dry_lapse(p, p0, t)
                 z += 1
-
-            # - parcel temperature from the LCL to the top of the atmosphere ( moist ascent )
-            p = lcl.pressure
-            t = lcl.temperature
+                p = pressure[z]
+            
+            lcl_index[n] = z
+            p, t = lcl_p[n], lcl_t[n]
             for z in range(z, Z):
-                profile[n, z] = t = C.moist_lapse(p, pressure[z], t, step)
+                profile_t[n, z] = t = C.moist_lapse(p, pressure[z], t, step)
                 p = pressure[z]
 
-    return profile
-
-cdef T[:, :] mu_parcel_profile(T[:] pressure, T[:] temperature,  T[:] dewpoint) noexcept:
-    cdef: # TODO:...
-        size_t N, Z, n, z
-        T[:, :] profile
-        T lcl_p, lcl_t, r, p, t, p0
-        T eps = 0.1
-        size_t max_iters = 50
-        C.pair[T, T] lcl
-
-    N = temperature.shape[0]
-    Z = pressure.shape[0]
-    profile = nzarray((N, Z), pressure.itemsize)
-    with nogil, parallel():
-        p0 = pressure[0]
-        for n in prange(N, schedule='dynamic'):
-            # - parcel temperature from the surface up to the LCL ( dry ascent ) 
-            lcl = C.lcl(p0, temperature[n], dewpoint[n], eps, max_iters)
-            p = p0
-            z = 0
-            while p < lcl.pressure:
-                profile[n, z] = C.dry_lapse(p, p0, temperature[n])
-                p = pressure[z]
-                z += 1
-
-            # - parcel temperature from the LCL to the top of the atmosphere ( moist ascent )
-            p = lcl.pressure
-            t = lcl.temperature#dewpoint_from_mixing_ratio(lcl_p, r)
-            for z in range(z, Z):
-                profile[n, z] = t = C.moist_lapse(p, pressure[z], t, <T>1000.0)
-                p = pressure[z]
-
-    return profile
-
+    return {
+        "temperature": np.asarray(profile_t),
+        "lcl":{
+            "pressure": lcl_p,
+            "temperature": lcl_t,
+            "index": lcl_index
+        }
+    }
 
 
 def parcel_profile(
@@ -554,19 +418,153 @@ def parcel_profile(
     *,
     ProfileStrategy strategy = SURFACE_BASED,
 ):
-    cdef np.ndarray profile = np.empty((temperature.size, pressure.size), dtype=pressure.dtype)
+    # cdef np.ndarray profile = np.empty((temperature.size, pressure.size), dtype=pressure.dtype)
     if strategy == SURFACE_BASED:
         if pressure.dtype == np.float64:
-            profile[...] = surface_based_parcel_profile[double](pressure, temperature, dewpoint)
+            return surface_based_parcel_profile[double](pressure, temperature, dewpoint)
         else:
-            profile[...] = surface_based_parcel_profile[float](pressure, temperature, dewpoint)
-    elif strategy == MOST_UNSTABLE:
-        if pressure.dtype == np.float64:
-            profile[...] = mu_parcel_profile[double](pressure, temperature, dewpoint)
-        else:
-            profile[...] = mu_parcel_profile[float](pressure, temperature, dewpoint)
+            return  surface_based_parcel_profile[float](pressure, temperature, dewpoint)
 
-    else:
-        raise ValueError("Invalid strategy.")
+    # else:
+    raise ValueError("Invalid strategy.")
+
+
+cdef T[:, :] surface_based_parcel_profile_with_lcl(
+    T[:, :] profile,
+    T[:] lcl_temperature,
+    T[:] lcl_dewpoint, 
+    size_t[:] lcl_index,
+    # LCL[:] lcl_results,
+    T[:] pressure,
+    T[:] temperature,
+    T[:] dewpoint,
+    T step = 1000.0
+) noexcept:
+    cdef:
+        size_t N, Z, n, z
+        # T[:, :] profile
+        T[:, :] lcl_values
+        T lcl_p, lcl_t, r, p, t, p0
+        T eps = 0.1
+        size_t max_iters = 50
+        C.LCL[T] lcl
+
+    
+    N = temperature.shape[0]
+    Z = pressure.shape[0]
+    assert Z == profile.shape[1] - 1
+    # profile = nzarray((N, Z), pressure.itemsize)
+    # lcl_values = nzarray((N, Z), pressure.itemsize)
+
+    with nogil, parallel():
+        p0 = pressure[0]
+        for n in prange(N, schedule='dynamic'):
+            # - parcel temperature from the surface up to the LCL ( dry ascent ) 
+            lcl = C.lcl(p0, temperature[n], dewpoint[n], eps, max_iters)
+            p = p0
+            z = 0
+            while p < lcl.pressure:
+                profile[n, z] = C.dry_lapse(p, p0, temperature[n])
+                p = pressure[z]
+                z += 1
+
+            # - parcel temperature from the LCL to the top of the atmosphere ( moist ascent )
+            # lcl_temperature[n] = p = lcl[0]
+            p = lcl.pressure
+            t = lcl.temperature
+            # lcl_dewpoint[n] = t = lcl[1]
+            # lcl_index[n] = z
+            profile[n, z] = t
+            # z+=1
+            for z in range(z, Z):
+                profile[n, z + 1] = t = C.moist_lapse(p, pressure[z], t, step)
+                p = pressure[z]
 
     return profile
+
+
+# cdef packed struct LCL:
+#     float pressure
+#     float temperature
+#     size_t index
+
+def parcel_profile_with_lcl(
+    np.ndarray pressure,
+    np.ndarray temperature,
+    np.ndarray dewpoint,
+    *,
+    ProfileStrategy strategy = SURFACE_BASED,
+):
+    cdef np.ndarray profile = np.empty((temperature.size, pressure.size + 1), dtype=pressure.dtype)
+    cdef np.ndarray lcl_temperature = np.empty(temperature.size, dtype=pressure.dtype)
+    cdef np.ndarray lcl_dewpoint = np.empty(temperature.size, dtype=pressure.dtype)
+    cdef np.ndarray lcl_index = np.empty(temperature.size, dtype=np.uintp)
+    
+    if strategy == SURFACE_BASED:
+        if pressure.dtype == np.float64:
+            surface_based_parcel_profile_with_lcl[double](
+                profile,
+                lcl_temperature,
+                lcl_dewpoint,
+                lcl_index,
+                pressure, temperature, dewpoint
+            )
+        else:
+            surface_based_parcel_profile_with_lcl[float](
+                profile,
+                lcl_temperature,
+                lcl_dewpoint,
+                lcl_index,
+                pressure, temperature, dewpoint
+            )
+    else:
+        raise ValueError("Invalid strategy.")
+    # elif strategy == MOST_UNSTABLE:
+        # if pressure.dtype == np.float64:
+        #     profile[...] = mu_parcel_profile[double](pressure, temperature, dewpoint)
+        # else:
+        #     profile[...] = mu_parcel_profile[float](pressure, temperature, dewpoint)
+
+    return profile
+# ............................................................................................... #
+cdef T[:] _interpolate_nz(
+    T[:] x,     # (N,)
+    T[:] xp,    # (Z,)
+    T[:, :] fp,  # (N, Z)
+    bint log_x = 0,
+) noexcept:
+    cdef:
+        size_t N, Z, n
+        T[:] out
+
+    N = x.shape[0]
+    Z = xp.shape[0]
+    out = np.empty(N, dtype=np.float32 if sizeof(float) == x.itemsize else np.float64)
+    
+    with nogil, parallel():
+        for n in prange(N, schedule='dynamic'):
+            out[n] = C.interpolate_z(Z, x[n], &xp[0], &fp[n, 0])
+
+    return out
+
+
+def interpolate_nz(
+    np.ndarray x,
+    np.ndarray xp,
+    *args,
+    bint log_x = 0,
+):
+    cdef np.ndarray out = np.empty((len(args), x.shape[0]), dtype=x.dtype)
+    
+    for i in range(len(args)):
+        if x.dtype == np.float64:
+            out[i] = _interpolate_nz[double](x, xp, args[i], log_x)
+        else:
+            out[i] = _interpolate_nz[float](x, xp, args[i], log_x)
+        
+    
+    if out.shape[0] == 1:
+        return out[0]
+
+    return out
+# ............................................................................................... #

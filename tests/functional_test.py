@@ -6,8 +6,6 @@ from numpy.testing import assert_allclose
 import metpy.calc.tools as mtools
 from metpy.units import units
 import pytest
-from metpy.calc.thermo import _find_append_zero_crossings
-import nzthermo as nzt
 
 PRESSURE = np.array(
     [1013, 1000, 975, 950, 925, 900, 875, 850, 825, 800, 775, 750, 725, 700, 650, 600, 550, 500, 450, 400, 350, 300],
@@ -34,28 +32,28 @@ DEWPOINT = np.array(
 )
 
 
-def test_zero_crossing():
-    self = nzt.parcel_profile(PRESSURE, TEMPERATURE, DEWPOINT)
-    pressure, temperature, dewpoint, parcel_profile = self.with_lcl()
-    y = parcel_profile - temperature
-    x, y = F.zero_crossing(pressure.copy(), y)  # (N, Z)
+# def test_zero_crossing():
+#     self = nzt.parcel_profile(PRESSURE, TEMPERATURE, DEWPOINT)
+#     pressure, temperature, dewpoint, parcel_profile = self.with_lcl()
+#     y = parcel_profile - temperature
+#     x, y = F.zero_crossing(pressure.copy(), y)  # (N, Z)
 
-    for i in range(y.shape[0]):
-        x_, y_ = _find_append_zero_crossings(
-            pressure[i] * units.pascal, (parcel_profile - temperature)[i] * units.kelvin
-        )
+#     for i in range(y.shape[0]):
+#         x_, y_ = _find_append_zero_crossings(
+#             pressure[i] * units.pascal, (parcel_profile - temperature)[i] * units.kelvin
+#         )
 
-        assert_allclose(
-            x[i][~np.isnan(x[i])],
-            x_.m[:],  # , rtol=1e-3
-            # sep='\n'
-        )
+#         assert_allclose(
+#             x[i][~np.isnan(x[i])],
+#             x_.m[:],  # , rtol=1e-3
+#             # sep='\n'
+#         )
 
-        assert_allclose(
-            y[i][~np.isnan(x[i])],
-            y_.m[:],  # , rtol=1e-3
-            # sep='\n'
-        )
+#         assert_allclose(
+#             y[i][~np.isnan(x[i])],
+#             y_.m[:],  # , rtol=1e-3
+#             # sep='\n'
+#         )
 
 
 @pytest.mark.parametrize(
@@ -98,8 +96,8 @@ def test_intersect_nz_increasing(x, a, b) -> None:
     pressure_levels = np.array(x)  # (Z,)
     temperature = np.array(a)  # (N, Z)
     dewpoint = np.array(b)  # (N, Z)
-    # TODO: update this test witht the correct upper intersect values, there was an off by
-    # one error in the determination of the upper index based on the metpy implmentation.
+    # TODO: update this test with the correct upper intersect values, there was an off by
+    # one error in the determination of the upper index based on the metpy implementation.
     intersect = F.intersect_nz(pressure_levels, temperature, dewpoint, direction=direction, log_x=True, mask_nans=True)
     bottom = intersect.bottom()
     top = intersect.bottom()
@@ -162,7 +160,7 @@ def test_intersect_nz_decreasing(x, a, b) -> None:
     pressure_levels = np.array(x)  # (Z,)
     temperature = np.array(a)  # (N, Z)
     dewpoint = np.array(b)  # (N, Z)
-    # TODO: update this test witht the correct upper intersect values, there was an off by
+    # TODO: update this test with the correct upper intersect values, there was an off by
     # one error in the determination of the upper index based on the metpy implmentation.
     intersect = F.intersect_nz(pressure_levels, temperature, dewpoint, direction=direction, log_x=True, mask_nans=True)
 

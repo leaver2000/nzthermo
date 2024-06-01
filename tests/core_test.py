@@ -6,7 +6,6 @@ import pytest
 from metpy.units import units
 from numpy.testing import assert_allclose
 from nzthermo.core import ccl, el, lcl, parcel_profile
-
 np.set_printoptions(
     precision=3,
     suppress=True,

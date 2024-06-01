@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 from . import functional as F
 from ._core import lcl, moist_lapse
 from ._ufunc import wet_bulb_temperature, equivalent_potential_temperature
-from ._typing import Kelvin, Kilogram, N, Pascal, Ratio, Z, shape
+from .typing import Kelvin, Kilogram, N, Pascal, Ratio, Z, shape
 from .const import E0, P0, T0, Cpd, Rd, Rv
 
 # .....{ types }.....

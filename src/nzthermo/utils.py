@@ -6,8 +6,8 @@ import numpy as np
 from numpy.typing import NDArray
 import datetime
 
-from ._core import delta_t
-from ._typing import SupportsArray, NestedSequence
+from ._ufunc import delta_t
+from .typing import SupportsArray, NestedSequence
 
 
 class Timeseries(NamedTuple):

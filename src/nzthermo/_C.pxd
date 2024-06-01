@@ -1,26 +1,58 @@
 # pyright: reportGeneralTypeIssues=false
 
+from libcpp.vector cimport vector
+
+ctypedef fused Float:
+    float
+    double
+
+
+
 cdef extern from "<utility>" namespace "std" nogil:
     cdef cppclass pair[T, U]:
         # ctypedef T first_type
         # ctypedef U second_type
         T pressure    "first"
         U temperature "second"
-        # pair() except +
-        # pair(pair&) except +
-        # pair(T&, U&) except +
-        # bint operator==(pair&, pair&)
-        # bint operator!=(pair&, pair&)
-        # bint operator<(pair&, pair&)
-        # bint operator>(pair&, pair&)
-        # bint operator<=(pair&, pair&)
-        # bint operator>=(pair&, pair&)
+
+
 
 cdef extern from "_C.cpp" namespace "nzt" nogil:
+    # ........................................................................................... #
+    #  - constants
+    # ........................................................................................... #
+    # TODO:...
+    # ........................................................................................... #
+    #  - structure
+    # ........................................................................................... #
+    cdef cppclass WindComponents[T]:
+        T u
+        T v
+
+    cdef cppclass LCL[T]:
+        T pressure
+        T temperature
+
+    cdef cppclass Parcel[T]:
+        T pressure
+        T temperature
+        T dewpoint
+
     # ........................................................................................... #
     #  - common functions
     # ........................................................................................... #
     T linear_interpolate[T](T x, T x0, T x1, T y0, T y1) noexcept
+    T degrees[T](T radians) noexcept
+    T radians[T](T degrees) noexcept
+    T interpolate_z[T](size_t size, T x, T* xp, T* fp) noexcept
+    # ........................................................................................... #
+    #  - wind
+    # ........................................................................................... #
+    T wind_direction[T](T u, T v) noexcept
+    T wind_direction[T](T u, T v, T from_) noexcept
+    T wind_magnitude[T](T u, T v) noexcept
+    WindComponents[T] wind_components[T](T direction, T magnitude) noexcept
+
     # ........................................................................................... #
     #  - thermodynamic functions
     # ........................................................................................... #
@@ -38,7 +70,7 @@ cdef extern from "_C.cpp" namespace "nzt" nogil:
     # ........................................................................................... #
     #  - adiabatic processes
     # ........................................................................................... #
-    pair[T, T] lcl[T](T pressure, T temperature, T dewpoint, T eps, size_t max_iters) noexcept
+    LCL[T] lcl[T](T pressure, T temperature, T dewpoint, T eps, size_t max_iters) noexcept
     T lcl_pressure[T](T pressure, T temperature, T dewpoint, T eps, size_t max_iters) noexcept
     T moist_lapse[T](T pressure, T next_pressure, T temperature, T step) noexcept
     T potential_temperature[T](T pressure, T temperature) noexcept # theta
@@ -47,3 +79,6 @@ cdef extern from "_C.cpp" namespace "nzt" nogil:
     T wet_bulb_temperature[T](
         T pressure, T temperature, T dewpoint, T eps, T step, size_t max_iters
     ) noexcept
+    
+    # sharp routine's
+    T wobus[T](T temperature) noexcept
