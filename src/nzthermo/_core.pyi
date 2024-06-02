@@ -72,10 +72,21 @@ def lcl[T: np.float_](
     Kelvin[np.ndarray[shape[N], np.dtype[T]]],
 ]: ...
 def parcel_profile(): ...
-def interpolate_nz(
-    x: np.ndarray[shape[N], np.dtype[_float]],
-    xp: np.ndarray[shape[Z], np.dtype[_float]],
-    fp: np.ndarray[shape[N, Z], np.dtype[_float]],
+@overload
+def interpolate_nz[T: np.float_](
+    x: np.ndarray[shape[N], np.dtype[T]],
+    xp: np.ndarray[shape[Z], np.dtype[T]],
+    fp: np.ndarray[shape[N, Z], np.dtype[T]],
     /,
+    *,
     log_x: bool = ...,
-) -> np.ndarray[shape[N], np.dtype[_float]]: ...
+    interp_nan: bool = ...,
+) -> np.ndarray[shape[N], np.dtype[T]]: ...
+@overload
+def interpolate_nz[T: np.float_](
+    x: np.ndarray[shape[N], np.dtype[T]],
+    xp: np.ndarray[shape[Z], np.dtype[T]],
+    *args: np.ndarray[shape[N, Z], np.dtype[T]],
+    log_x: bool = ...,
+    interp_nan: bool = ...,
+) -> tuple[np.ndarray[shape[N], np.dtype[T]], ...]: ...

@@ -21,9 +21,6 @@ T fn(T ...){...}
 
 from cython.parallel cimport parallel, prange
 from cython.view cimport array as cvarray
-# from libcpp.memory cimport unique_ptr, make_unique
-# from libcpp.vector cimport vector
-
 import numpy as np
 cimport numpy as np
 
@@ -453,8 +450,6 @@ cdef T[:, :] surface_based_parcel_profile_with_lcl(
     N = temperature.shape[0]
     Z = pressure.shape[0]
     assert Z == profile.shape[1] - 1
-    # profile = nzarray((N, Z), pressure.itemsize)
-    # lcl_values = nzarray((N, Z), pressure.itemsize)
 
     with nogil, parallel():
         p0 = pressure[0]
@@ -528,8 +523,8 @@ def parcel_profile_with_lcl(
     return profile
 # ............................................................................................... #
 cdef T[:] _interpolate_nz(
-    T[:] x,     # (N,)
-    T[:] xp,    # (Z,)
+    T[:] x,      # (N,)
+    T[:] xp,     # (Z,)
     T[:, :] fp,  # (N, Z)
     bint log_x = 0,
 ) noexcept:
@@ -540,7 +535,6 @@ cdef T[:] _interpolate_nz(
     N = x.shape[0]
     Z = xp.shape[0]
     out = np.empty(N, dtype=np.float32 if sizeof(float) == x.itemsize else np.float64)
-    
     with nogil, parallel():
         for n in prange(N, schedule='dynamic'):
             out[n] = C.interpolate_z(Z, x[n], &xp[0], &fp[n, 0])
@@ -553,7 +547,62 @@ def interpolate_nz(
     np.ndarray xp,
     *args,
     bint log_x = 0,
+    bint interp_nan = 0
 ):
+    """
+    Interpolates values for multiple batches of data.
+
+    Args:
+        x: Input array of shape (N,) containing the values to be interpolated.
+        xp: Input array of shape (Z,) containing the reference values.
+        *args: Variable number of input arrays of shape (N, Z) containing additional data.
+
+    Returns:
+        np.ndarray or tuple of np.ndarray: Interpolated values for each batch.
+
+    Raises:
+        None
+
+    Examples:
+    >>> import numpy as np
+    >>> import nzthermo as nzt
+    >>> import nzthermo.functional as F
+    >>> temperature = np.array(
+    ...     [
+    ...         [303.3, 302.36, 300.16, 298.0, 296.09, 296.73, 295.96, 294.79, 293.51, 291.81],
+    ...         [303.58, 302.6, 300.41, 298.24, 296.49, 295.35, 295.62, 294.43, 293.27, 291.6],
+    ...         [303.75, 302.77, 300.59, 298.43, 296.36, 295.15, 295.32, 294.19, 292.84, 291.54],
+    ...         [303.46, 302.51, 300.34, 298.19, 296.34, 295.51, 295.06, 293.84, 292.42, 291.1],
+    ...         [303.23, 302.31, 300.12, 297.97, 296.28, 295.68, 294.83, 293.67, 292.56, 291.47],
+    ...     ]
+    ... )  # (N, Z)
+    >>> dewpoint = np.array(
+    ...     [
+    ...         [297.61, 297.36, 296.73, 296.05, 294.69, 289.18, 286.82, 285.82, 284.88, 283.81],
+    ...         [297.62, 297.36, 296.79, 296.18, 294.5, 292.07, 287.74, 286.67, 285.15, 284.02],
+    ...         [297.76, 297.51, 296.91, 296.23, 295.05, 292.9, 288.86, 287.12, 285.99, 283.98],
+    ...         [297.82, 297.56, 296.95, 296.23, 295.0, 292.47, 289.97, 288.45, 287.09, 285.17],
+    ...         [298.22, 297.95, 297.33, 296.69, 295.19, 293.16, 291.42, 289.66, 287.28, 284.31],
+    ...     ]
+    ... )  # (N, Z)
+    >>> surface_pressure = np.array([101210.0, 101300.0, 101373.0, 101430.0, 101470.0])  # (N,)
+    >>> pressure_levels = np.array(
+    ...     [101300.0, 100000.0, 97500.0, 95000.0, 92500.0, 90000.0, 87500.0, 85000.0, 82500.0, 80000.0]
+    ... )  # (Z,)
+    >>> lcl_p, lcl_t = nzt.lcl(
+    ...     surface_pressure,  # (N,)
+    ...     temperature[:, 0],  # (N,)
+    ...     dewpoint[:, 0],  # (N,)
+    ... )  # (N,), (N,)
+    >>> lcl_p
+    array([93214.26240694, 92938.06420037, 92967.83292536, 93487.43780492, 94377.76028999])
+    >>> F.interpolate_nz(lcl_p, pressure_levels, temperature, dewpoint)  # temp & dwpt values interpolated at LCL pressure
+    (
+        array([296.63569648, 296.79664494, 296.74736566, 297.07070398, 297.54936596]),
+        array([295.07855875, 294.79437914, 295.27081714, 295.4858194, 296.31665617])
+    )
+
+    """
     cdef np.ndarray out = np.empty((len(args), x.shape[0]), dtype=x.dtype)
     
     for i in range(len(args)):
@@ -561,10 +610,13 @@ def interpolate_nz(
             out[i] = _interpolate_nz[double](x, xp, args[i], log_x)
         else:
             out[i] = _interpolate_nz[float](x, xp, args[i], log_x)
-        
-    
+
+        if interp_nan:            
+            mask = np.isnan(out[i])
+            out[i, mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), x[~mask])
+
     if out.shape[0] == 1:
         return out[0]
 
-    return out
+    return tuple(out)
 # ............................................................................................... #

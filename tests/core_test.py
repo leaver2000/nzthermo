@@ -5,7 +5,8 @@ import numpy as np
 import pytest
 from metpy.units import units
 from numpy.testing import assert_allclose
-from nzthermo.core import ccl, el, lcl, parcel_profile
+from nzthermo.core import ccl, el, lcl, parcel_profile, interpolate_nz
+
 np.set_printoptions(
     precision=3,
     suppress=True,
@@ -127,3 +128,37 @@ def test_lfc(which) -> None:
         )
         np.testing.assert_allclose(lfc_p[i], lfc_p_.m, rtol=1e-2)  # type: ignore
         np.testing.assert_allclose(lfc_t[i], lfc_t_.m, rtol=1e-2)
+
+
+def test_interpolate_nz() -> None:
+    lcl_p = np.array([93290.11, 92921.01, 92891.83, 93356.17, 94216.14])  # (N,)
+    pressure_levels = np.array(
+        [101300.0, 100000.0, 97500.0, 95000.0, 92500.0, 90000.0, 87500.0, 85000.0, 82500.0, 80000.0],
+    )  # (Z,)
+    temperature = np.array(
+        [
+            [303.3, 302.36, 300.16, 298.0, 296.09, 296.73, 295.96, 294.79, 293.51, 291.81],
+            [303.58, 302.6, 300.41, 298.24, 296.49, 295.35, 295.62, 294.43, 293.27, 291.6],
+            [303.75, 302.77, 300.59, 298.43, 296.36, 295.15, 295.32, 294.19, 292.84, 291.54],
+            [303.46, 302.51, 300.34, 298.19, 296.34, 295.51, 295.06, 293.84, 292.42, 291.1],
+            [303.23, 302.31, 300.12, 297.97, 296.28, 295.68, 294.83, 293.67, 292.56, 291.47],
+        ],
+    )  # (N, Z)
+    dewpoint = np.array(
+        [
+            [297.61, 297.36, 296.73, 296.05, 294.69, 289.18, 286.82, 285.82, 284.88, 283.81],
+            [297.62, 297.36, 296.79, 296.18, 294.5, 292.07, 287.74, 286.67, 285.15, 284.02],
+            [297.76, 297.51, 296.91, 296.23, 295.05, 292.9, 288.86, 287.12, 285.99, 283.98],
+            [297.82, 297.56, 296.95, 296.23, 295.0, 292.47, 289.97, 288.45, 287.09, 285.17],
+            [298.22, 297.95, 297.33, 296.69, 295.19, 293.16, 291.42, 289.66, 287.28, 284.31],
+        ],
+    )  # (N, Z)
+    values = interpolate_nz(  # ((N,), ...)
+        lcl_p, pressure_levels, temperature, dewpoint
+    )  # temp & dwpt values interpolated at LCL pressure
+
+    assert_allclose(
+        values,
+        [[296.69, 296.78, 296.68, 296.97, 297.44], [295.12, 294.78, 295.23, 295.42, 296.22]],
+        atol=1e-2,
+    )

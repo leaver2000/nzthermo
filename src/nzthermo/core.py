@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from typing_extensions import Doc
 
 from . import functional as F
-from ._core import lcl, moist_lapse
+from ._core import lcl, moist_lapse, interpolate_nz
 from ._ufunc import wet_bulb_temperature, equivalent_potential_temperature
 from .typing import Kelvin, Kilogram, N, Pascal, Ratio, Z, shape
 from .const import E0, P0, T0, Cpd, Rd, Rv
@@ -538,7 +538,7 @@ def parcel_profile(
     Tp[lcl_index] = lcl_t
 
     # [ temperature & dewpoint ]
-    T, Td = F.interpolate_nz(
+    T, Td = interpolate_nz(
         lcl_p,
         pressure[:-1],  # drop the trailing nan value
         temperature,
