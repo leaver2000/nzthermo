@@ -35,8 +35,14 @@ __all__ = [
     # .utils
     "timeseries",
     "parcel_profile",
+    # aliases
+    "wdir",
+    "wspd",
+    "theta",
+    "theta_e",
+    "theta_w",
 ]
-
+from typing import Final
 from ._core import OPENMP_ENABLED, lcl, moist_lapse, parcel_profile
 from ._ufunc import (
     delta_t,
@@ -68,3 +74,11 @@ from .core import (
     virtual_temperature,
 )
 from .utils import timeseries
+
+wdir: Final = wind_direction
+wspd: Final = wind_magnitude
+
+
+theta: Final = potential_temperature
+theta_e: Final = equivalent_potential_temperature
+theta_w: Final = wet_bulb_potential_temperature

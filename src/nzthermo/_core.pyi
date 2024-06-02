@@ -7,16 +7,7 @@ from typing import (
 )
 
 import numpy as np
-
-from .typing import (
-    Kelvin,
-    N,
-    NestedSequence,
-    Pascal,
-    SupportsArray,
-    Z,
-    shape,
-)
+from .typing import Kelvin, N, NestedSequence, Pascal, SupportsArray, Z, shape
 
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
