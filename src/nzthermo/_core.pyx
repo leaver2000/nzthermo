@@ -478,11 +478,6 @@ cdef T[:, :] surface_based_parcel_profile_with_lcl(
     return profile
 
 
-# cdef packed struct LCL:
-#     float pressure
-#     float temperature
-#     size_t index
-
 def parcel_profile_with_lcl(
     np.ndarray pressure,
     np.ndarray temperature,
@@ -536,7 +531,7 @@ cdef T[:] _interpolate_nz(
     Z = xp.shape[0]
     out = np.empty(N, dtype=np.float32 if sizeof(float) == x.itemsize else np.float64)
     with nogil, parallel():
-        for n in prange(N, schedule='dynamic'):
+        for n in prange(N, schedule='runtime'):
             out[n] = C.interpolate_z(Z, x[n], &xp[0], &fp[n, 0])
 
     return out

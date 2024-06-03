@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 from . import functional as F
 from ._core import lcl, moist_lapse, interpolate_nz
-from ._ufunc import wet_bulb_temperature, equivalent_potential_temperature
+from ._ufunc import wet_bulb_temperature, equivalent_potential_temperature, dry_lapse
 from .typing import Kelvin, Kilogram, N, Pascal, Ratio, Z, shape
 from .const import E0, P0, T0, Cpd, Rd, Rv
 
@@ -88,19 +88,6 @@ def mixing_ratio(
     molecular_weight_ratio: Ratio[NDArray[float_] | float] = Rd / Rv,
 ) -> Ratio[NDArray[float_]]:
     return molecular_weight_ratio * partial_press / (total_press - partial_press)
-
-
-def dry_lapse(
-    pressure: Pascal[NDArray[float_]],
-    temperature: Kelvin[NDArray[float_]],
-    reference_pressure: Pascal[NDArray[float_] | float] | None = None,
-    *,
-    axis: int = 0,
-) -> Kelvin[NDArray[float_]]:
-    """``T * (p / p_0)^{R_d / C_p}``"""
-    if reference_pressure is None:
-        reference_pressure = pressure[axis]
-    return temperature * (pressure / reference_pressure) ** (Rd / Cpd)  # pyright: ignore
 
 
 def saturation_mixing_ratio(

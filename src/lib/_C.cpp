@@ -41,38 +41,35 @@ FLOATING norm(const T x, const T x0, const T x1) noexcept {
     return (x - x0) / (x1 - x0);
 }
 
-FLOATING linear_interpolate(T x, T x0, T x1, const T y0, const T y1, const bool log_x) noexcept {
-    T r;
-    if (log_x) {
-        x = log(x);
-        x0 = log(x0);
-        x1 = log(x1);
+FLOATING linear_interpolate(
+  const T x, const T x0, const T x1, const T y0, const T y1, const bool log_x
+) noexcept {
+    return y0 + (x - x0) * (y1 - y0) / (x1 - x0);
+}
+template <floating T>
+size_t search_sorted(
+  const T x[], const T value, const size_t size, const bool inverted = false
+) noexcept {
+    size_t i = 0;
+    if (inverted) {
+        while (i < size && x[i] >= value)
+            i++;
+    } else {
+        while (i < size && x[i] <= value)
+            i++;
     }
-    r = y0 + (x - x0) * (y1 - y0) / (x1 - x0);
-    if (log_x)
-        r = exp(r);
 
-    return r;
+    return i;
 }
 
 FLOATING interpolate_z(
   const size_t size, const T x, const T xp[], const T fp[], const bool log_x
 ) noexcept {
-    T x0, y0, x1, y1;
+    size_t i = search_sorted(xp, x, size, true);
+    if (i == 0)
+        return fp[0];
 
-    x0 = xp[0];
-    y0 = fp[0];
-    for (size_t i = 1; i < size; i++) {
-        x1 = xp[i];
-        y1 = fp[i];
-        if (x <= x0 && x >= x1)
-            return linear_interpolate(x, x0, x1, y0, y1, log_x);
-
-        x0 = x1;
-        y0 = y1;
-    }
-
-    return NaN;
+    return linear_interpolate(x, xp[i - 1], xp[i], fp[i - 1], fp[i], log_x);
 }
 /*see: https://github.com/numpy/numpy/blob/main/numpy/_core/src/npymath/npy_math_internal.h.src#L426*/
 FLOATING heaviside(const T x, const T h0) noexcept {

@@ -83,4 +83,5 @@ def timeseries(
     out[4] = (dt - h).astype("m8[m]")  # minute
     out[5] = (dt - m).astype("m8[s]")  # second
     out[6] = (dt - s).astype("m8[us]")  # microsecond
+
     return Timeseries(*out)

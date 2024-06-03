@@ -53,6 +53,7 @@ from ._ufunc import (
     wind_magnitude,
     wet_bulb_potential_temperature,
     wet_bulb_temperature,
+    dry_lapse,
 )
 from ._version import __version__
 from .core import (
@@ -61,7 +62,6 @@ from .core import (
     dewpoint,
     dewpoint_from_specific_humidity,
     downdraft_cape,
-    dry_lapse,
     el,
     exner_function,
     lfc,
@@ -82,3 +82,8 @@ wspd: Final = wind_magnitude
 theta: Final = potential_temperature
 theta_e: Final = equivalent_potential_temperature
 theta_w: Final = wet_bulb_potential_temperature
+malr: Final = moist_lapse
+dalr: Final = dry_lapse
+esat: Final = saturation_vapor_pressure
+e: Final = vapor_pressure
+mr: Final = mixing_ratio
