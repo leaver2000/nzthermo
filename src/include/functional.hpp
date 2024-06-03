@@ -1,6 +1,14 @@
-#include <common.hpp>
+#pragma once
 
+#include <cmath>
+#include <limits>
+#include <vector>
+#include <functional>
+
+#include <common.hpp>
+#include <functional.hpp>
 namespace libthermo {
+
 typedef enum direction {
     increasing,
     decreasing
@@ -21,46 +29,110 @@ template <floating T>
 constexpr T norm(const T x, const T x0, const T x1) noexcept;
 
 template <floating T>
-constexpr T linear_interpolate(const T x, const T x0, const T x1, const T y0, const T y1);
+constexpr T linear_interpolate(const T x, const T x0, const T x1, const T y0, const T y1) noexcept;
 
-// template <floating T>
-// size_t search_sorted(
-//   const T x[], const T value, const size_t size, const bool inverted = false
-// ) noexcept {
-//     size_t i = 0;
-//     if (inverted) {
-//         while (i < size && x[i] >= value)
-//             i++;
-//     } else {
-//         while (i < size && x[i] <= value)
-//             i++;
-//     }
+template <floating T>
+size_t search_sorted(
+  const T x[], const T value, const size_t size, const bool inverted = false
+) noexcept;
 
-//     return i;
-// }
+template <floating T>
+constexpr T interpolate_z(const size_t size, const T x, const T xp[], const T fp[]) noexcept;
 
-// template <floating T>
-// constexpr T interpolate_z(
-//   const size_t size, const T x, const T xp[], const T fp[], const bool log_x
-// ) noexcept {
-//     size_t i = search_sorted(xp, x, size, true);
-//     if (i == 0)
-//         return fp[0];
+/**
+ * see: https://github.com/numpy/numpy/blob/main/numpy/_core/src/npymath/npy_math_internal.h.src#L426
+ */
 
-//     return linear_interpolate(x, xp[i - 1], xp[i], fp[i - 1], fp[i], log_x);
-// }
+template <floating T>
+constexpr T heaviside(const T x, const T h0) noexcept;
 
-// /*see: https://github.com/numpy/numpy/blob/main/numpy/_core/src/npymath/npy_math_internal.h.src#L426*/
-// template <floating T>
-// constexpr T heaviside(const T x, const T h0) noexcept {
-//     if (isnan(x))
-//         return NaN;
-//     else if (x == 0)
-//         return h0;
-//     else if (x < 0)
-//         return 0.0;
+/**
+ * @brief Runge-Kutta 2nd order method for solving ordinary differential equations.
+ */
+template <floating T>
+constexpr T rk2(Fn<T, T, T> fn, T x0, T x1, T y, T step = 1000.0) noexcept;
 
-//     return 1.0;
-// }
+/**
+ * @brief A fixed point of a function is the point at which evaluation of the
+ * function returns the point.
+ * @ref * https://docs.scipy.org/doc/scipy/tutorial/optimize.html#fixed-point-solving
+ *
+ * @tparam T (floating point)
+ * @tparam Args (...floating point)
+ * @param fn
+ * @param max_iters
+ * @param eps
+ * @param x0
+ * @param args
+ *
+ * @return (T) fixed point (T) (if found, else NAN)
+ */
+template <floating T, floating... Args>
+constexpr T fixed_point(
+  const Fn<T, T, T, Args...> fn,
+  const size_t max_iters,
+  const T eps,
+  const T x0,
+  const Args... args
+) noexcept;
+
+/**
+ * \author Kelton Halbert - NWS Storm Prediction Center/OU-CIWRO
+ *
+ * \brief Finds the index of the lower bound that does not <!--
+ * --> satisfy element < value
+ *
+ * Based on std::lower_bound, this iterates over an array using a binary search
+ * to find the first element that does not satisfy the comparison condition. By
+ * default, the comparison is std::less. Binary search expects data to be sorted
+ * in ascending order -- for pressure level data, change the comparitor.
+ *
+ * We use a custom implementation of sharp::lower_bound rather than
+ * std::lower_bound for a few reasons. First, we prefer raw pointer
+ * arrays over vectors for easy integration with SWIG bindings,
+ * C code, and the potential future in which this runs on CUDA
+ * architecture. Currently, the algorithms in the STL library are
+ * not supported by the CUDA STL, but the types in <functional>
+ * (i.e. std::less) are supported by the CUDA STL. Additionally, this
+ * implementation of lower_bound is designed to reduce branching.
+ *
+ * \param   array   The array to search over
+ * \param   N       The length of the array
+ * \param   value   The value for lower-bound comparison
+ * \param   cmp     The comparitor
+ *
+ * \return  Index of lower bound
+ */
+template <floating T, typename C = std::less<T>>
+constexpr size_t lower_bound(const T array[], const int N, const T& value, const C cmp = C{});
+
+/**
+ * \author Kelton Halbert - NWS Storm Prediction Center/OU-CIWRO
+ *
+ * \brief Finds the first index that satisfies value < element
+ *
+ * Based on std::upper_bound, this iterates over an array using a binary search
+ * to find the first element that satisfies the comparison condition. By
+ * default, the comparison is std::less. Binary search expects data to be in
+ * ascending order -- for pressure level data, change the comparitor.
+ *
+ * We use a custom implementation of sharp::upper_bound rather than
+ * std::upper_bound for a few reasons. First, we prefer raw pointer
+ * arrays over vectors for easy integration with SWIG bindings,
+ * C code, and the potential future in which this runs on CUDA
+ * architecture. Currently, the algorithms in the STL library are
+ * not supported by the CUDA STL, but the types in <functional>
+ * (i.e. std::less) are supported by the CUDA STL. Additionally, this
+ * implementation of lower_bound is designed to reduce branching.
+ *
+ * \param   array   The array to search over
+ * \param   N       The length of the array
+ * \param   value   The value for upper-bound comparison
+ * \param   cmp     The comparitor
+ *
+ * \return  Index of the upper bound
+ */
+template <floating T, typename C = std::less<T>>
+constexpr size_t upper_bound(const T array[], const int N, const T& value, const C cmp = C{});
 
 }  // namespace libthermo

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import functools
 from typing import (
-    Callable,
     Any,
+    Callable,
     Concatenate,
     Final,
     Generic,
@@ -11,22 +11,19 @@ from typing import (
     Literal,
     NamedTuple,
     ParamSpec,
-    Self,
+    SupportsIndex,
     TypeVar,
 )
 
 import numpy as np
+from numpy._typing._array_like import _ArrayLikeComplex_co, _ArrayLikeObject_co, _ArrayLikeTD64_co
 from numpy.typing import NDArray
-
-from typing import SupportsIndex
-from numpy._typing._array_like import _ArrayLikeComplex_co, _ArrayLikeTD64_co, _ArrayLikeObject_co
 
 try:
     from typing_extensions import deprecated
 except ImportError:
     deprecated = lambda s: lambda f: f  # type: ignore
-from .typing import N, Z, shape
-
+from .typing import N, Self, Z, shape
 
 _T = TypeVar("_T")
 _R = TypeVar("_R")

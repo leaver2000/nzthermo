@@ -1,3 +1,5 @@
+#
+# sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 60
 from __future__ import annotations
 
 import os
@@ -7,11 +9,19 @@ import numpy as np
 import setuptools
 from Cython.Build import cythonize
 
+# os.environ["CFLAGS"] = "-std=c++20"
+# os.environ["CXXFLAGS"] = "-std=c++20"
+
+
 include_dirs: list[str] = [np.get_include(), "src/lib/"]
 compiler_directives: dict[str, int | bool] = {"language_level": 3}
 define_macros: list[tuple[str, str | None]] = [("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")]
 extra_link_args: list[str] = []
-extra_compile_args: list[str] = ["-std=c++20"]
+extra_compile_args: list[str] = [
+    "-std=c++20",
+    # "-std=c++2a",
+    # "-fconcepts",
+]
 purge = False
 
 if "--production" in sys.argv:
@@ -58,7 +68,7 @@ extension_modules = [
     setuptools.Extension(
         "nzthermo._core",
         ["src/nzthermo/_core.pyx"],
-        include_dirs=include_dirs,
+        include_dirs=include_dirs + ["src/include/"],
         define_macros=define_macros,
         extra_compile_args=extra_compile_args,
         extra_link_args=extra_link_args,
@@ -67,7 +77,7 @@ extension_modules = [
     setuptools.Extension(
         "nzthermo._ufunc",
         ["src/nzthermo/_ufunc.pyx"],
-        include_dirs=include_dirs,
+        include_dirs=include_dirs + ["src/include/"],
         define_macros=define_macros,
         extra_compile_args=extra_compile_args,
         extra_link_args=extra_link_args,

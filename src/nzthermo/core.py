@@ -26,10 +26,10 @@ if TYPE_CHECKING:
     from typing_extensions import Doc
 
 from . import functional as F
-from ._core import lcl, moist_lapse, interpolate_nz
-from ._ufunc import wet_bulb_temperature, equivalent_potential_temperature, dry_lapse
-from .typing import Kelvin, Kilogram, N, Pascal, Ratio, Z, shape
+from ._core import interpolate_nz, lcl, moist_lapse
+from ._ufunc import dry_lapse, equivalent_potential_temperature, wet_bulb_temperature
 from .const import E0, P0, T0, Cpd, Rd, Rv
+from .typing import Kelvin, Kilogram, N, Pascal, Ratio, Z, shape
 
 # .....{ types }.....
 T = TypeVar("T")
@@ -44,7 +44,7 @@ newaxis: Final[None] = np.newaxis
 # =================================================================================================
 def dewpoint(vapor_pressure: Pascal[NDArray[float_]]) -> Kelvin[NDArray[float_]]:
     """
-    ther are two ways to calculate the dewpoint temperature from the vapor pressure
+    there are two ways to calculate the dewpoint temperature from the vapor pressure
     ```
     ln = np.log(e / E0)
     Td = T0 + 243.5 * ln / (17.67 - ln)

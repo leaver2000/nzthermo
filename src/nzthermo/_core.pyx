@@ -133,6 +133,26 @@ cdef T[:, :] _moist_lapse(T[:, :] pressure,
     return out
 
 
+def downdraft_cape(
+    np.ndarray pressure,
+    np.ndarray temperature,
+    np.ndarray dewpoint,
+):  
+    cdef:
+        double[:, :] p, t, td
+        size_t size = temperature.shape[1]
+    p = pressure.astype(np.float64)
+    t = dewpoint.astype(np.float64)
+    td = temperature.astype(np.float64)
+    out = np.empty(temperature.shape[0], dtype=np.float64)
+
+    for i in range(temperature.shape[0]):
+        out[i] = C.downdraft_cape[double](&p[i, 0], &t[i, 0], &td[i, 0], size)
+        
+    return out
+    
+    
+
 def moist_lapse(
     np.ndarray pressure,
     np.ndarray temperature,
@@ -537,9 +557,12 @@ cdef T[:] _interpolate_nz(
     return out
 
 
+
+
+
 def interpolate_nz(
-    np.ndarray x,
-    np.ndarray xp,
+    np.ndarray __x,
+    np.ndarray __xp,
     *args,
     bint log_x = 0,
     bint interp_nan = 0
@@ -598,17 +621,20 @@ def interpolate_nz(
     )
 
     """
-    cdef np.ndarray out = np.empty((len(args), x.shape[0]), dtype=x.dtype)
+    dtype = __x.dtype
+    cdef np.ndarray xp = np.asarray(__xp, dtype=dtype)
+    cdef np.ndarray fp = np.asarray(args, dtype=dtype)
+    cdef np.ndarray out = np.empty((fp.shape[0], __x.shape[0]), dtype=dtype)
     
-    for i in range(len(args)):
-        if x.dtype == np.float64:
-            out[i] = _interpolate_nz[double](x, xp, args[i], log_x)
+    for i in range(fp.shape[0]):
+        if dtype == np.float64:
+            out[i] = _interpolate_nz[double](__x, xp, fp[i], log_x)
         else:
-            out[i] = _interpolate_nz[float](x, xp, args[i], log_x)
+            out[i] = _interpolate_nz[float](__x, xp, fp[i], log_x)
 
         if interp_nan:            
             mask = np.isnan(out[i])
-            out[i, mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), x[~mask])
+            out[i, mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), __x[~mask])
 
     if out.shape[0] == 1:
         return out[0]

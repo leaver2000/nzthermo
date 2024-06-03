@@ -1,6 +1,6 @@
 # pyright: reportGeneralTypeIssues=false
 
-from libcpp.vector cimport vector
+# from libcpp.vector cimport vector
 
 ctypedef fused Float:
     float
@@ -16,19 +16,30 @@ cdef extern from "<utility>" namespace "std" nogil:
         U temperature "second"
 
 
+cdef extern from "functional.cpp" namespace "libthermo" nogil:
+    # ........................................................................................... #
+    #  - common functions
+    # ........................................................................................... #
+    T linear_interpolate[T](T x, T x0, T x1, T y0, T y1) noexcept
+    T degrees[T](T radians) noexcept
+    T radians[T](T degrees) noexcept
+    T interpolate_z[T](size_t size, T x, T* xp, T* fp) noexcept
 
-cdef extern from "_C.cpp" namespace "nzt" nogil:
-    # ........................................................................................... #
-    #  - constants
-    # ........................................................................................... #
-    # TODO:...
-    # ........................................................................................... #
-    #  - structure
-    # ........................................................................................... #
+
+cdef extern from "wind.cpp" namespace "libthermo" nogil:
     cdef cppclass WindComponents[T]:
         T u
         T v
+    # ........................................................................................... #
+    #  - wind
+    # ........................................................................................... #
+    T wind_direction[T](T u, T v) noexcept
+    T wind_direction[T](T u, T v, T from_) noexcept
+    T wind_magnitude[T](T u, T v) noexcept
+    WindComponents[T] wind_components[T](T direction, T magnitude) noexcept
 
+
+cdef extern from "libthermo.cpp" namespace "libthermo" nogil:
     cdef cppclass LCL[T]:
         T pressure
         T temperature
@@ -37,21 +48,6 @@ cdef extern from "_C.cpp" namespace "nzt" nogil:
         T pressure
         T temperature
         T dewpoint
-
-    # ........................................................................................... #
-    #  - common functions
-    # ........................................................................................... #
-    T linear_interpolate[T](T x, T x0, T x1, T y0, T y1) noexcept
-    T degrees[T](T radians) noexcept
-    T radians[T](T degrees) noexcept
-    T interpolate_z[T](size_t size, T x, T* xp, T* fp) noexcept
-    # ........................................................................................... #
-    #  - wind
-    # ........................................................................................... #
-    T wind_direction[T](T u, T v) noexcept
-    T wind_direction[T](T u, T v, T from_) noexcept
-    T wind_magnitude[T](T u, T v) noexcept
-    WindComponents[T] wind_components[T](T direction, T magnitude) noexcept
 
     # ........................................................................................... #
     #  - thermodynamic functions
@@ -66,7 +62,7 @@ cdef extern from "_C.cpp" namespace "nzt" nogil:
     # @overload
     T dewpoint[T](T vapor_pressure) noexcept
     # @overload
-    T dewpoint_from_mixing_ratio "nzt::dewpoint" [T](T pressure, T mixing_ratio) noexcept
+    T dewpoint_from_mixing_ratio "libthermo::dewpoint" [T](T pressure, T mixing_ratio) noexcept
     # ........................................................................................... #
     #  - adiabatic processes
     # ........................................................................................... #
@@ -80,5 +76,11 @@ cdef extern from "_C.cpp" namespace "nzt" nogil:
         T pressure, T temperature, T dewpoint, T eps, T step, size_t max_iters
     ) noexcept
     
+
+#     template <floating T>
+# constexpr T downdraft_cape(
+#   const T pressure[], const T temperature[], const T dewpoint[], const size_t size
+# ) noexcept
+    T downdraft_cape[T](T* pressure, T* temperature, T* dewpoint,  size_t size) noexcept
     # sharp routine's
     T wobus[T](T temperature) noexcept

@@ -5,6 +5,8 @@
 !pyproject.toml
 !setup.py
 !/src/nzthermo/
+!/src/include/
+!/src/lib/
 !/tests/
 !/.git/
 # !/src

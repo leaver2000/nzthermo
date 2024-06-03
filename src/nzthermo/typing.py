@@ -1,17 +1,8 @@
 from __future__ import annotations
 
 import sys
-from typing import (
-    Annotated,
-    Any,
-    Literal as L,
-    NewType,
-    Protocol,
-    Sequence,
-    TypeAlias,
-    TypeVar,
-    runtime_checkable,
-)
+from typing import TYPE_CHECKING, Annotated, Any, NewType, Protocol, Sequence, TypeAlias, TypeVar, runtime_checkable
+from typing import Literal as L
 
 import numpy as np
 
@@ -24,11 +15,21 @@ Kilogram = Annotated[_T, "kg"]
 Percent = Annotated[_T, "%"]
 Ratio = Annotated[_T, "ratio"]
 
+
 if sys.version_info >= (3, 11):
-    from typing import TypeVarTuple
+    from typing import Self  # noqa
+else:
+    if TYPE_CHECKING:
+        from typing_extensions import Self
+    else:
+        Self = Any
+
+
+if sys.version_info >= (3, 11):
+    from typing import TypeVarTuple, Unpack
 
     Ts = TypeVarTuple("Ts")
-    shape = Annotated[tuple[*Ts], "shape"]
+    shape = Annotated[tuple[Unpack[Ts]], "shape"]
 else:
     shape = tuple
 

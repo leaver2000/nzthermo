@@ -1,23 +1,15 @@
-#ifndef _NZTHERMO_H_
-#define _NZTHERMO_H_
+#pragma once
 
-/* include */
 #include <algorithm>
 #include <cmath>
 #include <functional>
 #include <vector>
 #include <array>
 
+#include <functional.hpp>
 #include <common.hpp>
-namespace nzt {
 
-/* ........................................{ types  }........................................... */
-
-template <typename T>
-concept floating = std::is_floating_point_v<T>;
-
-template <typename R, typename... Args>
-using Fn = R (*)(Args...);
+namespace libthermo {
 
 /* ........................................{ const  }........................................... */
 
@@ -32,18 +24,6 @@ static constexpr double P0 = 100000.0;  // `(Pa)` - standard pressure at sea lev
 
 /* ........................................{ struct }........................................... */
 template <floating T>
-struct WindVector {
-    T speed;
-    T direction;
-};
-
-template <floating T>
-struct WindComponents {
-    T u;
-    T v;
-};
-
-template <floating T>
 struct LCL {
     T pressure;
     T temperature;
@@ -56,60 +36,47 @@ struct Parcel {
     T dewpoint;
 };
 
-/* ........................................{ common }........................................... */
 template <floating T>
-bool monotonically_decreasing(const T x[], const size_t size) noexcept;
-FLOATING norm(const T x, const T x0, const T x1) noexcept;
-FLOATING radians(const T degrees) noexcept;
-FLOATING degrees(const T radians) noexcept;
-FLOATING linear_interpolate(
-  const T x, const T x0, const T x1, const T y0, const T y1, const bool log_x = false
-) noexcept;
-FLOATING interpolate_z(
-  const size_t size, const T x, const T xp[], const T fp[], bool log_x = false
-) noexcept;
-FLOATING heaviside(const T x, const T h0) noexcept;
-FLOATING omega(T T0, T T1, T T2) noexcept;
-FLOATING domega(T T0, T T1, T T2) noexcept;
-/* ........................................{ winds  }........................................... */
-
-FLOATING wind_direction(const T u, const T v, const bool from = true) noexcept;
-FLOATING wind_magnitude(const T u, const T v) noexcept;
+constexpr T mixing_ratio(const T partial_press, const T total_press) noexcept;
 
 template <floating T>
-constexpr WindComponents<T> wind_components(const T direction, const T magnitude) noexcept;
+constexpr T saturation_vapor_pressure(const T temperature) noexcept;
 
-/* ........................................{ thermo }........................................... */
+template <floating T>
+constexpr T virtual_temperature(const T temperature, const T mixing_ratio);
 
-FLOATING mixing_ratio(const T partial_press, const T total_press) noexcept;
-FLOATING saturation_vapor_pressure(const T temperature) noexcept;
-FLOATING virtual_temperature(const T temperature, const T mixing_ratio);
-FLOATING saturation_mixing_ratio(const T pressure, const T temperature) noexcept;
-FLOATING vapor_pressure(const T pressure, const T mixing_ratio) noexcept;
-FLOATING dry_lapse(const T pressure, const T reference_pressure, const T temperature) noexcept;
-FLOATING dewpoint(const T vapor_pressure) noexcept;
-FLOATING dewpoint(const T pressure, const T mixing_ratio) noexcept;
-FLOATING potential_temperature(const T pressure, const T temperature) noexcept;  // theta
-FLOATING equivalent_potential_temperature(
+template <floating T>
+constexpr T saturation_mixing_ratio(const T pressure, const T temperature) noexcept;
+
+template <floating T>
+constexpr T vapor_pressure(const T pressure, const T mixing_ratio) noexcept;
+
+template <floating T>
+constexpr T dry_lapse(const T pressure, const T reference_pressure, const T temperature) noexcept;
+
+template <floating T>
+constexpr T dewpoint(const T vapor_pressure) noexcept;
+
+template <floating T>
+constexpr T dewpoint(const T pressure, const T mixing_ratio) noexcept;
+
+template <floating T>
+constexpr T potential_temperature(const T pressure, const T temperature) noexcept;  // theta
+
+template <floating T>
+constexpr T equivalent_potential_temperature(
   const T pressure, const T temperature, const T dewpoint
 ) noexcept;  // theta_e
-FLOATING wet_bulb_potential_temperature(
+
+template <floating T>
+constexpr T wet_bulb_potential_temperature(
   const T pressure, const T temperature, const T dewpoint
 ) noexcept;  // theta_w
 
 /* ........................................{ ode    }........................................... */
 
-FLOATING rk2(Fn<T, T, T> fn, T x0, T x1, T y, T step /* = .1 */) noexcept;
-template <floating T, floating... Args>
-constexpr T fixed_point(
-  const Fn<T, T, T, Args...> fn,
-  const size_t max_iters,
-  const T eps,
-  const T x0,
-  const Args... args
-) noexcept;
-
-FLOATING moist_lapse(
+template <floating T>
+constexpr T moist_lapse(
   const T pressure, const T next_pressure, const T temperature, const T step
 ) noexcept;
 
@@ -120,11 +87,13 @@ constexpr LCL<T> lcl(
   const T pressure, const T temperature, const T dewpoint, const T eps, const size_t max_iters
 ) noexcept;
 
-FLOATING lcl_pressure(
+template <floating T>
+constexpr T lcl_pressure(
   const T pressure, const T temperature, const T dewpoint, const T eps, const size_t max_iters
 ) noexcept;
 
-FLOATING wet_bulb_temperature(
+template <floating T>
+constexpr T wet_bulb_temperature(
   const T pressure,
   const T temperature,
   const T dewpoint,
@@ -133,6 +102,10 @@ FLOATING wet_bulb_temperature(
   const size_t max_iters
 ) noexcept;
 
+template <floating T>
+constexpr T downdraft_cape(
+  const T pressure[], const T temperature[], const T dewpoint[], const size_t size
+) noexcept;
 /* ........................................{ sharp  }........................................... */
 /**
  * \author John Hart - NSSFC KCMO / NWSSPC OUN
@@ -167,9 +140,9 @@ FLOATING wet_bulb_temperature(
  *
  * \return  wobf            (degK)
  */
-FLOATING wobus(T temperature);
+template <floating T>
+constexpr T wobus(T temperature);
 
 /* ........................................{ ecape  }........................................... */
 
-}  // namespace nzt
-#endif  // _NZTHERMO_H_
+}  // namespace libthermo
