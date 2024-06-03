@@ -187,13 +187,17 @@ constexpr T downdraft_cape(
         t = temperature[i];
         td = dewpoint[i];
         trace = moist_lapse(p, wb_top, p_top, 1000.0);
-        delta = virtual_temperature(p, t, td) - virtual_temperature(p, trace, trace);
+        dcape -= virtual_temperature(p, t, td) - virtual_temperature(p, trace, trace);
 
-        ln = std::log(p);
-        dcape += (delta - delta_start) * (ln + ln_start) / 2.0;
-        // next iter
-        ln_start = ln;
-        delta_start = delta;
+        // ln = std::log(p);
+        // // for (size_t j = 1; j < 5; j++)
+        // //     delta += 2 * virtual_temperature(pressure[j], t, td) -
+        // //       virtual_temperature(p, trace, trace);  //fn(a + i * h);
+        // // dcape += trapezoidal(delta, ln, (T)5.0);
+        // // dcape += (delta - delta_start) * (ln + ln_start) / 2.0;
+        // // // next iter
+        // ln_start = ln;
+        // delta_start = delta;
     }
     // dcape = -(Rd * F.nantrapz(delta, logp, axis=1))
     return -Rd * dcape;

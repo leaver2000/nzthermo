@@ -135,4 +135,7 @@ constexpr size_t lower_bound(const T array[], const int N, const T& value, const
 template <floating T, typename C = std::less<T>>
 constexpr size_t upper_bound(const T array[], const int N, const T& value, const C cmp = C{});
 
+template <floating T>
+constexpr T trapezoidal(const Fn<T, T> fn, const T a, const T b, const T n) noexcept;
+
 }  // namespace libthermo

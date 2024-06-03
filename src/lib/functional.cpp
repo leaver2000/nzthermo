@@ -145,4 +145,22 @@ constexpr T fixed_point(
     return NAN;
 }
 
+template <floating T>
+constexpr T trapezoidal(const Fn<T, T> fn, const T a, const T b, const T n) noexcept {
+    // Grid spacing
+    T h = (b - a) / n;
+
+    // Computing sum of first and last terms
+    // in above formula
+    T s = fn(a) + fn(b);
+
+    // Adding middle terms in above formula
+    for (size_t i = 1; i < n; i++)
+        s += 2 * fn(a + i * h);
+
+    // h/2 indicates (b-a)/2n. Multiplying h/2
+    // with s.
+    return (h / 2) * s;
+}
+
 }  // namespace libthermo
