@@ -44,21 +44,24 @@ __all__ = [
     "theta_w",
 ]
 from typing import Final
+
 from ._core import OPENMP_ENABLED, lcl, moist_lapse, parcel_profile
 from ._ufunc import (
     delta_t,
-    potential_temperature,
+    dewpoint,
+    dry_lapse,
     equivalent_potential_temperature,
-    wind_direction,
-    wind_components,
-    wind_magnitude,
+    potential_temperature,
+    saturation_mixing_ratio,
+    saturation_vapor_pressure,
     wet_bulb_potential_temperature,
     wet_bulb_temperature,
-    dry_lapse,
-    dewpoint,
+    wind_components,
+    wind_direction,
+    wind_magnitude,
 )
 from ._version import __version__
-from .core import (
+from .core import (  # parcel_profile,
     cape_cin,
     ccl,
     dewpoint_from_specific_humidity,
@@ -69,9 +72,6 @@ from .core import (
     mixing_ratio,
     mixing_ratio_from_specific_humidity,
     most_unstable_parcel,
-    # parcel_profile,
-    saturation_mixing_ratio,
-    saturation_vapor_pressure,
     vapor_pressure,
     virtual_temperature,
 )

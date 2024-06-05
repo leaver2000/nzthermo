@@ -1,10 +1,7 @@
-from typing import (
-    Annotated,
-    TypeVar,
-)
+from typing import Annotated, TypeVar
 
-from .typing import Kelvin, Pascal
 from ._typing import _ufunc1x1, _ufunc2x1, _ufunc2x2, _ufunc3x1
+from .typing import Kelvin, Pascal
 
 _T = TypeVar("_T")
 
@@ -19,6 +16,8 @@ ThetaW = Annotated[_T, "Wet bulb potential temperature"]
 # ............................................................................................... #
 @_ufunc1x1
 def dewpoint(vapor_pressure: Pascal[float]) -> Kelvin[float]: ...
+@_ufunc1x1
+def saturation_vapor_pressure(temperature: Kelvin[float]) -> Pascal[float]: ...
 @_ufunc2x1
 def saturation_mixing_ratio(pressure: Pascal[float], temperature: Kelvin[float]) -> float: ...
 @_ufunc2x1

@@ -16,7 +16,11 @@ from typing import (
 )
 
 import numpy as np
-from numpy._typing._array_like import _ArrayLikeComplex_co, _ArrayLikeObject_co, _ArrayLikeTD64_co
+from numpy._typing._array_like import (
+    _ArrayLikeComplex_co,
+    _ArrayLikeObject_co,
+    _ArrayLikeTD64_co,
+)
 from numpy.typing import NDArray
 
 try:
@@ -76,6 +80,48 @@ def nantrapz(
     dx: float = 1.0,
     axis: SupportsIndex = -1,
 ) -> NDArray[np.float_]:
+    r"""
+    This is a clone of the `numpy.trapz` function but with support for `nan` values.
+    see the `numpy.lib.function_base.trapz` function for more information.
+
+    Integrate along the given axis using the composite trapezoidal rule.
+
+    If `x` is provided, the integration happens in sequence along its
+    elements - they are not sorted.
+
+    Integrate `y` (`x`) along each 1d slice on the given axis, compute
+    :math:`\int y(x) dx`.
+    When `x` is specified, this integrates along the parametric curve,
+    computing :math:`\int_t y(t) dt =
+    \int_t y(t) \left.\frac{dx}{dt}\right|_{x=x(t)} dt`.
+
+    Parameters
+    ----------
+    y : array_like
+        Input array to integrate.
+    x : array_like, optional
+        The sample points corresponding to the `y` values. If `x` is None,
+        the sample points are assumed to be evenly spaced `dx` apart. The
+        default is None.
+    dx : scalar, optional
+        The spacing between sample points when `x` is None. The default is 1.
+    axis : int, optional
+        The axis along which to integrate.
+
+    Returns
+    -------
+    trapz : float or ndarray
+        Definite integral of `y` = n-dimensional array as approximated along
+        a single axis by the trapezoidal rule. If `y` is a 1-dimensional array,
+        then the result is a float. If `n` is greater than 1, then the result
+        is an `n`-1 dimensional array.
+
+    Notes
+    ------
+    The try-except block was removed because it was not necessary, for the use case of this
+    of this library.
+    """
+
     y = np.asanyarray(y)
     if x is None:
         d = dx
@@ -94,6 +140,7 @@ def nantrapz(
     slice2 = [slice(None)] * nd
     slice1[axis] = slice(1, None)
     slice2[axis] = slice(None, -1)
+
     return np.nansum(d * (y[tuple(slice1)] + y[tuple(slice2)]) / 2.0, axis=axis)
 
 

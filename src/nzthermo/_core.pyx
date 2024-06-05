@@ -81,9 +81,9 @@ cdef cvarray nzarray((size_t, size_t) shape, size_t size):
         allocate_buffer=True,
     )
 
-# -------------------------------------------------------------------------------------------------
-# thermodynamic functions
-# -------------------------------------------------------------------------------------------------
+# ............................................................................................... #
+# moist adibatic lapse rate
+# ............................................................................................... #
 cdef void moist_lapse_1d_(
     T[:] out, T[:] pressure, T reference_pressure, T temperature, T step
 ) noexcept nogil:
@@ -133,24 +133,6 @@ cdef T[:, :] _moist_lapse(T[:, :] pressure,
     return out
 
 
-def downdraft_cape(
-    np.ndarray pressure,
-    np.ndarray temperature,
-    np.ndarray dewpoint,
-):  
-    cdef:
-        double[:, :] p, t, td
-        size_t size = temperature.shape[1]
-    p = pressure.astype(np.float64)
-    t = dewpoint.astype(np.float64)
-    td = temperature.astype(np.float64)
-    out = np.empty(temperature.shape[0], dtype=np.float64)
-
-    for i in range(temperature.shape[0]):
-        out[i] = C.downdraft_cape[double](&p[i, 0], &t[i, 0], &td[i, 0], size)
-        
-    return out
-    
     
 
 def moist_lapse(
@@ -665,4 +647,25 @@ def interpolate_nz(
         return out[0]
 
     return tuple(out)
+    
 # ............................................................................................... #
+# this is actually not implemented in the C++ code
+# ............................................................................................... #
+def downdraft_cape(
+    np.ndarray pressure,
+    np.ndarray temperature,
+    np.ndarray dewpoint,
+):  
+    cdef:
+        double[:, :] p, t, td
+        size_t size = temperature.shape[1]
+    p = pressure.astype(np.float64)
+    t = dewpoint.astype(np.float64)
+    td = temperature.astype(np.float64)
+    out = np.empty(temperature.shape[0], dtype=np.float64)
+
+    for i in range(temperature.shape[0]):
+        out[i] = C.downdraft_cape[double](&p[i, 0], &t[i, 0], &td[i, 0], size)
+        
+    return out
+    

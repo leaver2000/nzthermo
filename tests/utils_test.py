@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 import numpy as np
+from numpy.testing import assert_allclose, assert_array_equal
+
 from nzthermo.utils import timeseries
-from numpy.testing import assert_array_equal, assert_allclose
 
 
 def test_timeseries() -> None:

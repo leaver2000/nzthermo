@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import numpy as np
-import nzthermo.functional as F
-from numpy.testing import assert_allclose
 import metpy.calc.tools as mtools
-from metpy.units import units
+import numpy as np
 import pytest
 from metpy.calc.thermo import _find_append_zero_crossings
+from metpy.units import units
+from numpy.testing import assert_allclose
+
+import nzthermo.functional as F
 
 PRESSURE = np.array(
     [1013, 1000, 975, 950, 925, 900, 875, 850, 825, 800, 775, 750, 725, 700, 650, 600, 550, 500, 450, 400, 350, 300],

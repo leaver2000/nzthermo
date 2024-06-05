@@ -1,13 +1,14 @@
-import pytest
-import numpy as np
-from numpy.testing import assert_allclose
 import metpy.calc as mpcalc
+import numpy as np
+import pytest
 from metpy.units import units
+from numpy.testing import assert_allclose
+
 from nzthermo._ufunc import (
-    wet_bulb_temperature,
-    potential_temperature,
     equivalent_potential_temperature,
+    potential_temperature,
     wet_bulb_potential_temperature,
+    wet_bulb_temperature,
     wind_components,
 )
 

@@ -1,3 +1,11 @@
+"""
+This module wraps many of the c++ templated functions as `numpy.ufuncs`, so that they can be used
+in a vectorized manner.
+
+TDOD: rather than maintaing the external stub file a better use case would to set up a simple script
+that generates the stub file from the c++ header file.
+"""
+
 # cython: language_level=3
 # cython: boundscheck=False
 # cython: wraparound=False
@@ -6,10 +14,10 @@
 
 # pyright: reportGeneralTypeIssues=false
 
-cimport nzthermo._C as C
-
 cimport cython
 cimport numpy as np
+
+cimport nzthermo._C as C
 
 ctypedef fused T:
     float
@@ -22,38 +30,44 @@ ctypedef fused integer:
 
 np.import_array()
 np.import_ufunc()
-# ........................................................................................... #
+
+# ............................................................................................... #
 #  - wind
-# ........................................................................................... #
+# ............................................................................................... #
 @cython.ufunc
 cdef T wind_direction(T u, T v) noexcept nogil:
     return C.wind_direction(u, v)
-
 
 @cython.ufunc
 cdef T wind_magnitude(T u, T v) noexcept nogil:
     return C.wind_magnitude(u, v)
 
-
 @cython.ufunc
 cdef (double, double) wind_components(T direction, T magnitude) noexcept nogil:
+    # TODO: the signature....
+    # cdef (T, T) wind_components(T direction, T magnitude) noexcept nogil:...
+    # 
+    # Is unsupported by the ufunc signature. So the option are:
+    # - maintain gil
+    # - cast to double 
+    # - write the template in C
     cdef C.WindComponents[T] wnd = C.wind_components(direction, magnitude)
     return <double>wnd.u, <double>wnd.v
 
-
-# ........................................................................................... #
+# ............................................................................................... #
 #  - thermodynamic functions
-# ........................................................................................... #
+# ............................................................................................... #
+@cython.ufunc
+cdef T saturation_vapor_pressure(T temperature) noexcept nogil:
+    return C.saturation_vapor_pressure(temperature)
+
 @cython.ufunc
 cdef T virtual_temperature(T temperature, T mixing_ratio) noexcept nogil:
     return C.virtual_temperature(temperature, mixing_ratio)
 
-
 @cython.ufunc
 cdef T saturation_mixing_ratio(T pressure, T temperature) noexcept nogil:
     return C.saturation_mixing_ratio(pressure, temperature)
-
-
 
 @cython.ufunc
 cdef T dewpoint(T vapor_pressure) noexcept nogil:
@@ -67,16 +81,13 @@ cdef T dry_lapse(T pressure, T temperature, T reference_pressure) noexcept nogil
 cdef T potential_temperature(T pressure, T temperature) noexcept nogil:
     return C.potential_temperature(pressure, temperature)
 
-
 @cython.ufunc # theta_e
 cdef T equivalent_potential_temperature(T pressure, T temperature, T dewpoint) noexcept nogil:
     return C.equivalent_potential_temperature(pressure, temperature, dewpoint)
 
-
 @cython.ufunc # theta_w
 cdef T wet_bulb_potential_temperature(T pressure, T temperature, T dewpoint) noexcept nogil:
     return C.wet_bulb_potential_temperature(pressure, temperature, dewpoint)
-
 
 @cython.ufunc 
 cdef T wet_bulb_temperature(T pressure, T temperature, T dewpoint) noexcept nogil:
@@ -98,6 +109,13 @@ cdef T lcl_pressure(T pressure, T temperature, T dewpoint) noexcept nogil:
 
 @cython.ufunc
 cdef (double, double) lcl(T pressure, T temperature, T dewpoint) noexcept nogil:
+    # TODO: the signature....
+    # cdef (T, T) lcl(T pressure, T temperature, T dewpoint) noexcept nogil:...
+    # 
+    # Is unsupported by the ufunc signature. So the option are:
+    # - maintain gil
+    # - cast to double 
+    # - write the template in C
     cdef:
         size_t max_iter = 50
         T eps = 0.1

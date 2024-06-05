@@ -6,7 +6,7 @@ import pytest
 from metpy.units import units
 from numpy.testing import assert_allclose
 
-from nzthermo.core import moist_lapse
+from nzthermo._core import moist_lapse
 
 
 def pressure_levels(sfc=1013.25, dtype: Any = np.float64):

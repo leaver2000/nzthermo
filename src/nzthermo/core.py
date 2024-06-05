@@ -7,7 +7,18 @@ additional support for higher dimensions in what would have normally been 1D arr
 """
 
 from __future__ import annotations
-from typing import TYPE_CHECKING, Annotated, Final, Generic, Literal, NamedTuple, TypeVar, overload, Literal as L
+
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Final,
+    Generic,
+    Literal,
+    Literal as L,
+    NamedTuple,
+    TypeVar,
+    overload,
+)
 
 import numpy as np
 from numpy.typing import NDArray
@@ -15,12 +26,9 @@ from numpy.typing import NDArray
 if TYPE_CHECKING:
     from typing_extensions import Doc
 
-from . import functional as F, _ufunc, _core
-
-from ._core import interpolate_nz, lcl, moist_lapse
-from .const import E0, P0, T0, Cpd, Rd, Rv
+from . import _core, _ufunc, functional as F
+from .const import P0, Cpd, Rd, Rv
 from .typing import Kelvin, Kilogram, N, Pascal, Ratio, Z, shape
-
 
 # .....{ types }.....
 T = TypeVar("T")
@@ -33,12 +41,6 @@ newaxis: Final[None] = np.newaxis
 # .....{ basic thermodynamics }.....
 # None of the following require any type of array broadcasting or fancy indexing
 # =================================================================================================
-
-
-def saturation_vapor_pressure(temperature: Kelvin[NDArray[float_]]) -> Pascal[NDArray[float_]]:
-    return E0 * np.exp(17.67 * (temperature - T0) / (temperature - 29.65))
-
-
 def mixing_ratio_from_specific_humidity(specific_humidity: Kilogram[NDArray[float_]]) -> Kilogram[NDArray[float_]]:
     return specific_humidity / (1 - specific_humidity)
 
@@ -62,12 +64,6 @@ def mixing_ratio(
     molecular_weight_ratio: Ratio[NDArray[float_] | float] = Rd / Rv,
 ) -> Ratio[NDArray[float_]]:
     return molecular_weight_ratio * partial_press / (total_press - partial_press)
-
-
-def saturation_mixing_ratio(
-    pressure: Pascal[NDArray[float_]], temperature: Kelvin[NDArray[float_]]
-) -> Ratio[NDArray[float_]]:
-    return mixing_ratio(saturation_vapor_pressure(temperature), pressure)
 
 
 # .....{ virtual temperature }.....
@@ -181,7 +177,7 @@ def ccl(
     p0 = pressure[:, 0]  # (N,)
     td0 = dewpoint[:, 0]  # (N,)
     td = _ufunc.dewpoint(  # (N, Z)
-        vapor_pressure(pressure, mixing_ratio(saturation_vapor_pressure(td0[:, newaxis]), p0[:, newaxis]))
+        vapor_pressure(pressure, mixing_ratio(_ufunc.saturation_vapor_pressure(td0[:, newaxis]), p0[:, newaxis]))
     )
 
     intersect = F.intersect_nz(pressure, td, temperature, log_x=True)  # (N, Z)
@@ -432,66 +428,66 @@ class ParcelProfile(NamedTuple, Generic[float_]):
         return text
 
 
-def parcel_profile(
-    pressure: Annotated[
-        Pascal[np.ndarray[shape[Z], np.dtype[float_]]], "isobaric pressure levels"
-    ],  # TODO: add support for (N, Z) pressure arrays...
-    temperature: Annotated[Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]], "isobaric temperature"],
-    dewpoint: Annotated[Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]], "isobaric dewpoint temperature"],
-    *,
-    refrence_pressure: Annotated[Pascal[np.ndarray[shape[N], np.dtype[np.float_]]], "surface pressure"] | None = None,
-    refrence_temperature: (
-        Annotated[Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]], "surface temperature"] | None
-    ) = None,
-    refrence_dewpoint: (
-        Annotated[Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]], "surface dewpoint temperature"] | None
-    ) = None,
-) -> ParcelProfile[float_]:
-    # add a nan value to the end of the pressure array
-    dtype = pressure.dtype
-    pressure = np.append(pressure, np.nan)
-    N, Z = temperature.shape[0], pressure.shape[0]
-    # indices = np.arange(N)
-    P0 = pressure[:1].repeat(N) if refrence_pressure is None else refrence_pressure  # (N,)
-    T0 = temperature[:, 0] if refrence_temperature is None else refrence_temperature  # (N,)
-    Td0 = dewpoint[:, 0] if refrence_dewpoint is None else refrence_dewpoint  # (N,)
-    assert T0.shape == Td0.shape == P0.shape == (N,)
+# def parcel_profile(
+#     pressure: Annotated[
+#         Pascal[np.ndarray[shape[Z], np.dtype[float_]]], "isobaric pressure levels"
+#     ],  # TODO: add support for (N, Z) pressure arrays...
+#     temperature: Annotated[Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]], "isobaric temperature"],
+#     dewpoint: Annotated[Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]], "isobaric dewpoint temperature"],
+#     *,
+#     refrence_pressure: Annotated[Pascal[np.ndarray[shape[N], np.dtype[np.float_]]], "surface pressure"] | None = None,
+#     refrence_temperature: (
+#         Annotated[Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]], "surface temperature"] | None
+#     ) = None,
+#     refrence_dewpoint: (
+#         Annotated[Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]], "surface dewpoint temperature"] | None
+#     ) = None,
+# ) -> ParcelProfile[float_]:
+#     # add a nan value to the end of the pressure array
+#     dtype = pressure.dtype
+#     pressure = np.append(pressure, np.nan)
+#     N, Z = temperature.shape[0], pressure.shape[0]
+#     # indices = np.arange(N)
+#     P0 = pressure[:1].repeat(N) if refrence_pressure is None else refrence_pressure  # (N,)
+#     T0 = temperature[:, 0] if refrence_temperature is None else refrence_temperature  # (N,)
+#     Td0 = dewpoint[:, 0] if refrence_dewpoint is None else refrence_dewpoint  # (N,)
+#     assert T0.shape == Td0.shape == P0.shape == (N,)
 
-    # [ lcl ]
-    lcl_p, lcl_t = lcl(P0, T0, Td0)  # (N,)
+#     # [ lcl ]
+#     lcl_p, lcl_t = lcl(P0, T0, Td0)  # (N,)
 
-    # [ pressure ]
-    mask = pressure >= lcl_p.reshape(-1, 1)  # (N, Z)
+#     # [ pressure ]
+#     mask = pressure >= lcl_p.reshape(-1, 1)  # (N, Z)
 
-    P = np.full((N, Z), np.nan, dtype=dtype)
-    nx, zx = np.nonzero(mask)
-    P[nx, zx] = pressure[zx]
-    nx, zx = np.nonzero(~mask & ~np.isnan(pressure))
-    P[nx, zx + 1] = pressure[zx]
-    lcl_index = np.nonzero(np.isnan(P))
-    assert len(lcl_index) == 2 and len(lcl_index[0]) == N == len(lcl_index[1])
-    P[lcl_index] = lcl_p
+#     P = np.full((N, Z), np.nan, dtype=dtype)
+#     nx, zx = np.nonzero(mask)
+#     P[nx, zx] = pressure[zx]
+#     nx, zx = np.nonzero(~mask & ~np.isnan(pressure))
+#     P[nx, zx + 1] = pressure[zx]
+#     lcl_index = np.nonzero(np.isnan(P))
+#     assert len(lcl_index) == 2 and len(lcl_index[0]) == N == len(lcl_index[1])
+#     P[lcl_index] = lcl_p
 
-    # [ parcel temperature ]
-    lower = np.column_stack(
-        [T0, _ufunc.dry_lapse(np.where(mask, P, np.nan), T0[:, newaxis], P0[:, newaxis])[:, 1:]]
-    )  #  sfc -> lcl
-    upper = moist_lapse(np.where(mask, np.nan, P), lcl_t, lcl_p)  # lcl -> top
+#     # [ parcel temperature ]
+#     lower = np.column_stack(
+#         [T0, _ufunc.dry_lapse(np.where(mask, P, np.nan), T0[:, newaxis], P0[:, newaxis])[:, 1:]]
+#     )  #  sfc -> lcl
+#     upper = moist_lapse(np.where(mask, np.nan, P), lcl_t, lcl_p)  # lcl -> top
 
-    Tp = np.where(mask, lower, upper)  # parcel temperature
-    Tp[lcl_index] = lcl_t
+#     Tp = np.where(mask, lower, upper)  # parcel temperature
+#     Tp[lcl_index] = lcl_t
 
-    # [ temperature & dewpoint ]
-    T, Td = interpolate_nz(
-        lcl_p,
-        pressure[:-1],  # drop the trailing nan value
-        temperature,
-        dewpoint,
-    )
-    T = _insert(temperature, mask, T)
-    Td = _insert(dewpoint, mask, Td)
+#     # [ temperature & dewpoint ]
+#     T, Td = interpolate_nz(
+#         lcl_p,
+#         pressure[:-1],  # drop the trailing nan value
+#         temperature,
+#         dewpoint,
+#     )
+#     T = _insert(temperature, mask, T)
+#     Td = _insert(dewpoint, mask, Td)
 
-    return ParcelProfile(P, T, Td, Tp, lcl_index)
+#     return ParcelProfile(P, T, Td, Tp, lcl_index)
 
 
 # -------------------------------------------------------------------------------------------------
@@ -642,12 +638,12 @@ def cape_cin(
     # based on the temperature above the LCL
     parcel_mixing_ratio = np.where(
         below_lcl,
-        saturation_mixing_ratio(pressure, dewpoint),
-        saturation_mixing_ratio(pressure, temperature),
+        _ufunc.saturation_mixing_ratio(pressure, dewpoint),
+        _ufunc.saturation_mixing_ratio(pressure, temperature),
     )
     # Convert the temperature/parcel profile to virtual temperature
-    temperature = virtual_temperature(temperature, saturation_mixing_ratio(pressure, dewpoint))
-    parcel_profile = virtual_temperature(parcel_profile, parcel_mixing_ratio)
+    temperature = _ufunc.virtual_temperature(temperature, _ufunc.saturation_mixing_ratio(pressure, dewpoint))
+    parcel_profile = _ufunc.virtual_temperature(parcel_profile, parcel_mixing_ratio)
     # Calculate LFC limit of integration
     lfc_p, _ = lfc(pressure, temperature, dewpoint, parcel_profile, which=which_lfc)  # ✔️
 

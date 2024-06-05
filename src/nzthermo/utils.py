@@ -1,13 +1,13 @@
 from __future__ import annotations
 
+import datetime
 from typing import NamedTuple
 
 import numpy as np
 from numpy.typing import NDArray
-import datetime
 
 from ._ufunc import delta_t
-from .typing import SupportsArray, NestedSequence
+from .typing import NestedSequence, SupportsArray
 
 
 class Timeseries(NamedTuple):

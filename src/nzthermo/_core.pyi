@@ -1,12 +1,7 @@
-from typing import (
-    Any,
-    Literal as L,
-    ParamSpec,
-    TypeVar,
-    overload,
-)
+from typing import Any, Literal as L, ParamSpec, TypeVar, overload
 
 import numpy as np
+
 from .typing import Kelvin, N, NestedSequence, Pascal, SupportsArray, Z, shape
 
 _T = TypeVar("_T")

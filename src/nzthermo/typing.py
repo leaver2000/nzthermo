@@ -1,8 +1,18 @@
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING, Annotated, Any, NewType, Protocol, Sequence, TypeAlias, TypeVar, runtime_checkable
-from typing import Literal as L
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Any,
+    Literal as L,
+    NewType,
+    Protocol,
+    Sequence,
+    TypeAlias,
+    TypeVar,
+    runtime_checkable,
+)
 
 import numpy as np
 

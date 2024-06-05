@@ -12,6 +12,7 @@ from typing import (
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
+
 from .typing import NestedSequence, SupportsArray
 
 _T = TypeVar("_T")
