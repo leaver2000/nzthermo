@@ -1,11 +1,13 @@
 from typing import Any
+import nzthermo._core as _C
+from nzthermo.core import lfc
 
 import metpy.calc as mpcalc
 import numpy as np
 import pytest
 from metpy.units import units
 from numpy.testing import assert_allclose
-from nzthermo.core import ccl, el, lcl, parcel_profile, interpolate_nz
+from nzthermo.core import ccl, el, lcl, parcel_profile, interpolate_nz, cape_cin
 
 np.set_printoptions(
     precision=3,
@@ -14,29 +16,26 @@ np.set_printoptions(
     linewidth=150,
     edgeitems=10,
 )
-PRESSURE = np.array(
-    [1013, 1000, 975, 950, 925, 900, 875, 850, 825, 800, 775, 750, 725, 700, 650, 600, 550, 500, 450, 400, 350, 300],
-    dtype=np.float64,
-)
-PRESSURE *= 100.0
-TEMPERATURE = np.array(
-    [
-        [243, 242, 241, 240, 239, 237, 236, 235, 233, 232, 231, 229, 228, 226, 235, 236, 234, 231, 226, 221, 217, 211],
-        [250, 249, 248, 247, 246, 244, 243, 242, 240, 239, 238, 236, 235, 233, 240, 239, 236, 232, 227, 223, 217, 211],
-        [293, 292, 290, 288, 287, 285, 284, 282, 281, 279, 279, 280, 279, 278, 275, 270, 268, 264, 260, 254, 246, 237],
-        [300, 299, 297, 295, 293, 291, 292, 291, 291, 289, 288, 286, 285, 285, 281, 278, 273, 268, 264, 258, 251, 242],
-    ],
-    dtype=np.float64,
-)
-DEWPOINT = np.array(
-    [
-        [224, 224, 224, 224, 224, 223, 223, 223, 223, 222, 222, 222, 221, 221, 233, 233, 231, 228, 223, 218, 213, 207],
-        [233, 233, 232, 232, 232, 232, 231, 231, 231, 231, 230, 230, 230, 229, 237, 236, 233, 229, 223, 219, 213, 207],
-        [288, 288, 287, 286, 281, 280, 279, 277, 276, 275, 270, 258, 244, 247, 243, 254, 262, 248, 229, 232, 229, 224],
-        [294, 294, 293, 292, 291, 289, 285, 282, 280, 280, 281, 281, 278, 274, 273, 269, 259, 246, 240, 241, 226, 219],
-    ],
-    dtype=np.float64,
-)
+_P = [1013, 1000, 975, 950, 925, 900, 875, 850, 825, 800, 775, 750, 725, 700, 650, 600, 550, 500, 450, 400, 350, 300]
+
+_T = [
+    [243, 242, 241, 240, 239, 237, 236, 235, 233, 232, 231, 229, 228, 226, 235, 236, 234, 231, 226, 221, 217, 211],
+    [250, 249, 248, 247, 246, 244, 243, 242, 240, 239, 238, 236, 235, 233, 240, 239, 236, 232, 227, 223, 217, 211],
+    [293, 292, 290, 288, 287, 285, 284, 282, 281, 279, 279, 280, 279, 278, 275, 270, 268, 264, 260, 254, 246, 237],
+    [300, 299, 297, 295, 293, 291, 292, 291, 291, 289, 288, 286, 285, 285, 281, 278, 273, 268, 264, 258, 251, 242],
+    # [299, 298, 296, 294, 292, 290, 289, 288, 287, 285, 284, 282, 281, 280, 276, 273, 268, 263, 258, 252, 245, 237],
+]
+_Td = [
+    [224, 224, 224, 224, 224, 223, 223, 223, 223, 222, 222, 222, 221, 221, 233, 233, 231, 228, 223, 218, 213, 207],
+    [233, 233, 232, 232, 232, 232, 231, 231, 231, 231, 230, 230, 230, 229, 237, 236, 233, 229, 223, 219, 213, 207],
+    [288, 288, 287, 286, 281, 280, 279, 277, 276, 275, 270, 258, 244, 247, 243, 254, 262, 248, 229, 232, 229, 224],
+    [294, 294, 293, 292, 291, 289, 285, 282, 280, 280, 281, 281, 278, 274, 273, 269, 259, 246, 240, 241, 226, 219],
+    # [298, 298, 297, 296, 295, 293, 291, 289, 287, 285, 284, 282, 280, 276, 273, 268, 263, 258, 252, 245, 237, 229],
+]
+PRESSURE = np.array(_P, dtype=np.float64) * 100.0
+TEMPERATURE = np.array(_T, dtype=np.float64)
+DEWPOINT = np.array(_Td, dtype=np.float64)
+P, T, Td = PRESSURE, TEMPERATURE, DEWPOINT
 
 
 def pressure_levels(sfc=1013.25, dtype: Any = np.float64):
@@ -107,10 +106,15 @@ def test_parcel_profile_with_lcl() -> None:
 
 @pytest.mark.parametrize("which", ["top", "bottom"])
 def test_el(which) -> None:
-    el_p, el_t = el(PRESSURE, TEMPERATURE, DEWPOINT, which=which)
+    prof = _C.parcel_profile(PRESSURE, TEMPERATURE[:, 0], DEWPOINT[:, 0])
+    el_p, el_t = el(PRESSURE, TEMPERATURE, DEWPOINT, prof, which=which)
     for i in range(TEMPERATURE.shape[0]):
         el_p_, el_t_ = mpcalc.el(
-            PRESSURE * units.pascal, TEMPERATURE[i] * units.degK, DEWPOINT[i] * units.degK, which=which
+            PRESSURE * units.pascal,
+            TEMPERATURE[i] * units.degK,
+            DEWPOINT[i] * units.degK,
+            prof[i] * units.degK,
+            which=which,
         )
 
         assert_allclose(el_p[i], el_p_.m, rtol=1e-1)
@@ -126,8 +130,93 @@ def test_lfc(which) -> None:
         lfc_p_, lfc_t_ = mpcalc.lfc(
             PRESSURE * units.pascal, TEMPERATURE[i] * units.kelvin, DEWPOINT[i] * units.kelvin, which=which
         )
-        np.testing.assert_allclose(lfc_p[i], lfc_p_.m, rtol=1e-2)  # type: ignore
-        np.testing.assert_allclose(lfc_t[i], lfc_t_.m, rtol=1e-2)
+        np.testing.assert_allclose(lfc_p[i], lfc_p_.m, rtol=1e-3)  # type: ignore
+        np.testing.assert_allclose(lfc_t[i], lfc_t_.m, rtol=1e-3)
+
+
+@pytest.mark.parametrize("which", ["top", "bottom"])
+def test_lfc_new(which) -> None:
+    prof = _C.parcel_profile(PRESSURE, TEMPERATURE[:, 0], DEWPOINT[:, 0])
+
+    lfc_p, lfc_t = lfc(PRESSURE, TEMPERATURE, DEWPOINT, prof, which)
+    for i in range(TEMPERATURE.shape[0]):
+        lfc_p_, lfc_t_ = mpcalc.lfc(
+            PRESSURE * units.pascal,
+            TEMPERATURE[i] * units.kelvin,
+            DEWPOINT[i] * units.kelvin,
+            prof[i] * units.kelvin,
+            which=which,
+        )
+        np.testing.assert_allclose(lfc_p[i], lfc_p_.m, rtol=1e-3)  # type: ignore
+        np.testing.assert_allclose(lfc_t[i], lfc_t_.m, rtol=1e-3)
+
+
+@pytest.mark.parametrize("which", ["top", "bottom"])
+def test_cape_cin(which) -> None:
+    prof = _C.parcel_profile(PRESSURE, TEMPERATURE[:, 0], DEWPOINT[:, 0])
+    # top equilibrium level
+    cape, cin = cape_cin(PRESSURE, TEMPERATURE, DEWPOINT, prof, which_lfc=which, which_el="top")
+    for i in range(TEMPERATURE.shape[0]):
+        cape_, cin_ = mpcalc.cape_cin(
+            PRESSURE * units.pascal,
+            TEMPERATURE[i] * units.kelvin,
+            DEWPOINT[i] * units.kelvin,
+            prof[i] * units.kelvin,
+            which_lfc=which,
+            which_el="top",
+        )
+        print("CAPE", cape[i], cape_.m, cape[i] - cape_.m)
+        np.testing.assert_allclose(cape[i], cape_.m, rtol=1)  # type: ignore
+        print("CIN", cin[i], cin_.m)
+        np.testing.assert_allclose(cin[i], cin_.m, rtol=1)
+
+    # bottom equilibrium level
+    cape, cin = cape_cin(PRESSURE, TEMPERATURE, DEWPOINT, prof, which_lfc=which, which_el="bottom")
+    for i in range(TEMPERATURE.shape[0]):
+        cape_, cin_ = mpcalc.cape_cin(
+            PRESSURE * units.pascal,
+            TEMPERATURE[i] * units.kelvin,
+            DEWPOINT[i] * units.kelvin,
+            prof[i] * units.kelvin,
+            which_lfc=which,
+            which_el="bottom",
+        )
+        print("CAPE", cape[i], cape_.m, cape[i] - cape_.m)
+        np.testing.assert_allclose(cape[i], cape_.m, rtol=1)  # type: ignore
+        print("CIN", cin[i], cin_.m)
+        np.testing.assert_allclose(cin[i], cin_.m, rtol=1)
+
+    # bottom lfc
+    cape, cin = cape_cin(PRESSURE, TEMPERATURE, DEWPOINT, prof, which_el=which, which_lfc="bottom")
+    for i in range(TEMPERATURE.shape[0]):
+        cape_, cin_ = mpcalc.cape_cin(
+            PRESSURE * units.pascal,
+            TEMPERATURE[i] * units.kelvin,
+            DEWPOINT[i] * units.kelvin,
+            prof[i] * units.kelvin,
+            which_el=which,
+            which_lfc="bottom",
+        )
+        print("CAPE", cape[i], cape_.m, cape[i] - cape_.m)
+        np.testing.assert_allclose(cape[i], cape_.m, rtol=1)  # type: ignore
+        print("CIN", cin[i], cin_.m)
+        np.testing.assert_allclose(cin[i], cin_.m, rtol=1)
+
+    # top lfc
+    cape, cin = cape_cin(PRESSURE, TEMPERATURE, DEWPOINT, prof, which_el=which, which_lfc="top")
+    for i in range(TEMPERATURE.shape[0]):
+        cape_, cin_ = mpcalc.cape_cin(
+            PRESSURE * units.pascal,
+            TEMPERATURE[i] * units.kelvin,
+            DEWPOINT[i] * units.kelvin,
+            prof[i] * units.kelvin,
+            which_el=which,
+            which_lfc="top",
+        )
+        print("CAPE", cape[i], cape_.m, cape[i] - cape_.m)
+        np.testing.assert_allclose(cape[i], cape_.m, rtol=1)  # type: ignore
+        print("CIN", cin[i], cin_.m)
+        np.testing.assert_allclose(cin[i], cin_.m, rtol=1)
 
 
 def test_interpolate_nz() -> None:

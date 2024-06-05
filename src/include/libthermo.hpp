@@ -15,12 +15,15 @@ namespace libthermo {
 
 static constexpr double T0 = 273.15; /* `(J/kg*K)` - freezing point in kelvin */
 static constexpr double E0 = 611.21;  // `(Pa)` - vapor pressure at T0
-static constexpr double Cpd = 1004.6662184201462;  // `(J/kg*K)` - specific heat of dry air
+static constexpr double Cp = 1004.6662184201462;  // `(J/kg*K)` - specific heat of dry air
 static constexpr double Rd = 287.04749097718457;  // `(J/kg*K)` - gas constant for dry air
 static constexpr double Rv = 461.52311572606084;  // `(J/kg*K)` - gas constant for water vapor
-static constexpr double epsilon = Rd / Rv;  // `Rd/Rv` - ratio of gas constants
 static constexpr double Lv = 2501000.0;  // `(J/kg)` - latent heat of vaporization
 static constexpr double P0 = 100000.0;  // `(Pa)` - standard pressure at sea level
+static constexpr double Mw = 18.01528;  // `(g/mol)` - molecular weight of water
+static constexpr double Md = 28.96546e-3 * 1e3;  // `(g/mol)` - molecular weight of dry air
+static constexpr double epsilon = Mw / Md;  // `Mw / Md` - molecular weight ratio
+static constexpr double kappa = Rd / Cp;  // `Rd / Cp`  - ratio of gas constants
 
 /* ........................................{ struct }........................................... */
 template <floating T>
@@ -106,7 +109,13 @@ template <floating T>
 constexpr T downdraft_cape(
   const T pressure[], const T temperature[], const T dewpoint[], const size_t size
 ) noexcept;
+
+template <floating T>
+constexpr T cape_cin(
+  const T pressure[], const T temperature[], const T dewpoint[], const size_t size
+) noexcept;
 /* ........................................{ sharp  }........................................... */
+
 /**
  * \author John Hart - NSSFC KCMO / NWSSPC OUN
  *

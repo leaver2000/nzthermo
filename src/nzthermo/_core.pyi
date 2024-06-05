@@ -62,7 +62,17 @@ def lcl[T: np.float_](
     Pascal[np.ndarray[shape[N], np.dtype[T]]],
     Kelvin[np.ndarray[shape[N], np.dtype[T]]],
 ]: ...
-def parcel_profile(): ...
+def parcel_profile[T: np.float_](
+    pressure: Pascal[np.ndarray[shape[Z], np.dtype[T]]],
+    temperature: Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]],
+    dewpoint: Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]],
+    /,
+    *,
+    strategy: L[0] = ...,
+    step: float = ...,
+    eps: float = ...,
+    max_iters: int = ...,
+) -> Kelvin[np.ndarray[shape[N, Z], np.dtype[T]]]: ...
 @overload
 def interpolate_nz[T: np.float_](
     x: np.ndarray[shape[N], np.dtype[T]],

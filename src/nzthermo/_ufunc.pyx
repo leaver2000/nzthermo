@@ -44,6 +44,21 @@ cdef (double, double) wind_components(T direction, T magnitude) noexcept nogil:
 # ........................................................................................... #
 #  - thermodynamic functions
 # ........................................................................................... #
+@cython.ufunc
+cdef T virtual_temperature(T temperature, T mixing_ratio) noexcept nogil:
+    return C.virtual_temperature(temperature, mixing_ratio)
+
+
+@cython.ufunc
+cdef T saturation_mixing_ratio(T pressure, T temperature) noexcept nogil:
+    return C.saturation_mixing_ratio(pressure, temperature)
+
+
+
+@cython.ufunc
+cdef T dewpoint(T vapor_pressure) noexcept nogil:
+    return C.dewpoint(vapor_pressure)
+
 @cython.ufunc # theta
 cdef T dry_lapse(T pressure, T temperature, T reference_pressure) noexcept nogil:
     return C.dry_lapse(pressure, reference_pressure, temperature)

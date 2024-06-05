@@ -17,8 +17,17 @@ ThetaW = Annotated[_T, "Wet bulb potential temperature"]
 
 # ............................................................................................... #
 # ............................................................................................... #
+@_ufunc1x1
+def dewpoint(vapor_pressure: Pascal[float]) -> Kelvin[float]: ...
 @_ufunc2x1
+def saturation_mixing_ratio(pressure: Pascal[float], temperature: Kelvin[float]) -> float: ...
+@_ufunc2x1
+def virtual_temperature(temperature: Kelvin[float], vapor_pressure: Pascal[float]) -> Kelvin[float]: ...
 def potential_temperature(pressure: Pascal[float], temperature: Kelvin[float]) -> Theta[Kelvin[float]]: ...
+@_ufunc3x1
+def lcl_pressure(
+    pressure: Pascal[float], temperature: Kelvin[float], dewpoint: Kelvin[float]
+) -> ThetaE[Pascal[float]]: ...
 @_ufunc3x1
 def equivalent_potential_temperature(
     pressure: Pascal[float], temperature: Kelvin[float], dewpoint: Kelvin[float]

@@ -77,10 +77,9 @@ cdef extern from "libthermo.cpp" namespace "libthermo" nogil:
     ) noexcept
     
 
-#     template <floating T>
-# constexpr T downdraft_cape(
-#   const T pressure[], const T temperature[], const T dewpoint[], const size_t size
-# ) noexcept
+
     T downdraft_cape[T](T* pressure, T* temperature, T* dewpoint,  size_t size) noexcept
+    T cape_cin[T](T* pressure, T* temperature, T* dewpoint,  size_t size) noexcept
     # sharp routine's
     T wobus[T](T temperature) noexcept
+

@@ -32,6 +32,7 @@ __all__ = [
     "saturation_vapor_pressure",
     "vapor_pressure",
     "virtual_temperature",
+    "most_unstable_parcel",
     # .utils
     "timeseries",
     "parcel_profile",
@@ -54,12 +55,12 @@ from ._ufunc import (
     wet_bulb_potential_temperature,
     wet_bulb_temperature,
     dry_lapse,
+    dewpoint,
 )
 from ._version import __version__
 from .core import (
     cape_cin,
     ccl,
-    dewpoint,
     dewpoint_from_specific_humidity,
     downdraft_cape,
     el,
@@ -67,6 +68,7 @@ from .core import (
     lfc,
     mixing_ratio,
     mixing_ratio_from_specific_humidity,
+    most_unstable_parcel,
     # parcel_profile,
     saturation_mixing_ratio,
     saturation_vapor_pressure,

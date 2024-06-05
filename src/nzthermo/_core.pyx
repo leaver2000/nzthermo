@@ -378,54 +378,49 @@ def lcl(
 # parcel_profile
 # -------------------------------------------------------------------------------------------------
 cdef surface_based_parcel_profile(
-    T[:] pressure, T[:] temperature, T[:] dewpoint, T step = 1000.0, T eps = 0.1, size_t max_iters = 50
+    T[:] pressure,
+    T[:] temperature,
+    T[:] dewpoint,
+    T step = 1000.0,
+    T eps = 0.1,
+    size_t max_iters = 50
 ) noexcept:
     cdef:
-        size_t N, Z, n, z
+        size_t N, Z, n, z, stop
         T r, p, t, td, p0
-        T[:, :] profile_t
+        T[:, :] prof
         C.LCL[T] lcl
-        size_t[:] lcl_index
-        T[:] lcl_p
-        T[:] lcl_t
 
     N = temperature.shape[0]
     Z = pressure.shape[0]
 
-    profile_t = nzarray((N, Z), pressure.itemsize)
+    prof = nzarray((N, Z), pressure.itemsize)
     dtype = np.float32 if sizeof(float) == pressure.itemsize else np.float64
-    lcl_p, lcl_t, lcl_index = np.empty(N, dtype=dtype), np.empty(N, dtype=dtype), np.empty(N, dtype=np.uintp)
-    profile_t[:, 0] = temperature
-    
+    prof[:, 0] = temperature
+
     with nogil, parallel():
         p0 = pressure[0]
         for n in prange(N, schedule='dynamic'):
             # compute lcl
             t, td = temperature[n], dewpoint[n]
             lcl = C.lcl(p0, t, td, eps, max_iters)
-            lcl_p[n], lcl_t[n] = lcl.pressure, lcl.temperature
             
             # - parcel temperature from the surface up to the LCL ( dry ascent ) 
-            p, z = pressure[1], 1 # we start at the second level
-            while p >= lcl_p[n]:
-                profile_t[n, z] = C.dry_lapse(p, p0, t)
+            z = 1 # we start at the second level
+            while pressure[z] >= lcl.pressure:
                 z += 1
-                p = pressure[z]
-            
-            lcl_index[n] = z
-            p, t = lcl_p[n], lcl_t[n]
-            for z in range(z, Z):
-                profile_t[n, z] = t = C.moist_lapse(p, pressure[z], t, step)
+
+            stop = z # stop the dry ascent at the LCL
+            for z in prange(1, stop, schedule='dynamic'): # parallelize the dry ascent
+                prof[n, z] = C.dry_lapse(pressure[z], p0, t)
+
+            # - parcel temperature from the LCL to the top of the atmosphere ( moist ascent )
+            p, t = lcl.pressure, lcl.temperature
+            for z in range(stop, Z):
+                prof[n, z] = t = C.moist_lapse(p, pressure[z], t, step)
                 p = pressure[z]
 
-    return {
-        "temperature": np.asarray(profile_t),
-        "lcl":{
-            "pressure": lcl_p,
-            "temperature": lcl_t,
-            "index": lcl_index
-        }
-    }
+    return np.asarray(prof)
 
 
 def parcel_profile(
@@ -434,16 +429,22 @@ def parcel_profile(
     np.ndarray dewpoint,
     *,
     ProfileStrategy strategy = SURFACE_BASED,
+    double step = 1000.0,
+    double eps = 0.1,
+    size_t max_iters = 50,
 ):
     # cdef np.ndarray profile = np.empty((temperature.size, pressure.size), dtype=pressure.dtype)
     if strategy == SURFACE_BASED:
         if pressure.dtype == np.float64:
-            return surface_based_parcel_profile[double](pressure, temperature, dewpoint)
+            return surface_based_parcel_profile[double](pressure, temperature, dewpoint, step, eps, max_iters)
         else:
-            return  surface_based_parcel_profile[float](pressure, temperature, dewpoint)
+            return  surface_based_parcel_profile[float](pressure, temperature, dewpoint, <float>step, <float>eps, max_iters)
 
     # else:
     raise ValueError("Invalid strategy.")
+
+
+
 
 
 cdef T[:, :] surface_based_parcel_profile_with_lcl(
@@ -451,7 +452,6 @@ cdef T[:, :] surface_based_parcel_profile_with_lcl(
     T[:] lcl_temperature,
     T[:] lcl_dewpoint, 
     size_t[:] lcl_index,
-    # LCL[:] lcl_results,
     T[:] pressure,
     T[:] temperature,
     T[:] dewpoint,
@@ -487,10 +487,9 @@ cdef T[:, :] surface_based_parcel_profile_with_lcl(
             # lcl_temperature[n] = p = lcl[0]
             p = lcl.pressure
             t = lcl.temperature
-            # lcl_dewpoint[n] = t = lcl[1]
-            # lcl_index[n] = z
+            
             profile[n, z] = t
-            # z+=1
+            
             for z in range(z, Z):
                 profile[n, z + 1] = t = C.moist_lapse(p, pressure[z], t, step)
                 p = pressure[z]
@@ -536,6 +535,35 @@ def parcel_profile_with_lcl(
         #     profile[...] = mu_parcel_profile[float](pressure, temperature, dewpoint)
 
     return profile
+
+ctypedef T (*Dispatch)(const T*, const T*, const T*, size_t)
+
+cdef T[:] dispatch(Dispatch fn, const T[:] pressure, const T[:, :] temperature, const T[:, :] dewpoint):
+    cdef:
+        size_t N, Z, n
+        T[:] result
+
+    N = temperature.shape[0]
+    Z = pressure.shape[0]
+    result = np.empty((N,), dtype=np.float64 if sizeof(double) == pressure.itemsize else np.float32)
+    for n in range(N):
+        result[n] = fn(&pressure[0], &temperature[n, 0], &dewpoint[n, 0], Z)
+
+    return result
+
+def cape_cin(
+    np.ndarray pressure,
+    np.ndarray temperature,
+    np.ndarray dewpoint,
+):
+    cdef np.ndarray profile = np.empty(temperature.shape[0], dtype=np.float64)
+    cdef double[:] p = pressure.astype(np.float64)
+    cdef double[:, :] t = temperature.astype(np.float64)
+    cdef double[:, :] td = dewpoint.astype(np.float64)
+    profile[...] = dispatch[double](C.cape_cin[double], p, t, td)
+    return profile
+
+
 # ............................................................................................... #
 cdef T[:] _interpolate_nz(
     T[:] x,      # (N,)
@@ -555,9 +583,6 @@ cdef T[:] _interpolate_nz(
             out[n] = C.interpolate_z(Z, x[n], &xp[0], &fp[n, 0])
 
     return out
-
-
-
 
 
 def interpolate_nz(

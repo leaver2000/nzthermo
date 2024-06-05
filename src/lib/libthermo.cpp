@@ -24,9 +24,7 @@ constexpr T virtual_temperature(const T pressure, const T temperature, const T d
 
 template <floating T>
 constexpr T saturation_mixing_ratio(const T pressure, const T temperature) noexcept {
-    const T e = saturation_vapor_pressure(temperature);
-
-    return epsilon * e / (pressure - e);
+    return mixing_ratio(saturation_vapor_pressure(temperature), pressure);
 }
 
 template <floating T>
@@ -36,7 +34,7 @@ constexpr T vapor_pressure(const T pressure, const T mixing_ratio) noexcept {
 
 template <floating T>
 constexpr T dry_lapse(const T pressure, const T reference_pressure, const T temperature) noexcept {
-    return temperature * pow(pressure / reference_pressure, (Rd / Cpd));
+    return temperature * pow(pressure / reference_pressure, kappa);
 }
 
 template <floating T>
@@ -53,7 +51,7 @@ constexpr T dewpoint(const T pressure, const T mixing_ratio) noexcept {
 
 template <floating T>
 constexpr T exner_function(const T pressure, const T reference_pressure = P0) noexcept {
-    return pow(pressure / reference_pressure, Rd / Cpd);
+    return pow(pressure / reference_pressure, kappa);
 }
 
 template <floating T>
@@ -96,8 +94,9 @@ template <floating T>
 constexpr T _moist_lapse(const T pressure, const T temperature) noexcept {
     const T r = saturation_mixing_ratio(pressure, temperature);
 
-    return (Rd * temperature + Lv * r) /
-      (Cpd + (Lv * Lv * r * epsilon / (Rd * temperature * temperature))) / pressure;
+    return ((Rd * temperature + Lv * r) /
+            (Cp + (Lv * Lv * r * epsilon / (Rd * temperature * temperature)))) /
+      pressure;
 }
 
 template <floating T>
@@ -110,7 +109,7 @@ constexpr T moist_lapse(
 template <floating T>
 constexpr T find_lcl(T pressure, T reference_pressure, T temperature, T mixing_ratio) noexcept {
     const T td = dewpoint(pressure, mixing_ratio);
-    const T p = reference_pressure * pow(td / temperature, 1.0 / (Rd / Cpd));
+    const T p = reference_pressure * pow(td / temperature, 1.0 / (Rd / Cp));
 
     return std::isnan(p) ? pressure : p;
 }
@@ -148,12 +147,19 @@ constexpr T wet_bulb_temperature(
 }
 
 template <floating T>
+constexpr T cape_cin(
+  const T pressure[], const T temperature[], const T dewpoint[], const size_t size
+) noexcept {
+    return 0.0;
+}
+template <floating T>
 constexpr T downdraft_cape(
   const T pressure[], const T temperature[], const T dewpoint[], const size_t size
 ) noexcept {
     T p, t, td, delta, p_top, t_top, td_top, wb_top, trace, ln, delta_start;
     size_t start, stop;
     start = 0;
+    stop = size - 1;
     for (size_t i = 0; i < size; i++) {
         if (pressure[i] >= 7e4) {  // start a 7000. Pa
             continue;

@@ -163,4 +163,19 @@ constexpr T trapezoidal(const Fn<T, T> fn, const T a, const T b, const T n) noex
     return (h / 2) * s;
 }
 
+template <floating T>
+constexpr T* find_intersections(T x[], T a[], T b[], size_t size, bool log_x) {
+    T* intersections = new T[size];
+
+    size_t nearest_idx;
+    size_t sign_change_idx;
+    //     difference = a - b
+
+    // # Determine the point just before the intersection of the lines
+    // # Will return multiple points for multiple intersections
+    // sign_change_idx, = np.nonzero(np.diff(np.sign(difference)))
+
+    return intersections;
+};
+
 }  // namespace libthermo
