@@ -10,6 +10,7 @@ from nzthermo._ufunc import (
     wet_bulb_potential_temperature,
     wet_bulb_temperature,
     wind_components,
+    lcl,
 )
 
 WIND_DIRECTIONS = np.array([0, 90, 180, 270, 360])
@@ -50,6 +51,7 @@ def test_wet_bulb_temperature(dtype):
 def test_potential_temperature(dtype):
     pressure = np.array([912.12, 1012.93], dtype=dtype) * 100.0
     temperature = np.array([225.31, 254.0], dtype=dtype)
+
     assert_allclose(
         potential_temperature(pressure, temperature),
         [
@@ -58,6 +60,22 @@ def test_potential_temperature(dtype):
         ],
         rtol=1e-4,
     )
+
+
+@pytest.mark.parametrize("dtype", [np.float64, np.float32])
+def test_lcl(dtype) -> None:
+    pressure = np.array([912.12, 1012.93], dtype=dtype) * 100.0
+    temperature = np.array([225.31, 254.0], dtype=dtype)
+    dewpoint = np.array([220.31, 240.0], dtype=dtype)
+
+    lcl_p, lcl_t = lcl(pressure, temperature, dewpoint)
+
+    for i in range(len(temperature)):
+        lcl_p_, lcl_t_ = mpcalc.lcl(
+            pressure[i] * units.pascal, temperature[i] * units.kelvin, dewpoint[i] * units.kelvin
+        )
+        assert_allclose(lcl_p[i], lcl_p_.m, rtol=1e-4)  # type: ignore
+        assert_allclose(lcl_t[i], lcl_t_.m, rtol=1e-4)
 
 
 @pytest.mark.parametrize("dtype", [np.float64, np.float32])

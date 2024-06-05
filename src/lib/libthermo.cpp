@@ -146,68 +146,69 @@ constexpr T wet_bulb_temperature(
     return moist_lapse(x.pressure, pressure, x.temperature, step);
 }
 
-template <floating T>
-constexpr T cape_cin(
-  const T pressure[], const T temperature[], const T dewpoint[], const size_t size
-) noexcept {
-    return 0.0;
-}
-template <floating T>
-constexpr T downdraft_cape(
-  const T pressure[], const T temperature[], const T dewpoint[], const size_t size
-) noexcept {
-    T p, t, td, delta, p_top, t_top, td_top, wb_top, trace, ln, delta_start;
-    size_t start, stop;
-    start = 0;
-    stop = size - 1;
-    for (size_t i = 0; i < size; i++) {
-        if (pressure[i] >= 7e4) {  // start a 7000. Pa
-            continue;
+// template <floating T>
+// constexpr T cape_cin(
+//   const T pressure[], const T temperature[], const T dewpoint[], const size_t size
+// ) noexcept {
+//     return 0.0;
+// }
 
-        } else if (start == 0) {
-            start = i;
-        }
+// template <floating T>
+// constexpr T downdraft_cape(
+//   const T pressure[], const T temperature[], const T dewpoint[], const size_t size
+// ) noexcept {
+//     T p, t, td, delta, p_top, t_top, td_top, wb_top, trace, ln, delta_start;
+//     size_t start, stop;
+//     start = 0;
+//     stop = size - 1;
+//     for (size_t i = 0; i < size; i++) {
+//         if (pressure[i] >= 7e4) {  // start a 7000. Pa
+//             continue;
 
-        if (pressure[i] <= 5e4) {  // stop at 5000. Pa
-            stop = i;
-            break;
-        }
-    }
-    p_top = pressure[stop];  //  # (N,)
-    t_top = temperature[stop];  // # (N,)
-    td_top = dewpoint[stop];  //];  # (N,)
+//         } else if (start == 0) {
+//             start = i;
+//         }
 
-    wb_top = wet_bulb_temperature(p_top, t_top, td_top, .1, 1000.0, 50);  // # (N,)
+//         if (pressure[i] <= 5e4) {  // stop at 5000. Pa
+//             stop = i;
+//             break;
+//         }
+//     }
+//     p_top = pressure[stop];  //  # (N,)
+//     t_top = temperature[stop];  // # (N,)
+//     td_top = dewpoint[stop];  //];  # (N,)
 
-    p = pressure[start];
-    t = temperature[start];
-    td = dewpoint[start];
+//     wb_top = wet_bulb_temperature(p_top, t_top, td_top, .1, 1000.0, 50);  // # (N,)
 
-    trace = moist_lapse(p, wb_top, p_top, 1000.0);
-    delta_start = virtual_temperature(p, t, td) - virtual_temperature(p, trace, trace);
-    T ln_start = std::log(p);
+//     p = pressure[start];
+//     t = temperature[start];
+//     td = dewpoint[start];
 
-    T dcape = 0.0;
-    for (size_t i = start + 1; i < stop; i++) {
-        p = pressure[i];
-        t = temperature[i];
-        td = dewpoint[i];
-        trace = moist_lapse(p, wb_top, p_top, 1000.0);
-        dcape -= virtual_temperature(p, t, td) - virtual_temperature(p, trace, trace);
+//     trace = moist_lapse(p, wb_top, p_top, 1000.0);
+//     delta_start = virtual_temperature(p, t, td) - virtual_temperature(p, trace, trace);
+//     T ln_start = std::log(p);
 
-        // ln = std::log(p);
-        // // for (size_t j = 1; j < 5; j++)
-        // //     delta += 2 * virtual_temperature(pressure[j], t, td) -
-        // //       virtual_temperature(p, trace, trace);  //fn(a + i * h);
-        // // dcape += trapezoidal(delta, ln, (T)5.0);
-        // // dcape += (delta - delta_start) * (ln + ln_start) / 2.0;
-        // // // next iter
-        // ln_start = ln;
-        // delta_start = delta;
-    }
-    // dcape = -(Rd * F.nantrapz(delta, logp, axis=1))
-    return -Rd * dcape;
-}
+//     T dcape = 0.0;
+//     for (size_t i = start + 1; i < stop; i++) {
+//         p = pressure[i];
+//         t = temperature[i];
+//         td = dewpoint[i];
+//         trace = moist_lapse(p, wb_top, p_top, 1000.0);
+//         dcape -= virtual_temperature(p, t, td) - virtual_temperature(p, trace, trace);
+
+//         // ln = std::log(p);
+//         // // for (size_t j = 1; j < 5; j++)
+//         // //     delta += 2 * virtual_temperature(pressure[j], t, td) -
+//         // //       virtual_temperature(p, trace, trace);  //fn(a + i * h);
+//         // // dcape += trapezoidal(delta, ln, (T)5.0);
+//         // // dcape += (delta - delta_start) * (ln + ln_start) / 2.0;
+//         // // // next iter
+//         // ln_start = ln;
+//         // delta_start = delta;
+//     }
+//     // dcape = -(Rd * F.nantrapz(delta, logp, axis=1))
+//     return -Rd * dcape;
+// }
 
 /* ........................................{ sharp  }...........................................
 
@@ -219,7 +220,7 @@ constexpr T wobus(T temperature) {
     T pol;
     const T x = temperature - T0 - 20.0;
     if (x <= 0.0) {
-        pol = 1.0f +
+        pol = 1.0 +
           x *
             (-8.841660499999999e-03 +
              x *

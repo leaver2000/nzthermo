@@ -58,7 +58,7 @@ def lcl[T: np.float_](
     Kelvin[np.ndarray[shape[N], np.dtype[T]]],
 ]: ...
 def parcel_profile[T: np.float_](
-    pressure: Pascal[np.ndarray[shape[Z], np.dtype[T]]],
+    pressure: Pascal[np.ndarray[shape[Z], np.dtype[T]] | np.ndarray[shape[N, Z], np.dtype[T]]],
     temperature: Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]],
     dewpoint: Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]],
     /,

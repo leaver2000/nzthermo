@@ -272,7 +272,7 @@ def lift_parcel_adiabatic(T0, p0, q0, start_loc, fracent, prate, z0, T1, T2):
 
     # prate: precipitation rate (in m^-1) large values make parcel more
     # pseudoadiabatic, small values make parcel more adiabatic.  I usually
-    # just set it to 0 to get an adiabatic parce
+    # just set it to 0 to get an adiabatic parcel
 
     # z0: sounding profile of height above ground level (first height should
     # be 0 m)

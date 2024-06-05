@@ -332,3 +332,111 @@ class _ufunc3x1(_ufunc[_P, _R, L[3], L[1]]):
         signature: str | tuple[None | str, None | str, None | str] = ...,
         extobj: list[Any] = ...,
     ) -> NDArray[np.float_]: ...
+
+class _ufunc3x2(_ufunc[_P, _R, L[3], L[2]]):
+    @overload
+    def __call__(
+        self,
+        __x1: float,
+        __x2: float,
+        __x3: float,
+        /,
+        out: None = ...,
+        *,
+        where: (
+            SupportsArray[np.bool_] | NestedSequence[SupportsArray[np.bool_]] | bool | NestedSequence[bool] | None
+        ) = ...,
+        casting: L["no", "equiv", "safe", "same_kind", "unsafe"] = ...,
+        order: L[None, "K", "A", "C", "F"] = ...,
+        dtype: np.dtype[np.float_] | type[np.float_] | L["float", "float32", "float64"] | None = ...,
+        subok: bool = ...,
+        signature: str | tuple[None | str, None | str, None | str] = ...,
+        extobj: list[Any] = ...,
+    ) -> tuple[float, float]: ...
+    @overload
+    def __call__(
+        self,
+        __x1: _DualArrayLike[np.float_, float],
+        __x2: _DualArrayLike[np.float_, float],
+        __x3: _DualArrayLike[np.float_, float],
+        /,
+        out: None | NDArray[Any] | tuple[NDArray[Any]] = ...,
+        *,
+        where: (
+            SupportsArray[np.bool_] | NestedSequence[SupportsArray[np.bool_]] | bool | NestedSequence[bool] | None
+        ) = ...,
+        casting: L["no", "equiv", "safe", "same_kind", "unsafe"] = ...,
+        order: L[None, "K", "A", "C", "F"] = ...,
+        dtype: np.dtype[np.float_] | type[float] | L["float", "float32", "float64"] | None = ...,
+        subok: bool = ...,
+        signature: str | tuple[None | str, None | str, None | str] = ...,
+        extobj: list[Any] = ...,
+    ) -> tuple[NDArray[Any], NDArray[Any]]: ...
+    def at(
+        self,
+        a: NDArray[Any],
+        indices: SupportsArray[np.int_] | NestedSequence[SupportsArray[np.int_]] | int | NestedSequence[int],
+        b: ArrayLike,
+        /,
+    ) -> None: ...
+    def reduce(
+        self,
+        array: NestedSequence[float] | NDArray[np.float_],
+        axis: SupportsIndex | Sequence[SupportsIndex] | None = ...,
+        dtype: np.dtype[np.float_] | type[np.float_] | L["float", "float32", "float64"] | None = ...,
+        out: None | NDArray[Any] = ...,
+        keepdims: bool = ...,
+        initial: Any = ...,
+        where: NestedSequence[bool] | NDArray[np.bool_] = ...,
+    ) -> Any: ...
+    def accumulate(
+        self,
+        array: ArrayLike,
+        axis: SupportsIndex = ...,
+        dtype: np.dtype[np.float_] | type[np.float_] | L["float", "float32", "float64"] | None = ...,
+        out: None | NDArray[Any] = ...,
+    ) -> tuple[NDArray[Any], NDArray[Any]]: ...
+    def reduceat(
+        self,
+        array: ArrayLike,
+        indices: SupportsArray[np.int_] | NestedSequence[SupportsArray[np.int_]] | int | NestedSequence[int],
+        axis: SupportsIndex = ...,
+        dtype: np.dtype[np.float_] | type[np.float_] | L["float", "float32", "float64"] | None = ...,
+        out: None | NDArray[Any] = ...,
+    ) -> tuple[NDArray[Any], NDArray[Any]]: ...
+
+    # Expand `**kwargs` into explicit keyword-only arguments
+    @overload
+    def outer(
+        self,
+        A: float,
+        B: float,
+        C: float,
+        /,
+        *,
+        out: None = ...,
+        where: NestedSequence[bool] | NDArray[np.bool_] | None = ...,
+        casting: L["no", "equiv", "safe", "same_kind", "unsafe"] = ...,
+        order: L[None, "K", "A", "C", "F"] = ...,
+        dtype: np.dtype[np.float_] | type[float] | L["float", "float32", "float64"] | None = ...,
+        subok: bool = ...,
+        signature: str | tuple[None | str, None | str, None | str] = ...,
+        extobj: list[Any] = ...,
+    ) -> Any: ...
+    @overload
+    def outer(  # type: ignore[misc]
+        self,
+        A: NestedSequence[float] | NDArray[np.float_],
+        B: NestedSequence[float] | NDArray[np.float_],
+        C: NestedSequence[float] | NDArray[np.float_],
+        /,
+        *,
+        out: NDArray[Any] | tuple[NDArray[Any]] | None = ...,
+        where: NestedSequence[bool] | NDArray[np.bool_] | None = ...,
+        casting: L["no", "equiv", "safe", "same_kind", "unsafe"] = ...,
+        order: L[None, "K", "A", "C", "F"] = ...,
+        dtype: np.dtype[np.float_] | type[float] | L["float", "float32", "float64"] | None = ...,
+        subok: bool = ...,
+        signature: str | tuple[None | str, None | str, None | str] = ...,
+        extobj: list[Any] = ...,
+    ) -> tuple[NDArray[Any], NDArray[Any]]: ...

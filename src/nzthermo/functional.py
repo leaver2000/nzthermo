@@ -326,7 +326,7 @@ class Intersection(NamedTuple, Generic[float_]):
 
     def full(self) -> tuple[np.ndarray[shape[N, Z], np.dtype[float_]], np.ndarray[shape[N, Z], np.dtype[float_]]]:
         """
-        TODO: DOCUMENTAITON!!
+        TODO: DOCUMENTATION!!
         ```python
         x = [99644.14784044            nan 99748.45094803            nan
         91844.40614874 76853.41182469            nan 91977.69836503
@@ -484,4 +484,5 @@ def intersect_nz(
     if mask_nans:
         x[mask & nans] = np.nan
         y[mask & nans] = np.nan
+
     return Intersection(x[mask | nans], y[mask | nans], nx[mask | nans])

@@ -114,7 +114,7 @@ constexpr size_t lower_bound(const T array[], const int N, const T& value, const
  * Based on std::upper_bound, this iterates over an array using a binary search
  * to find the first element that satisfies the comparison condition. By
  * default, the comparison is std::less. Binary search expects data to be in
- * ascending order -- for pressure level data, change the comparitor.
+ * ascending order -- for pressure level data, change the comparator.
  *
  * We use a custom implementation of sharp::upper_bound rather than
  * std::upper_bound for a few reasons. First, we prefer raw pointer

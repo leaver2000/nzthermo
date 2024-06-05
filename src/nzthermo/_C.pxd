@@ -1,11 +1,8 @@
 # pyright: reportGeneralTypeIssues=false
 
-# from libcpp.vector cimport vector
-
 ctypedef fused Float:
     float
     double
-
 
 
 cdef extern from "<utility>" namespace "std" nogil:
@@ -17,9 +14,6 @@ cdef extern from "<utility>" namespace "std" nogil:
 
 
 cdef extern from "functional.cpp" namespace "libthermo" nogil:
-    # ........................................................................................... #
-    #  - common functions
-    # ........................................................................................... #
     T linear_interpolate[T](T x, T x0, T x1, T y0, T y1) noexcept
     T degrees[T](T radians) noexcept
     T radians[T](T degrees) noexcept
@@ -30,9 +24,7 @@ cdef extern from "wind.cpp" namespace "libthermo" nogil:
     cdef cppclass WindComponents[T]:
         T u
         T v
-    # ........................................................................................... #
-    #  - wind
-    # ........................................................................................... #
+
     T wind_direction[T](T u, T v) noexcept
     T wind_direction[T](T u, T v, T from_) noexcept
     T wind_magnitude[T](T u, T v) noexcept
@@ -49,9 +41,7 @@ cdef extern from "libthermo.cpp" namespace "libthermo" nogil:
         T temperature
         T dewpoint
 
-    # ........................................................................................... #
     #  - thermodynamic functions
-    # ........................................................................................... #
     T mixing_ratio[T](T pressure, T vapor_pressure) noexcept
     T saturation_vapor_pressure[T](T temperature) noexcept
     T mixing_ratio_from_dewpoint[T](T pressure, T dewpoint) noexcept
@@ -63,9 +53,7 @@ cdef extern from "libthermo.cpp" namespace "libthermo" nogil:
     T dewpoint[T](T vapor_pressure) noexcept
     # @overload
     T dewpoint_from_mixing_ratio "libthermo::dewpoint" [T](T pressure, T mixing_ratio) noexcept
-    # ........................................................................................... #
     #  - adiabatic processes
-    # ........................................................................................... #
     LCL[T] lcl[T](T pressure, T temperature, T dewpoint, T eps, size_t max_iters) noexcept
     T lcl_pressure[T](T pressure, T temperature, T dewpoint, T eps, size_t max_iters) noexcept
     T moist_lapse[T](T pressure, T next_pressure, T temperature, T step) noexcept
@@ -75,11 +63,8 @@ cdef extern from "libthermo.cpp" namespace "libthermo" nogil:
     T wet_bulb_temperature[T](
         T pressure, T temperature, T dewpoint, T eps, T step, size_t max_iters
     ) noexcept
-    
-
-
-    T downdraft_cape[T](T* pressure, T* temperature, T* dewpoint,  size_t size) noexcept
-    T cape_cin[T](T* pressure, T* temperature, T* dewpoint,  size_t size) noexcept
+    # T downdraft_cape[T](T* pressure, T* temperature, T* dewpoint,  size_t size) noexcept
+    # T cape_cin[T](T* pressure, T* temperature, T* dewpoint,  size_t size) noexcept
     # sharp routine's
     T wobus[T](T temperature) noexcept
 

@@ -16,8 +16,10 @@ that generates the stub file from the c++ header file.
 
 cimport cython
 cimport numpy as np
-
 cimport nzthermo._C as C
+
+np.import_array()
+np.import_ufunc()
 
 ctypedef fused T:
     float
@@ -28,9 +30,6 @@ ctypedef fused integer:
     long
 
 
-np.import_array()
-np.import_ufunc()
-
 # ............................................................................................... #
 #  - wind
 # ............................................................................................... #
@@ -38,9 +37,11 @@ np.import_ufunc()
 cdef T wind_direction(T u, T v) noexcept nogil:
     return C.wind_direction(u, v)
 
+
 @cython.ufunc
 cdef T wind_magnitude(T u, T v) noexcept nogil:
     return C.wind_magnitude(u, v)
+
 
 @cython.ufunc
 cdef (double, double) wind_components(T direction, T magnitude) noexcept nogil:
@@ -54,6 +55,7 @@ cdef (double, double) wind_components(T direction, T magnitude) noexcept nogil:
     cdef C.WindComponents[T] wnd = C.wind_components(direction, magnitude)
     return <double>wnd.u, <double>wnd.v
 
+
 # ............................................................................................... #
 #  - thermodynamic functions
 # ............................................................................................... #
@@ -61,33 +63,41 @@ cdef (double, double) wind_components(T direction, T magnitude) noexcept nogil:
 cdef T saturation_vapor_pressure(T temperature) noexcept nogil:
     return C.saturation_vapor_pressure(temperature)
 
+
 @cython.ufunc
 cdef T virtual_temperature(T temperature, T mixing_ratio) noexcept nogil:
     return C.virtual_temperature(temperature, mixing_ratio)
+
 
 @cython.ufunc
 cdef T saturation_mixing_ratio(T pressure, T temperature) noexcept nogil:
     return C.saturation_mixing_ratio(pressure, temperature)
 
+
 @cython.ufunc
 cdef T dewpoint(T vapor_pressure) noexcept nogil:
     return C.dewpoint(vapor_pressure)
+
 
 @cython.ufunc # theta
 cdef T dry_lapse(T pressure, T temperature, T reference_pressure) noexcept nogil:
     return C.dry_lapse(pressure, reference_pressure, temperature)
 
+
 @cython.ufunc # theta
 cdef T potential_temperature(T pressure, T temperature) noexcept nogil:
     return C.potential_temperature(pressure, temperature)
+
 
 @cython.ufunc # theta_e
 cdef T equivalent_potential_temperature(T pressure, T temperature, T dewpoint) noexcept nogil:
     return C.equivalent_potential_temperature(pressure, temperature, dewpoint)
 
+
 @cython.ufunc # theta_w
 cdef T wet_bulb_potential_temperature(T pressure, T temperature, T dewpoint) noexcept nogil:
     return C.wet_bulb_potential_temperature(pressure, temperature, dewpoint)
+
 
 @cython.ufunc 
 cdef T wet_bulb_temperature(T pressure, T temperature, T dewpoint) noexcept nogil:
@@ -106,6 +116,7 @@ cdef T lcl_pressure(T pressure, T temperature, T dewpoint) noexcept nogil:
         T eps = 0.1
 
     return C.lcl_pressure(pressure, temperature, dewpoint, eps, max_iter)
+
 
 @cython.ufunc
 cdef (double, double) lcl(T pressure, T temperature, T dewpoint) noexcept nogil:
@@ -127,39 +138,56 @@ cdef (double, double) lcl(T pressure, T temperature, T dewpoint) noexcept nogil:
 @cython.ufunc
 cdef T wobus(T temperature) noexcept nogil:
     r"""
-    /**
- * \author John Hart - NSSFC KCMO / NWSSPC OUN
- *
- * \brief Computes the difference between the wet-bulb potential<!--
- * --> temperatures for saturated and dry air given the temperature.
- *
- * The Wobus Function (wobf) is defined as the difference between
- * the wet-bulb potential temperature for saturated air (WBPTS)
- * and the wet-bulb potential temperature for dry air (WBPTD) given
- * the same temperature in Celsius.
- *
- * WOBF(T) := WBPTS - WBPTD
- *
- * Although WBPTS and WBPTD are functions of both pressure and
- * temperature, it is assumed their difference is a function of
- * temperature only. The difference is also proportional to the
- * heat imparted to a parcel.
- *
- * This function uses a polynomial approximation to the wobus function,
- * fitted to values in Table 78 of PP.319-322 of the Smithsonian Meteorological
- * Tables by Roland List (6th Revised Edition). Herman Wobus, a mathematician
- * for the Navy Weather Research Facility in Norfolk, VA computed these
- * coefficients a very long time ago, as he was retired as of the time of
- * the documentation found on this routine written in 1981.
- *
- * It was shown by Robert Davies-Jones (2007) that the Wobus function has
- * a slight dependence on pressure, which results in errors of up to 1.2
- * degrees Kelvin in the temperature of a lifted parcel.
- *
- * \param   temperature     (degK)
- *
- * \return  wobf            (degK)
- */
+    author John Hart - NSSFC KCMO / NWSSPC OUN
+
+    Computes the difference between the wet-bulb potential temperatures for saturated and dry air 
+    given the temperature.
+
+    brief 
+    
+    The Wobus Function (wobf) is defined as the difference between
+    the wet-bulb potential temperature for saturated air (WBPTS)
+    and the wet-bulb potential temperature for dry air (WBPTD) given
+    the same temperature in Celsius.
+
+    WOBF(T) := WBPTS - WBPTD
+
+    Although WBPTS and WBPTD are functions of both pressure and
+    temperature, it is assumed their difference is a function of
+    temperature only. The difference is also proportional to the
+    heat imparted to a parcel.
+
+    This function uses a polynomial approximation to the wobus function,
+    fitted to values in Table 78 of PP.319-322 of the Smithsonian Meteorological
+    Tables by Roland List (6th Revised Edition). Herman Wobus, a mathematician
+    for the Navy Weather Research Facility in Norfolk, VA computed these
+    coefficients a very long time ago, as he was retired as of the time of
+    the documentation found on this routine written in 1981.
+
+    It was shown by Robert Davies-Jones (2007) that the Wobus function has
+    a slight dependence on pressure, which results in errors of up to 1.2
+    degrees Kelvin in the temperature of a lifted parcel.
+    
+    Parameters
+    ----------
+    x : (K) array_like
+        Input array.
+    
+    out : ndarray, None, or tuple of ndarray and None, optional
+        A location into which the result is stored. If provided, it must have
+        a shape that the inputs broadcast to. If not provided or None,
+        a freshly-allocated array is returned. A tuple (possible only as a
+        keyword argument) must have length equal to the number of outputs.
+    where : array_like, optional
+        This condition is broadcast over the input. At locations where the
+        condition is True, the `out` array will be set to the ufunc result.
+        Elsewhere, the `out` array will retain its original value.
+        Note that if an uninitialized `out` array is created via the default
+        ``out=None``, locations within it where the condition is False will
+        remain uninitialized.
+    **kwargs
+        For other keyword-only arguments, see the
+        :ref:`ufunc docs <ufuncs.kwargs>`.
     """
     return C.wobus(temperature)
 
@@ -176,6 +204,29 @@ cdef double delta_t(integer year, integer month) noexcept nogil:
     Using the ΔT values derived from the historical record and from direct observations
     (see: Table 1 and Table 2), a series of polynomial expressions have been created to simplify
     the evaluation of ΔT for any time during the interval -1999 to +3000.
+
+    Parameters
+    ----------
+    x : (year) array_like
+        Input array.
+    x1 : (month) array_like
+        Input array.
+
+    out : ndarray, None, or tuple of ndarray and None, optional
+        A location into which the result is stored. If provided, it must have
+        a shape that the inputs broadcast to. If not provided or None,
+        a freshly-allocated array is returned. A tuple (possible only as a
+        keyword argument) must have length equal to the number of outputs.
+    where : array_like, optional
+        This condition is broadcast over the input. At locations where the
+        condition is True, the `out` array will be set to the ufunc result.
+        Elsewhere, the `out` array will retain its original value.
+        Note that if an uninitialized `out` array is created via the default
+        ``out=None``, locations within it where the condition is False will
+        remain uninitialized.
+    **kwargs
+        For other keyword-only arguments, see the
+        :ref:`ufunc docs <ufuncs.kwargs>`.
     """
     cdef double y, u, delta_t
     y = year + (month - 0.5) / 12
@@ -277,3 +328,6 @@ cdef double delta_t(integer year, integer month) noexcept nogil:
         delta_t = -20 + 32 * u**2
 
     return delta_t
+
+
+

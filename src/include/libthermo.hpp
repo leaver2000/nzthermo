@@ -105,15 +105,15 @@ constexpr T wet_bulb_temperature(
   const size_t max_iters
 ) noexcept;
 
-template <floating T>
-constexpr T downdraft_cape(
-  const T pressure[], const T temperature[], const T dewpoint[], const size_t size
-) noexcept;
+// template <floating T>
+// constexpr T downdraft_cape(
+//   const T pressure[], const T temperature[], const T dewpoint[], const size_t size
+// ) noexcept;
 
-template <floating T>
-constexpr T cape_cin(
-  const T pressure[], const T temperature[], const T dewpoint[], const size_t size
-) noexcept;
+// template <floating T>
+// constexpr T cape_cin(
+//   const T pressure[], const T temperature[], const T dewpoint[], const size_t size
+// ) noexcept;
 /* ........................................{ sharp  }........................................... */
 
 /**
