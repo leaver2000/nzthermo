@@ -1,6 +1,7 @@
 #include <omp.h>
 #include <functional.hpp>
 #include <functional>
+
 namespace libthermo {
 
 template <floating T>

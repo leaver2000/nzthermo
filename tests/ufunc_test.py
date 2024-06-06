@@ -6,11 +6,11 @@ from numpy.testing import assert_allclose
 
 from nzthermo._ufunc import (
     equivalent_potential_temperature,
+    lcl,
     potential_temperature,
     wet_bulb_potential_temperature,
     wet_bulb_temperature,
     wind_components,
-    lcl,
 )
 
 WIND_DIRECTIONS = np.array([0, 90, 180, 270, 360])

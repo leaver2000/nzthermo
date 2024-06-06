@@ -1,59 +1,58 @@
 __all__ = [
+    # .functional
+    "functional",
     # ._version
     "__version__",
-    # ._c
+    # ._core
     "OPENMP_ENABLED",
-    "lcl",
     "moist_lapse",
-    "wet_bulb_temperature",
-    "delta_t",
+    "parcel_profile",
     # ._ufunc
+    "delta_t",
+    "dewpoint",
+    "dry_lapse",
+    "equivalent_potential_temperature",
+    "lcl",
     "potential_temperature",
+    "saturation_mixing_ratio",
+    "saturation_vapor_pressure",
+    "wet_bulb_temperature",
+    "wet_bulb_potential_temperature",
     "wind_direction",
     "wind_components",
     "wind_magnitude",
-    "equivalent_potential_temperature",
-    "wet_bulb_potential_temperature",
-    "wet_bulb_temperature",
-    # .core
-    "cape_cin",
-    "ccl",
-    "dewpoint",
+    #
     "dewpoint_from_specific_humidity",
     "downdraft_cape",
-    "dry_lapse",
     "el",
     "exner_function",
     "lfc",
     "parcel_profile",
     "mixing_ratio",
     "mixing_ratio_from_specific_humidity",
-    "saturation_mixing_ratio",
-    "saturation_vapor_pressure",
     "vapor_pressure",
     "virtual_temperature",
+    # .core
+    "cape_cin",
+    "ccl",
     "most_unstable_parcel",
     # .utils
     "timeseries",
-    "parcel_profile",
-    # aliases
-    "wdir",
-    "wspd",
-    "theta",
-    "theta_e",
-    "theta_w",
 ]
-from typing import Final
 
-from ._core import OPENMP_ENABLED, lcl, moist_lapse, parcel_profile
+from . import functional
+from ._core import OPENMP_ENABLED, moist_lapse, parcel_profile, parcel_profile_with_lcl
 from ._ufunc import (
     delta_t,
     dewpoint,
     dry_lapse,
     equivalent_potential_temperature,
+    lcl,
     potential_temperature,
     saturation_mixing_ratio,
     saturation_vapor_pressure,
+    vapor_pressure,
+    virtual_temperature,
     wet_bulb_potential_temperature,
     wet_bulb_temperature,
     wind_components,
@@ -61,7 +60,7 @@ from ._ufunc import (
     wind_magnitude,
 )
 from ._version import __version__
-from .core import (  # parcel_profile,
+from .core import (
     cape_cin,
     ccl,
     dewpoint_from_specific_humidity,
@@ -72,20 +71,5 @@ from .core import (  # parcel_profile,
     mixing_ratio,
     mixing_ratio_from_specific_humidity,
     most_unstable_parcel,
-    vapor_pressure,
-    virtual_temperature,
 )
 from .utils import timeseries
-
-wdir: Final = wind_direction
-wspd: Final = wind_magnitude
-
-
-theta: Final = potential_temperature
-theta_e: Final = equivalent_potential_temperature
-theta_w: Final = wet_bulb_potential_temperature
-malr: Final = moist_lapse
-dalr: Final = dry_lapse
-esat: Final = saturation_vapor_pressure
-e: Final = vapor_pressure
-mr: Final = mixing_ratio

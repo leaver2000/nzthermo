@@ -7,10 +7,12 @@ additional support for higher dimensions in what would have normally been 1D arr
 """
 
 from __future__ import annotations
+
 import operator
+import warnings
 from typing import (
-    TYPE_CHECKING,
     Annotated,
+    Any,
     Final,
     Generic,
     Literal,
@@ -18,16 +20,13 @@ from typing import (
     NamedTuple,
     TypeVar,
     overload,
-    Any,
 )
-import warnings
+
 import numpy as np
 from numpy.typing import NDArray
 
-if TYPE_CHECKING:
-    from typing_extensions import Doc
 
-from . import functional as F, _core as core, _ufunc as uf
+from . import _core as core, _ufunc as uf, functional as F
 from .const import P0, Cpd, Rd, Rv
 from .typing import Kelvin, Kilogram, N, Pascal, Ratio, Z, shape
 
@@ -38,28 +37,39 @@ float_ = TypeVar("float_", bound=np.float_)
 newaxis: Final[None] = np.newaxis
 
 
-def _2d(x: np.ndarray[Any, np.dtype[float_]]) -> np.ndarray[shape[N, Z], np.dtype[float_]]:
-    if x.ndim == 1:
-        x = x[newaxis, :]
-    elif x.ndim != 2:
-        raise ValueError("pressure must be a 1D or 2D array")
+# .................................................................................................
+# utils
+# .................................................................................................
+@overload
+def _2d(__x: np.ndarray[Any, np.dtype[float_]]) -> np.ndarray[shape[N, Z], np.dtype[float_]]: ...
+@overload
+def _2d(*args: np.ndarray[Any, np.dtype[float_]]) -> tuple[np.ndarray[shape[N, Z], np.dtype[float_]]]: ...
+def _2d(
+    *args: np.ndarray[Any, np.dtype[float_]],
+) -> np.ndarray[shape[N, Z], np.dtype[float_]] | tuple[np.ndarray[shape[N, Z], np.dtype[float_]]]:
+    values = []
+    for x in args:
+        if x.ndim == 0:
+            x = x.reshape(1, 1)
+        elif x.ndim == 1:
+            x = x[newaxis, :]
+        elif x.ndim != 2:
+            raise ValueError("pressure must be a 1D or 2D array")
+        values.append(x)
 
-    return x
+    if len(values) == 1:
+        return values[0]
+
+    return tuple(values)
 
 
 # =================================================================================================
 # .....{ basic thermodynamics }.....
 # None of the following require any type of array broadcasting or fancy indexing
 # =================================================================================================
-def mixing_ratio_from_specific_humidity(specific_humidity: Kilogram[NDArray[float_]]) -> Kilogram[NDArray[float_]]:
+def mixing_ratio_from_specific_humidity(specific_humidity: Ratio[NDArray[float_]]) -> Ratio[NDArray[float_]]:
     specific_humidity = np.where(specific_humidity == 0, 1e-10, specific_humidity)
     return specific_humidity / (1 - specific_humidity)
-
-
-def vapor_pressure(
-    pressure: Pascal[NDArray[float_]], mixing_ratio: Ratio[NDArray[float_] | float]
-) -> Pascal[NDArray[float_]]:
-    return pressure * mixing_ratio / ((Rd / Rv) + mixing_ratio)
 
 
 def exner_function(
@@ -75,16 +85,6 @@ def mixing_ratio(
     molecular_weight_ratio: Ratio[NDArray[float_] | float] = Rd / Rv,
 ) -> Ratio[NDArray[float_]]:
     return molecular_weight_ratio * partial_press / (total_press - partial_press)
-
-
-# .....{ virtual temperature }.....
-def virtual_temperature(
-    temperature: Kelvin[NDArray[float_]],
-    mixing_ratio: Ratio[NDArray[float_]],
-    *,
-    molecular_weight_ratio: float = Rd / Rv,
-) -> Kelvin[NDArray[float_]]:
-    return temperature * ((mixing_ratio + molecular_weight_ratio) / (molecular_weight_ratio * (1 + mixing_ratio)))
 
 
 def dewpoint_from_specific_humidity(
@@ -188,7 +188,7 @@ def ccl(
     p0 = pressure[:, 0]  # (N,)
     td0 = dewpoint[:, 0]  # (N,)
     td = uf.dewpoint(  # (N, Z)
-        vapor_pressure(pressure, mixing_ratio(uf.saturation_vapor_pressure(td0[:, newaxis]), p0[:, newaxis]))
+        uf.vapor_pressure(pressure, mixing_ratio(uf.saturation_vapor_pressure(td0[:, newaxis]), p0[:, newaxis]))
     )
 
     intersect = F.intersect_nz(pressure, td, temperature, log_x=True)  # (N, Z)
@@ -210,15 +210,9 @@ def downdraft_cape(
     temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
     dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
 ) -> np.ndarray[shape[N], np.dtype[float_]]:
-    dtype = temperature.dtype
-    pressure, temperature, dewpoint = (x.astype(dtype) for x in (pressure, temperature, dewpoint))
+    pressure = _2d(pressure)
 
-    assert temperature.shape == dewpoint.shape
-    N, Z = temperature.shape
-    if pressure.shape == (Z,):
-        pressure = pressure.reshape(1, Z)
-    elif pressure.shape != (1, Z):
-        raise ValueError("pressure shape must be either (Z,) or (1, Z)")
+    N, _ = temperature.shape
 
     mid_layer_idx = ((pressure <= 7e4) & (pressure >= 5e4)).squeeze()
     p_layer, t_layer, td_layer = (x[:, mid_layer_idx] for x in (pressure, temperature, dewpoint))
@@ -235,7 +229,7 @@ def downdraft_cape(
     cap = -(np.searchsorted(np.squeeze(pressure)[::-1], np.min(p_top)) - 1)
     pressure = pressure[0, :cap].repeat(N).reshape(-1, N).transpose()  # (N, Z -cap)
     if not np.any(pressure):
-        return np.repeat(np.nan, N).astype(dtype)
+        return np.repeat(np.nan, N).astype(pressure.dtype)
 
     # our moist_lapse rate function has nan ignoring capabilities
     pressure[pressure < p_top[:, newaxis]] = np.nan
@@ -251,32 +245,6 @@ def downdraft_cape(
     dcape = -(Rd * F.nantrapz(delta, logp, axis=1))
 
     return dcape
-
-
-# -------------------------------------------------------------------------------------------------
-# parcel_profile
-# -------------------------------------------------------------------------------------------------
-class ParcelProfile(NamedTuple, Generic[float_]):
-    pressure: Annotated[
-        Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
-        Doc("[N, [...below, LCL, ...above]]"),
-    ]
-    temperature: Annotated[
-        Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
-        Doc("[N, [...below, LCL, ...above]]"),
-    ]
-    dewpoint: Annotated[
-        Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
-        Doc("[N, [...below, LCL, ...above]]"),
-    ]
-    temperature_profile: Annotated[
-        Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
-        Doc("[N, [...dry_lapse, LCL, ...moist_lapse]]"),
-    ]
-    lcl_index: tuple[
-        np.ndarray[shape[N], np.dtype[np.intp]],
-        np.ndarray[shape[Z], np.dtype[np.intp]],
-    ]
 
 
 # -------------------------------------------------------------------------------------------------
@@ -359,7 +327,10 @@ def el(
     parcel_temperature_profile: Annotated[Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]], ""] | None = None,
     which: Literal["top", "bottom"] = "top",
     lcl_p: np.ndarray | None = None,
-):
+) -> tuple[
+    Pascal[np.ndarray[shape[N], np.dtype[float_]]],
+    Kelvin[np.ndarray[shape[N], np.dtype[float_]]],
+]:
     pressure = _2d(pressure)
 
     p0 = pressure[:, 0]
@@ -391,7 +362,6 @@ def el(
 def lfc(
     pressure: Annotated[
         Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]] | Pascal[np.ndarray[shape[Z], np.dtype[float_]]],
-        # Pascal[np.ndarray[shape[Z], np.dtype[float_]]],
         "isobaric pressure levels",
     ],  # TODO: add support for (N, Z) pressure arrays...
     temperature: Annotated[Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]], "isobaric temperature"],
@@ -447,7 +417,6 @@ def lfc(
     return _multiple_el_lfc_options(x, y, which)
 
 
-# TODO:...
 # -------------------------------------------------------------------------------------------------
 # cape_cin
 # -------------------------------------------------------------------------------------------------

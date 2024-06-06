@@ -16,6 +16,7 @@ that generates the stub file from the c++ header file.
 
 cimport cython
 cimport numpy as np
+
 cimport nzthermo._C as C
 
 np.import_array()
@@ -56,83 +57,15 @@ cdef (double, double) wind_components(T direction, T magnitude) noexcept nogil:
     return <double>wnd.u, <double>wnd.v
 
 
-# ............................................................................................... #
-#  - thermodynamic functions
-# ............................................................................................... #
-@cython.ufunc
-cdef T saturation_vapor_pressure(T temperature) noexcept nogil:
-    return C.saturation_vapor_pressure(temperature)
-
-
-@cython.ufunc
-cdef T virtual_temperature(T temperature, T mixing_ratio) noexcept nogil:
-    return C.virtual_temperature(temperature, mixing_ratio)
-
-
-@cython.ufunc
-cdef T saturation_mixing_ratio(T pressure, T temperature) noexcept nogil:
-    return C.saturation_mixing_ratio(pressure, temperature)
-
-
+# 1x1
 @cython.ufunc
 cdef T dewpoint(T vapor_pressure) noexcept nogil:
     return C.dewpoint(vapor_pressure)
 
 
-@cython.ufunc # theta
-cdef T dry_lapse(T pressure, T temperature, T reference_pressure) noexcept nogil:
-    return C.dry_lapse(pressure, reference_pressure, temperature)
-
-
-@cython.ufunc # theta
-cdef T potential_temperature(T pressure, T temperature) noexcept nogil:
-    return C.potential_temperature(pressure, temperature)
-
-
-@cython.ufunc # theta_e
-cdef T equivalent_potential_temperature(T pressure, T temperature, T dewpoint) noexcept nogil:
-    return C.equivalent_potential_temperature(pressure, temperature, dewpoint)
-
-
-@cython.ufunc # theta_w
-cdef T wet_bulb_potential_temperature(T pressure, T temperature, T dewpoint) noexcept nogil:
-    return C.wet_bulb_potential_temperature(pressure, temperature, dewpoint)
-
-
-@cython.ufunc 
-cdef T wet_bulb_temperature(T pressure, T temperature, T dewpoint) noexcept nogil:
-    cdef: # the ufunc signature doesn't support keyword arguments
-        size_t max_iter = 50
-        T eps  = 0.1
-        T step = 1000.0
-
-    return C.wet_bulb_temperature(pressure, temperature, dewpoint, eps, step, max_iter)
-
-
-@cython.ufunc 
-cdef T lcl_pressure(T pressure, T temperature, T dewpoint) noexcept nogil:
-    cdef:
-        size_t max_iter = 50
-        T eps = 0.1
-
-    return C.lcl_pressure(pressure, temperature, dewpoint, eps, max_iter)
-
-
 @cython.ufunc
-cdef (double, double) lcl(T pressure, T temperature, T dewpoint) noexcept nogil:
-    # TODO: the signature....
-    # cdef (T, T) lcl(T pressure, T temperature, T dewpoint) noexcept nogil:...
-    # 
-    # Is unsupported by the ufunc signature. So the option are:
-    # - maintain gil
-    # - cast to double 
-    # - write the template in C
-    cdef:
-        size_t max_iter = 50
-        T eps = 0.1
-        C.LCL[T] lcl = C.lcl(pressure, temperature, dewpoint, eps, max_iter)
-
-    return <double>lcl.pressure, <double>lcl.temperature
+cdef T saturation_vapor_pressure(T temperature) noexcept nogil:
+    return C.saturation_vapor_pressure(temperature)
 
 
 @cython.ufunc
@@ -191,7 +124,77 @@ cdef T wobus(T temperature) noexcept nogil:
     """
     return C.wobus(temperature)
 
+# 2x1
+@cython.ufunc # theta
+cdef T potential_temperature(T pressure, T temperature) noexcept nogil:
+    return C.potential_temperature(pressure, temperature)
 
+
+@cython.ufunc
+cdef T saturation_mixing_ratio(T pressure, T temperature) noexcept nogil:
+    return C.saturation_mixing_ratio(pressure, temperature)
+
+
+@cython.ufunc
+cdef T vapor_pressure(T pressure, T mixing_ratio) noexcept nogil:
+    return C.vapor_pressure(pressure, mixing_ratio)
+
+
+@cython.ufunc
+cdef T virtual_temperature(T temperature, T mixing_ratio) noexcept nogil:
+    return C.virtual_temperature(temperature, mixing_ratio)
+
+
+# 3x1
+@cython.ufunc
+cdef T dry_lapse(T pressure, T temperature, T reference_pressure) noexcept nogil:
+    return C.dry_lapse(pressure, reference_pressure, temperature)
+
+
+@cython.ufunc # theta_e
+cdef T equivalent_potential_temperature(T pressure, T temperature, T dewpoint) noexcept nogil:
+    return C.equivalent_potential_temperature(pressure, temperature, dewpoint)
+
+
+@cython.ufunc # theta_w
+cdef T wet_bulb_potential_temperature(T pressure, T temperature, T dewpoint) noexcept nogil:
+    return C.wet_bulb_potential_temperature(pressure, temperature, dewpoint)
+
+
+@cython.ufunc 
+cdef T wet_bulb_temperature(T pressure, T temperature, T dewpoint) noexcept nogil:
+    cdef: # the ufunc signature doesn't support keyword arguments
+        size_t max_iter = 50
+        T eps  = 0.1
+        T step = 1000.0
+
+    return C.wet_bulb_temperature(pressure, temperature, dewpoint, eps, step, max_iter)
+
+
+@cython.ufunc 
+cdef T lcl_pressure(T pressure, T temperature, T dewpoint) noexcept nogil:
+    cdef:
+        size_t max_iter = 50
+        T eps = 0.1
+
+    return C.lcl_pressure(pressure, temperature, dewpoint, eps, max_iter)
+
+# 3x2
+@cython.ufunc
+cdef (double, double) lcl(T pressure, T temperature, T dewpoint) noexcept nogil:
+    # TODO: the signature....
+    # cdef (T, T) lcl(T pressure, T temperature, T dewpoint) noexcept nogil:...
+    # 
+    # Is unsupported by the ufunc signature. So the option are:
+    # - maintain gil
+    # - cast to double 
+    # - write the template in C
+    cdef:
+        size_t max_iter = 50
+        T eps = 0.1
+        C.LCL[T] lcl = C.lcl(pressure, temperature, dewpoint, eps, max_iter)
+
+    return <double>lcl.pressure, <double>lcl.temperature
 
 # -------------------------------------------------------------------------------------------------
 # time

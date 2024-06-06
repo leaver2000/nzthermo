@@ -74,7 +74,7 @@ OPENMP_ENABLED = bool(OPENMP)
 # ............................................................................................... #
 # helpers
 # ............................................................................................... #
-cdef cvarray nzarray((size_t, size_t) shape, size_t size):
+cdef cvarray nzarray((size_t, size_t) shape, size_t size) noexcept:
     return cvarray(
         shape, 
         itemsize=size, 
@@ -100,6 +100,7 @@ cdef pressure_mode(
         raise ValueError("Invalid pressure array shape.")
     
     return (pressure, temperature, dewpoint), mode
+
 
 # need to figuoure out a way to possibly pass in **kwargs maybe via a options struct
 ctypedef T (*Dispatch)(const T*, const T*, const T*, size_t) noexcept nogil
@@ -174,7 +175,7 @@ cdef void moist_lapse_1d(
             reference_pressure = next_pressure
 
 
-cdef T[:, :] view_moist_lapse(
+cdef T[:, :] moist_lapse_2d(
     T[:, :] pressure, 
     T[:] reference_pressure, 
     T[:] temperature, 
@@ -195,9 +196,6 @@ cdef T[:, :] view_moist_lapse(
         else: # MATRIX
             for i in prange(N, schedule='dynamic'):
                 moist_lapse_1d(out[i], pressure[i, :], reference_pressure[i], temperature[i], step=step)
-        # else: # ELEMENT_WISE TODO: this is deprecated in favor of the C.moist_lapse ufunc
-        #     for i in prange(N, schedule='dynamic'):
-        #         moist_lapse_1d(out[i], pressure[i:i + 1, 0], reference_pressure[i], temperature[i], step=step)
 
     return out
 
@@ -275,7 +273,7 @@ def moist_lapse(
     cdef:
         size_t N, Z, ndim
         BroadcastMode mode
-        np.ndarray x
+        np.ndarray out
 
     if dtype is None:
         dtype = pressure.dtype
@@ -325,9 +323,9 @@ def moist_lapse(
 
     Z = pressure.shape[1]
 
-    x = np.empty((N, Z), dtype=dtype)
+    out = np.empty((N, Z), dtype=dtype)
     if np.float32 == dtype:
-        x[...] = view_moist_lapse[float](
+        out[...] = moist_lapse_2d[float](
             pressure.astype(np.float32), 
             reference_pressure.astype(np.float32),
             temperature.astype(np.float32), 
@@ -335,7 +333,7 @@ def moist_lapse(
             step=step,
         )
     else:
-        x[...] = view_moist_lapse[double](
+        out[...] = moist_lapse_2d[double](
             pressure.astype(np.float64),
             reference_pressure.astype(np.float64),
             temperature.astype(np.float64),
@@ -343,84 +341,9 @@ def moist_lapse(
             step=step,
         )
     if mode == ELEMENT_WISE:
-        x = x.squeeze(1)
-
-    return x
-
-# -------------------------------------------------------------------------------------------------
-# lcl
-# -------------------------------------------------------------------------------------------------
-cdef T[:, :] view_lcl(
-    T[:] pressure, T[:] temperature, T[:] dewpoint, T eps, size_t max_iters
-) noexcept:
-    cdef:
-        size_t N, i
-        C.LCL[T] result
-        T[:, :] out
-
-    N = pressure.shape[0]
-    out = nzarray((2, N), pressure.itemsize)
-
-    with nogil, parallel():
-        for i in prange(N, schedule='dynamic'):
-            result = C.lcl(pressure[i], temperature[i], dewpoint[i], eps, max_iters)
-            out[0, i] = result.pressure
-            out[1, i] = result.temperature
+        out = out.squeeze(1)
 
     return out
-
-
-def lcl(
-    np.ndarray pressure,
-    np.ndarray temperature,
-    np.ndarray dewpoint,
-    *,
-    size_t max_iters = 50,
-    T eps = 0.1,
-    object dtype = None,
-):
-    """
-    The Lifting Condensation Level (LCL) is the level at which a parcel becomes saturated.
-    It is a reasonable estimate of cloud base height when parcels experience forced ascent.
-    The height difference between this parameter and the LFC is important when determining
-    convection initiation. The smaller the difference between the LCL and the LFC, the more likely
-    deep convection becomes. The LFC-LCL difference is similar to CIN (convective inhibition).
-    LCL heights from approximately 500 m (1600 ft) to 800 m (2600 ft) above ground level are
-    associated with F2 to F5 tornadoes. Low LCL heights and low surface dewpoint depressions
-    (high low level RH) suggest a warm RFD which may play a role in tornado development.
-    """
-    cdef size_t N
-    cdef np.ndarray x
-    pressure, temperature, dewpoint = map(np.ravel, (pressure, temperature, dewpoint))
-    if not pressure.size == temperature.size == dewpoint.size:
-        raise ValueError("pressure, temperature, and dewpoint arrays must be the same size.")
-
-    if dtype is None:
-        dtype = pressure.dtype
-    else:
-        dtype = np.dtype(dtype)
-
-    N = pressure.size
-
-    x = np.empty((2, N), dtype=dtype)
-    if np.float32 == dtype:
-        x[...] = view_lcl[float](
-            pressure.astype(np.float32), 
-            temperature.astype(np.float32),
-            dewpoint.astype(np.float32),
-            eps,
-            max_iters,
-        )
-    else:
-        x[...] = view_lcl[double](
-            pressure.astype(np.float64),
-            temperature.astype(np.float64),
-            dewpoint.astype(np.float64),
-            eps,
-            max_iters,
-        )
-
-    return x[0], x[1]
 
 
 # -------------------------------------------------------------------------------------------------
@@ -464,7 +387,7 @@ cdef void parcel_profile_1d(
         p = pressure[z]
 
 
-cdef T[:, :] view_parcel_profile(
+cdef T[:, :] parcel_profile_2d(
     T[:, :] pressure,
     T[:] temperature,
     T[:] dewpoint,
@@ -479,13 +402,12 @@ cdef T[:, :] view_parcel_profile(
 
     N, Z = temperature.shape[0], pressure.shape[1]
     out = nzarray((N, Z), pressure.itemsize)
-
     with nogil, parallel():
         if BROADCAST is mode:
             for i in prange(N, schedule='dynamic'):
                 parcel_profile_1d(out[i], pressure[0, :], temperature[i], dewpoint[i], step, eps, max_iters)
 
-        elif MATRIX is mode:
+        else: # MATRIX
             for i in prange(N, schedule='dynamic'):
                 parcel_profile_1d(out[i], pressure[i, :], temperature[i], dewpoint[i], step, eps, max_iters)
  
@@ -514,68 +436,110 @@ def parcel_profile(
     out = np.empty((N, Z), dtype=pressure.dtype)
     if strategy == SURFACE_BASED:
         if pressure.dtype == np.float64:
-            out[...] = view_parcel_profile[double](
-                pressure, temperature, dewpoint, mode, step, eps, max_iters
+            out[...] = parcel_profile_2d[double](
+                pressure.astype(np.float64),
+                temperature.astype(np.float64),
+                dewpoint.astype(np.float64),
+                mode,
+                step,
+                eps,
+                max_iters,
             )
         else:
-            out[...] = view_parcel_profile[float](
-                pressure, temperature, dewpoint, mode, <float>step, <float>eps, max_iters
+            out[...] = parcel_profile_2d[float](
+                pressure.astype(np.float32),
+                temperature.astype(np.float32),
+                dewpoint.astype(np.float32),
+                mode,
+                <float>step,
+                <float>eps,
+                max_iters,
             )
-
     else:
         raise ValueError("Invalid strategy.")
     
     return out
 
 
-cdef T[:, :] surface_based_parcel_profile_with_lcl(
-    T[:, :] profile,
-    T[:] lcl_temperature,
-    T[:] lcl_dewpoint, 
-    size_t[:] lcl_index,
-    T[:] pressure,
-    T[:] temperature,
-    T[:] dewpoint,
-    T step = 1000.0
-) noexcept:
+
+
+# ............................................................................................... #
+# parcel_profile_with_lcl
+# ............................................................................................... #
+cdef void parcel_profile_with_lcl_1d(
+    T[:] t_out,       # (Z + 1,)
+    T[:] p_out,       # (Z + 1,)
+    T[:] pressure,  # (Z,)
+    T temperature,
+    T dewpoint,
+    T step = 1000.0,
+    T eps = 0.1,
+    size_t max_iters = 50,
+) noexcept nogil:
     cdef:
-        size_t N, Z, n, z
-        # T[:, :] profile
-        T[:, :] lcl_values
-        T lcl_p, lcl_t, r, p, t, p0
-        T eps = 0.1
-        size_t max_iters = 50
+        size_t Z, z, stop
+        T p0, t0, t, p
         C.LCL[T] lcl
 
-    
-    N = temperature.shape[0]
     Z = pressure.shape[0]
-    assert Z == profile.shape[1] - 1
+    p0 = pressure[0]
+    t0 = t_out[0] = temperature
 
+    lcl = C.lcl(p0, t0, dewpoint, eps, max_iters)
+
+    # [dry ascent] 
+    # parcel temperature from the surface up to the LCL
+    z = 1 # we start at the second level
+    while pressure[z] >= lcl.pressure:
+        z += 1
+
+    stop = z # stop the dry ascent at the LCL
+    p_out[:stop] = pressure[:stop]
+    for z in prange(1, stop, schedule='dynamic'): # parallelize the dry ascent
+        t_out[z] = C.dry_lapse(pressure[z], p0, t0)
+    
+    # [ moist ascent ]
+    # parcel temperature from the LCL to the top of the atmosphere ( moist ascent )
+    t_out[z] = t = lcl.temperature
+    p_out[z] = p = lcl.pressure
+    
+    
+    for z in range(stop + 1, Z):
+        t_out[z] = t = C.moist_lapse(p, pressure[z - 1], t, step)
+        p_out[z] = p = pressure[z - 1]
+
+
+cdef T[:, :] parcel_profile_with_lcl_2d(
+    T[:, :] pressure,
+    T[:] temperature,
+    T[:] dewpoint,
+    BroadcastMode mode,
+    T step = 1000.0,
+    T eps = 0.1,
+    size_t max_iters = 50,
+) noexcept:
+    cdef:
+        size_t N, Z, i
+        T[:, :] t_out, p_out
+
+    N, Z = temperature.shape[0], pressure.shape[1] + 1
+
+    t_out = nzarray((N, Z), pressure.itemsize)
+    p_out = nzarray((N, Z), pressure.itemsize)
     with nogil, parallel():
-        p0 = pressure[0]
-        for n in prange(N, schedule='dynamic'):
-            # - parcel temperature from the surface up to the LCL ( dry ascent ) 
-            lcl = C.lcl(p0, temperature[n], dewpoint[n], eps, max_iters)
-            p = p0
-            z = 0
-            while p < lcl.pressure:
-                profile[n, z] = C.dry_lapse(p, p0, temperature[n])
-                p = pressure[z]
-                z += 1
 
-            # - parcel temperature from the LCL to the top of the atmosphere ( moist ascent )
-            # lcl_temperature[n] = p = lcl[0]
-            p = lcl.pressure
-            t = lcl.temperature
-            
-            profile[n, z] = t
-            
-            for z in range(z, Z):
-                profile[n, z + 1] = t = C.moist_lapse(p, pressure[z], t, step)
-                p = pressure[z]
-
-    return profile
+        if BROADCAST is mode:
+            for i in prange(N, schedule='dynamic'):
+                parcel_profile_with_lcl_1d(
+                    t_out[i], p_out[i], pressure[0, :], temperature[i], dewpoint[i], step, eps, max_iters
+                )
+        else: # MATRIX
+            for i in prange(N, schedule='dynamic'):
+                parcel_profile_with_lcl_1d(
+                    t_out[i], p_out[i], pressure[i, :], temperature[i], dewpoint[i], step, eps, max_iters
+                )
+ 
+    return t_out
 
 
 def parcel_profile_with_lcl(
@@ -584,51 +548,45 @@ def parcel_profile_with_lcl(
     np.ndarray dewpoint,
     *,
     ProfileStrategy strategy = SURFACE_BASED,
+    double step = 1000.0,
+    double eps = 0.1,
+    size_t max_iters = 50,
 ):
-    cdef np.ndarray profile = np.empty((temperature.size, pressure.size + 1), dtype=pressure.dtype)
-    cdef np.ndarray lcl_temperature = np.empty(temperature.size, dtype=pressure.dtype)
-    cdef np.ndarray lcl_dewpoint = np.empty(temperature.size, dtype=pressure.dtype)
-    cdef np.ndarray lcl_index = np.empty(temperature.size, dtype=np.uintp)
-    
+    cdef:
+        size_t N, Z
+        BroadcastMode mode
+        np.ndarray out
+
+    (pressure, temperature, dewpoint), mode = pressure_mode(pressure, temperature, dewpoint)
+    N, Z = temperature.shape[0], pressure.shape[1]
+        
+
+    out = np.empty((N, Z + 1), dtype=pressure.dtype)
     if strategy == SURFACE_BASED:
         if pressure.dtype == np.float64:
-            surface_based_parcel_profile_with_lcl[double](
-                profile,
-                lcl_temperature,
-                lcl_dewpoint,
-                lcl_index,
-                pressure, temperature, dewpoint
+            out[...] = parcel_profile_with_lcl_2d[double](
+                pressure.astype(np.float64),
+                temperature.astype(np.float64),
+                dewpoint.astype(np.float64),
+                mode,
+                step,
+                eps,
+                max_iters,
             )
         else:
-            surface_based_parcel_profile_with_lcl[float](
-                profile,
-                lcl_temperature,
-                lcl_dewpoint,
-                lcl_index,
-                pressure, temperature, dewpoint
+            out[...] = parcel_profile_with_lcl_2d[float](
+                pressure.astype(np.float32),
+                temperature.astype(np.float32),
+                dewpoint.astype(np.float32),
+                mode,
+                <float>step,
+                <float>eps,
+                max_iters,
             )
     else:
         raise ValueError("Invalid strategy.")
-    # elif strategy == MOST_UNSTABLE:
-        # if pressure.dtype == np.float64:
-        #     profile[...] = mu_parcel_profile[double](pressure, temperature, dewpoint)
-        # else:
-        #     profile[...] = mu_parcel_profile[float](pressure, temperature, dewpoint)
-
-    return profile
-
-
-# def cape_cin(
-#     np.ndarray pressure,
-#     np.ndarray temperature,
-#     np.ndarray dewpoint,
-# ):
-#     cdef np.ndarray profile = np.empty(temperature.shape[0], dtype=np.float64)
-#     cdef double[:] p = pressure.astype(np.float64)
-#     cdef double[:, :] t = temperature.astype(np.float64)
-#     cdef double[:, :] td = dewpoint.astype(np.float64)
-#     profile[...] = dispatch[double](C.cape_cin[double], p, t, td)
-#     return profile
+    
+    return out
 
 
 # ............................................................................................... #
@@ -732,25 +690,4 @@ def interpolate_nz(
         return out[0]
 
     return tuple(out)
-    
-# ............................................................................................... #
-# this is actually not implemented in the C++ code
-# ............................................................................................... #
-# def downdraft_cape(
-#     np.ndarray pressure,
-#     np.ndarray temperature,
-#     np.ndarray dewpoint,
-# ):  
-#     cdef:
-#         double[:, :] p, t, td
-#         size_t size = temperature.shape[1]
-#     p = pressure.astype(np.float64)
-#     t = dewpoint.astype(np.float64)
-#     td = temperature.astype(np.float64)
-#     out = np.empty(temperature.shape[0], dtype=np.float64)
-
-#     for i in range(temperature.shape[0]):
-#         out[i] = C.downdraft_cape[double](&p[i, 0], &t[i, 0], &td[i, 0], size)
-        
-#     return out
     
