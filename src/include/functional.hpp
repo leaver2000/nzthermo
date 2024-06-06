@@ -37,7 +37,7 @@ size_t search_sorted(
 ) noexcept;
 
 template <floating T>
-constexpr T interpolate_z(const size_t size, const T x, const T xp[], const T fp[]) noexcept;
+constexpr T interpolate_z(const T x, const T xp[], const T fp[], const size_t size) noexcept;
 
 /**
  * see: https://github.com/numpy/numpy/blob/main/numpy/_core/src/npymath/npy_math_internal.h.src#L426

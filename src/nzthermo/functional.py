@@ -149,9 +149,9 @@ def monotonically_increasing(x: NDArray[np.number[Any]]) -> np.ndarray[shape[N],
 
 
 def logical_or_close(
-    op: Callable[[NDArray[Any], NDArray[Any]], NDArray[np.bool_]],
-    a: NDArray[Any],
-    b: NDArray[Any],
+    op: Callable[[NDArray[np.float_] | float, NDArray[np.float_] | float], NDArray[np.bool_] | bool],
+    a: NDArray[np.float_] | float,
+    b: NDArray[np.float_] | float,
     rtol: float = 1.0e-5,
     atol: float = 1.0e-8,
     equal_nan: bool = False,
@@ -160,9 +160,9 @@ def logical_or_close(
 
 
 def logical_and_close(
-    op: Callable[[NDArray[Any], NDArray[Any]], NDArray[np.bool_]],
-    a: NDArray[Any],
-    b: NDArray[Any],
+    op: Callable[[NDArray[np.float_] | float, NDArray[np.float_] | float], NDArray[np.bool_] | bool],
+    a: NDArray[np.float_] | float,
+    b: NDArray[np.float_] | float,
     rtol: float = 1.0e-5,
     atol: float = 1.0e-8,
     equal_nan: bool = False,

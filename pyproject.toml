@@ -31,6 +31,20 @@ testpaths = ["tests/"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+markers = [
+    "ccl: test functions for convective condensation level",
+    # "lcl: test functions for lifting condensation level",
+    "lfc: test functions for level of free convection",
+    "el: test functions for equilibrium level",
+    "cape: test functions for convective available potential energy",
+    "cape_el",
+    "cape_el_top",
+    "cape_el_bottom",
+    "cape_lfc",
+    "cape_lfc_top",
+    "cape_lfc_bottom",
+
+]
 
 [tool.coverage.run]
 plugins = ["Cython.Coverage"]

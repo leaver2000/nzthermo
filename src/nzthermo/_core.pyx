@@ -559,7 +559,6 @@ def parcel_profile_with_lcl(
 
     (pressure, temperature, dewpoint), mode = pressure_mode(pressure, temperature, dewpoint)
     N, Z = temperature.shape[0], pressure.shape[1]
-        
 
     out = np.empty((N, Z + 1), dtype=pressure.dtype)
     if strategy == SURFACE_BASED:
@@ -600,12 +599,11 @@ cdef T[:] _interpolate_nz(
         size_t N, Z, n
         T[:] out
 
-    N = x.shape[0]
-    Z = xp.shape[0]
+    N, Z = x.shape[0], xp.shape[0]
     out = np.empty(N, dtype=np.float32 if sizeof(float) == x.itemsize else np.float64)
     with nogil, parallel():
         for n in prange(N, schedule='runtime'):
-            out[n] = C.interpolate_z(Z, x[n], &xp[0], &fp[n, 0])
+            out[n] = C.interpolate_z(x[n], &xp[0], &fp[n, 0], Z)
 
     return out
 

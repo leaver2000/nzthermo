@@ -17,7 +17,7 @@ cdef extern from "functional.cpp" namespace "libthermo" nogil:
     T linear_interpolate[T](T x, T x0, T x1, T y0, T y1) noexcept
     T degrees[T](T radians) noexcept
     T radians[T](T degrees) noexcept
-    T interpolate_z[T](size_t size, T x, T* xp, T* fp) noexcept
+    T interpolate_z[T](T x, T* xp, T* fp, size_t size) noexcept
 
 
 cdef extern from "wind.cpp" namespace "libthermo" nogil:

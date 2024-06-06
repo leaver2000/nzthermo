@@ -74,7 +74,7 @@ size_t search_sorted(const T x[], const T value, const size_t size, const bool i
 }
 
 template <floating T>
-constexpr T interpolate_z(const size_t size, const T x, const T xp[], const T fp[]) noexcept {
+constexpr T interpolate_z(const T x, const T xp[], const T fp[], const size_t size) noexcept {
     const size_t i = lower_bound(xp, size, x, std::greater_equal());
     if (i == 0)
         return fp[0];

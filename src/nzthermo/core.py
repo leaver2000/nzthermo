@@ -15,7 +15,6 @@ from typing import (
     Any,
     Final,
     Generic,
-    Literal,
     Literal as L,
     NamedTuple,
     TypeVar,
@@ -25,16 +24,20 @@ from typing import (
 import numpy as np
 from numpy.typing import NDArray
 
-
 from . import _core as core, _ufunc as uf, functional as F
 from .const import P0, Cpd, Rd, Rv
 from .typing import Kelvin, Kilogram, N, Pascal, Ratio, Z, shape
 
 # .....{ types }.....
-T = TypeVar("T")
-Pair = tuple[T, T]
+_T = TypeVar("_T")
+Pair = tuple[_T, _T]
 float_ = TypeVar("float_", bound=np.float_)
 newaxis: Final[None] = np.newaxis
+
+
+class elements(NamedTuple, Generic[_T, float_]):
+    pressure: Pascal[np.ndarray[_T, np.dtype[float_]]]
+    temperature: Kelvin[np.ndarray[_T, np.dtype[float_]]]
 
 
 # .................................................................................................
@@ -111,9 +114,7 @@ def most_unstable_parcel(
     p0 = pressure[0] if bottom is None else bottom
     top = p0 - depth
 
-    mask = np.logical_or(pressure < p0, np.isclose(pressure, p0)) & np.logical_or(
-        pressure > top, np.isclose(pressure, top)
-    )
+    mask = F.logical_or_close(operator.lt, pressure, p0) & F.logical_or_close(operator.gt, pressure, top)
     p = pressure[mask]
     t = temperature[:, mask]
     td = dewpoint[:, mask]
@@ -138,7 +139,7 @@ class ConvectiveCondensationLevel(NamedTuple, Generic[float_]):
         cls,
         p0: Pascal[NDArray[float_]],
         intersect: F.Intersection[float_],
-        which: Literal["bottom", "top"] = "bottom",
+        which: L["bottom", "top"] = "bottom",
     ) -> ConvectiveCondensationLevel[float_]:
         p, t, _ = intersect.bottom() if which == "bottom" else intersect.top()
         ct = uf.dry_lapse(p0, t, p)
@@ -152,7 +153,7 @@ def ccl(
     temperature: Kelvin[NDArray[float_]],
     dewpoint: Kelvin[NDArray[float_]],
     *,
-    which: Literal["all"] = ...,
+    which: L["all"] = ...,
 ) -> Pair[ConvectiveCondensationLevel[float_]]: ...
 @overload
 def ccl(
@@ -160,14 +161,14 @@ def ccl(
     temperature: Kelvin[NDArray[float_]],
     dewpoint: Kelvin[NDArray[float_]],
     *,
-    which: Literal["bottom", "top"] = ...,
+    which: L["bottom", "top"] = ...,
 ) -> ConvectiveCondensationLevel[float_]: ...
 def ccl(
     pressure: Pascal[NDArray[float_]],
     temperature: Kelvin[NDArray[float_]],
     dewpoint: Kelvin[NDArray[float_]],
     *,
-    which: Literal["bottom", "top", "all"] = "bottom",
+    which: L["bottom", "top", "all"] = "bottom",
 ) -> ConvectiveCondensationLevel[float_] | Pair[ConvectiveCondensationLevel[float_]]:
     """
     # Convective Condensation Level (CCL)
@@ -256,7 +257,7 @@ def find_intersections(
     x: np.ndarray[shape[N, Z], np.dtype[float_]],
     a: np.ndarray[shape[N, Z], np.dtype[float_]],
     b: np.ndarray[shape[N, Z], np.dtype[float_]],
-    direction: Literal["increasing", "decreasing"] = "increasing",
+    direction: L["increasing", "decreasing"] = "increasing",
     log_x: bool = False,
 ):
     if log_x is True:
@@ -300,15 +301,16 @@ def find_intersections(
 def _multiple_el_lfc_options(
     x: np.ndarray[shape[N, Z], np.dtype[float_]],
     y: np.ndarray[shape[N, Z], np.dtype[float_]],
-    which: Literal["bottom", "top"] = "top",
-):
+    which: L["bottom", "top"] = "top",
+) -> elements[shape[N], float_]:
+    x, y = np.sort(x, axis=1), np.sort(y, axis=1)
     nx = np.arange(x.shape[0])  # [:, newaxis]
     if which == "bottom":
         idx = np.argmin(~np.isnan(x), axis=1) - 1  # the last non-nan value
-        return x[nx, idx], y[nx, idx]
+        return elements(x[nx, idx], y[nx, idx])
 
     elif which == "top":
-        return x[nx, 0], y[nx, 0]  # the first non-nan value
+        return elements(x[nx, 0], y[nx, 0])  # the first non-nan value
 
     raise ValueError("which must be either 'top' or 'bottom'")
 
@@ -325,12 +327,9 @@ def el(
     dewpoint: Annotated[Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]], "isobaric dewpoint temperature"],
     /,
     parcel_temperature_profile: Annotated[Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]], ""] | None = None,
-    which: Literal["top", "bottom"] = "top",
+    which: L["top", "bottom"] = "top",
     lcl_p: np.ndarray | None = None,
-) -> tuple[
-    Pascal[np.ndarray[shape[N], np.dtype[float_]]],
-    Kelvin[np.ndarray[shape[N], np.dtype[float_]]],
-]:
+) -> elements[shape[N], float_]:
     pressure = _2d(pressure)
 
     p0 = pressure[:, 0]
@@ -347,7 +346,7 @@ def el(
         pressure[:, 1:], parcel_temperature_profile[:, 1:], temperature[:, 1:], "decreasing", log_x=True
     )
 
-    idx = x <= lcl_p[:, newaxis]  # ABOVE: the LCL
+    idx = x < lcl_p[:, newaxis]  # ABOVE: the LCL
     x = np.where(idx, x, np.nan)  # BELOW: is LCL is set to nan
     y = np.where(idx, y, np.nan)
 
@@ -368,13 +367,11 @@ def lfc(
     dewpoint: Annotated[Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]], "isobaric dewpoint temperature"],
     /,
     parcel_temperature_profile: np.ndarray | None = None,
-    which: Literal["top", "bottom"] = "top",
+    which: L["top", "bottom"] = "top",
     lcl_p: np.ndarray | None = None,
     dewpoint_start: np.ndarray | None = None,
-) -> tuple[
-    Pascal[np.ndarray[shape[N], np.dtype[float_]]],
-    Kelvin[np.ndarray[shape[N], np.dtype[float_]]],
-]:
+    fast_approximate: bool = False,
+) -> elements[shape[N], float_]:
     pressure = _2d(pressure)
 
     p0 = pressure[:, 0]
@@ -387,17 +384,8 @@ def lfc(
     if parcel_temperature_profile is None:
         parcel_temperature_profile = core.parcel_profile(pressure, t0, td0)
 
-    if lcl_p is None:
-        lcl_p = uf.lcl_pressure(p0, t0, td0)
-
-    with warnings.catch_warnings():  # RuntimeWarning: All-NaN slice encountered
-        warnings.simplefilter("ignore", category=RuntimeWarning)
-        el_p = np.nanmin(
-            find_intersections(
-                pressure[:, 1:], parcel_temperature_profile[:, 1:], temperature[:, 1:], "increasing", log_x=True
-            )[0],
-            axis=1,
-        )
+    # if lcl_p is None:
+    lcl_p, lcl_t = uf.lcl(p0, t0, td0)
 
     x, y = find_intersections(
         pressure[:, 1:], parcel_temperature_profile[:, 1:], temperature[:, 1:], "increasing", log_x=True
@@ -405,14 +393,62 @@ def lfc(
     # this get's a little confusing because a lower value represents a higher point in the atmosphere
     # so when I refer to ABOVE or BELOW I am not referring to the literal value of the pressure but the
     # altitude in the atmosphere.
-    idx = x < lcl_p[:, newaxis]  # ABOVE: the LCL
-    no_intersect = np.all(~idx, axis=1)  # LFC does not exist or is LCL
+    above_lcl = x < lcl_p[:, newaxis]  # ABOVE: the LCL
+    if fast_approximate:
+        return _multiple_el_lfc_options(
+            np.where(above_lcl, x, np.nan),
+            np.where(above_lcl, y, np.nan),
+            which,
+        )
 
-    x = np.where(idx, x, np.nan)  # BELOW: is LCL is set to nan
-    x[no_intersect, 0] = el_p[no_intersect]  # where there is no intersection set the LFC to the EL
-    idx[no_intersect, 0] = True  # and we need to update our index to reflect this
+    el_p = find_intersections(
+        pressure[:, 1:], parcel_temperature_profile[:, 1:], temperature[:, 1:], "decreasing", log_x=True
+    )[0]
 
-    y = np.where(idx, y, np.nan)
+    mask = pressure[:, :] < lcl_p[:, newaxis]
+    maybe_lfc_is_lcl = np.all(np.isnan(x), axis=1, keepdims=True)
+    no_lfc = maybe_lfc_is_lcl & np.all(
+        F.logical_or_close(
+            operator.lt,
+            np.where(mask, parcel_temperature_profile, np.nan),
+            np.where(mask, temperature, np.nan),
+        ),
+        axis=1,
+        keepdims=True,
+    )
+
+    above_lcl = x < lcl_p[:, newaxis]  # ABOVE: the LCL
+    # if not any idx
+    not_any = np.all(~above_lcl, axis=1, keepdims=True)
+    with warnings.catch_warnings():  # RuntimeWarning: All-NaN slice encountered
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        conditions = [
+            # if:...........................|
+            # LFC does not exist or is LCL  |
+            np.logical_or(
+                maybe_lfc_is_lcl,
+                not_any & (np.nanmin(el_p, axis=1, keepdims=True) > lcl_p[:, newaxis]),
+            ),
+            no_lfc,  # LFC doesn't exist    |
+            # else:.........................|
+            #     if not any(idx) & min(el_p) > lcl_p: nan
+            # not_any & (np.nanmin(el_p, axis=1, keepdims=True) > lcl_p[:, newaxis]),
+            not_any,
+            # Otherwise, find all LFCs that exist above the LCL
+            # What is returned depends on which flag as described in the docstring
+            # else:
+        ]
+
+    x = np.select(
+        conditions,
+        [np.nan, lcl_p[:, newaxis], x],
+        np.where(above_lcl, x, np.nan),  # find all LFCs that exist above the LCL
+    )
+    y = np.select(
+        conditions,
+        [np.nan, lcl_t[:, newaxis], y],
+        np.where(above_lcl, y, np.nan),  # find all LFCs that exist above the LCL
+    )
 
     return _multiple_el_lfc_options(x, y, which)
 
@@ -430,6 +466,7 @@ def cape_cin(
     parcel_profile: np.ndarray,
     which_lfc: L["bottom", "top"] = "bottom",
     which_el: L["bottom", "top"] = "top",
+    fast_approximate: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     pressure = _2d(pressure)
     lcl_p = uf.lcl_pressure(pressure[:, 0], temperature[:, 0], dewpoint[:, 0])  # ✔️
@@ -445,29 +482,32 @@ def cape_cin(
     temperature = uf.virtual_temperature(temperature, uf.saturation_mixing_ratio(pressure, dewpoint))
     parcel_profile = uf.virtual_temperature(parcel_profile, parcel_mixing_ratio)
     # Calculate LFC limit of integration
-    lfc_p, _ = lfc(pressure, temperature, dewpoint, parcel_profile, which=which_lfc)  # ✔️
+    lfc_p = lfc(
+        pressure, temperature, dewpoint, parcel_profile, which=which_lfc, fast_approximate=fast_approximate
+    ).pressure  # ✔️
 
     # Calculate the EL limit of integration
-    el_p, _ = el(pressure, temperature, dewpoint, parcel_profile, which=which_el)  # ✔️
+    el_p = el(pressure, temperature, dewpoint, parcel_profile, which=which_el).pressure  # ✔️
+    null = np.isnan(lfc_p)
 
-    X, Y = F.find_append_zero_crossings(
-        np.broadcast_to(pressure, temperature.shape), parcel_profile - temperature
-    )  # ((N, Z), ...)
+    pressure = np.broadcast_to(pressure, temperature.shape)
+    p_top = np.nanmin(pressure, axis=1)
+    el_p = np.where(np.isnan(el_p), p_top, el_p)
 
-    # - need to spell this out i guess
-    lfc_p = lfc_p.reshape(-1, 1)
-    el_p = el_p.reshape(-1, 1)
+    lfc_p, el_p = np.reshape((lfc_p, el_p), (2, -1, 1))
+
+    X, Y = F.find_append_zero_crossings(pressure, parcel_profile - temperature)  # ((N, Z), ...)
 
     mask = F.logical_or_close(operator.lt, X, lfc_p) & F.logical_or_close(operator.gt, X, el_p)
-    x, y = np.where(mask[None], [X, Y], np.nan)
+    x, y = np.where(mask[newaxis, ...], [X, Y], np.nan)
 
     cape = Rd * F.nantrapz(y, np.log(x), axis=1)
-    cape[cape < 0.0] = 0.0
+    cape[null | (cape < 0.0)] = 0.0
 
     mask = F.logical_or_close(operator.gt, X, lfc_p)
-    x, y = np.where(mask[None], [X, Y], np.nan)
+    x, y = np.where(mask[newaxis, ...], [X, Y], np.nan)
 
     cin = Rd * F.nantrapz(y, np.log(x), axis=1)
-    cin[cin > 0.0] = 0.0
+    cin[null | (cin > 0.0)] = 0.0
 
     return cape, cin
