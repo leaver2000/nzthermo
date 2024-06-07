@@ -18,6 +18,7 @@ Rv: Final[Annotated[float, ...]] = 461.52311572606084
 """constant (Water Vapor) (J/kg*K)"""
 # [specific heat]
 Cpd: Final[Annotated[float, ...]] = 1004.6662184201462
+Cp = Cpd
 # [latent heat]
 Lv: Final[Annotated[float, ...]] = 2.50084e6  # (J kg^-1) latent heat of vaporization
 """Latent heat of vaporization (J/kg)"""

@@ -6,7 +6,7 @@ import pytest
 from metpy.units import units
 from numpy.testing import assert_allclose
 
-from nzthermo.core import moist_lapse
+from nzthermo._core import moist_lapse
 
 
 def pressure_levels(sfc=1013.25, dtype: Any = np.float64):
@@ -47,9 +47,9 @@ def test_moist_lapse_broadcasting(dtype):
     assert_allclose(
         ml,
         [
-            mpcalc.moist_lapse(pressure * units.pascal, temperature[i] * units.kelvin).m
+            mpcalc.moist_lapse(pressure * units.pascal, temperature[i] * units.kelvin).m  # type: ignore
             for i in range(len(temperature))
-        ],  # type: ignore
+        ],
         rtol=1e-2,
     )
 
@@ -73,9 +73,9 @@ def test_moist_lapse(dtype):
     assert_allclose(
         ml,
         [
-            mpcalc.moist_lapse(pressure[i] * units.pascal, temperature[i] * units.kelvin).m
+            mpcalc.moist_lapse(pressure[i] * units.pascal, temperature[i] * units.kelvin).m  # type: ignore
             for i in range(len(temperature))
-        ],  # type: ignore
+        ],
         rtol=1e-4,
     )
 

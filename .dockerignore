@@ -1,0 +1,22 @@
+# Ignore everything
+*
+
+# Allow files and directories
+!pyproject.toml
+!setup.py
+!/src/nzthermo/
+!/src/include/
+!/src/lib/
+!/tests/
+!/.git/
+# !/src
+
+# Ignore unnecessary files inside allowed directories
+# This should go after the allowed directories
+# **/*~
+**/*.pyc
+**/_version.py
+**/__pycache__/
+**/*.so
+# **/.DS_Store
+# **/Thumbs.db

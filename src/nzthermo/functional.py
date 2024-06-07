@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import functools
 from typing import (
+    Any,
     Callable,
     Concatenate,
     Final,
@@ -10,19 +11,23 @@ from typing import (
     Literal,
     NamedTuple,
     ParamSpec,
-    Self,
+    SupportsIndex,
     TypeVar,
-    overload,
 )
 
 import numpy as np
+from numpy._typing._array_like import (
+    _ArrayLikeComplex_co,
+    _ArrayLikeObject_co,
+    _ArrayLikeTD64_co,
+)
 from numpy.typing import NDArray
 
 try:
     from typing_extensions import deprecated
 except ImportError:
     deprecated = lambda s: lambda f: f  # type: ignore
-from ._typing import N, Z, shape
+from .typing import N, Self, Z, shape
 
 _T = TypeVar("_T")
 _R = TypeVar("_R")
@@ -69,6 +74,102 @@ def interp_nan(x: NDArray[float_], /, copy: bool = True) -> NDArray[float_]:
 _interp_nan: Final = interp_nan
 
 
+def nantrapz(
+    y: _ArrayLikeComplex_co | _ArrayLikeTD64_co | _ArrayLikeObject_co,
+    x: _ArrayLikeComplex_co | _ArrayLikeTD64_co | _ArrayLikeObject_co | None = None,
+    dx: float = 1.0,
+    axis: SupportsIndex = -1,
+) -> NDArray[np.float_]:
+    r"""
+    This is a clone of the `numpy.trapz` function but with support for `nan` values.
+    see the `numpy.lib.function_base.trapz` function for more information.
+
+    Integrate along the given axis using the composite trapezoidal rule.
+
+    If `x` is provided, the integration happens in sequence along its
+    elements - they are not sorted.
+
+    Integrate `y` (`x`) along each 1d slice on the given axis, compute
+    :math:`\int y(x) dx`.
+    When `x` is specified, this integrates along the parametric curve,
+    computing :math:`\int_t y(t) dt =
+    \int_t y(t) \left.\frac{dx}{dt}\right|_{x=x(t)} dt`.
+
+    Parameters
+    ----------
+    y : array_like
+        Input array to integrate.
+    x : array_like, optional
+        The sample points corresponding to the `y` values. If `x` is None,
+        the sample points are assumed to be evenly spaced `dx` apart. The
+        default is None.
+    dx : scalar, optional
+        The spacing between sample points when `x` is None. The default is 1.
+    axis : int, optional
+        The axis along which to integrate.
+
+    Returns
+    -------
+    trapz : float or ndarray
+        Definite integral of `y` = n-dimensional array as approximated along
+        a single axis by the trapezoidal rule. If `y` is a 1-dimensional array,
+        then the result is a float. If `n` is greater than 1, then the result
+        is an `n`-1 dimensional array.
+
+    Notes
+    ------
+    The try-except block was removed because it was not necessary, for the use case of this
+    of this library.
+    """
+
+    y = np.asanyarray(y)
+    if x is None:
+        d = dx
+    else:
+        x = np.asanyarray(x)
+        if x.ndim == 1:
+            d = np.diff(x)
+            # reshape to correct shape
+            shape = [1] * y.ndim
+            shape[axis] = d.shape[0]
+            d = d.reshape(shape)
+        else:
+            d = np.diff(x, axis=axis)
+    nd = y.ndim
+    slice1 = [slice(None)] * nd
+    slice2 = [slice(None)] * nd
+    slice1[axis] = slice(1, None)
+    slice2[axis] = slice(None, -1)
+
+    return np.nansum(d * (y[tuple(slice1)] + y[tuple(slice2)]) / 2.0, axis=axis)
+
+
+def monotonically_increasing(x: NDArray[np.number[Any]]) -> np.ndarray[shape[N], np.dtype[np.bool_]]:
+    return np.all(x[:, 1:] >= x[:, :-1], axis=1)
+
+
+def logical_or_close(
+    op: Callable[[NDArray[np.float_] | float, NDArray[np.float_] | float], NDArray[np.bool_] | bool],
+    a: NDArray[np.float_] | float,
+    b: NDArray[np.float_] | float,
+    rtol: float = 1.0e-5,
+    atol: float = 1.0e-8,
+    equal_nan: bool = False,
+) -> NDArray[np.bool_]:
+    return np.logical_or(op(a, b), np.isclose(a, b, rtol=rtol, atol=atol, equal_nan=equal_nan))
+
+
+def logical_and_close(
+    op: Callable[[NDArray[np.float_] | float, NDArray[np.float_] | float], NDArray[np.bool_] | bool],
+    a: NDArray[np.float_] | float,
+    b: NDArray[np.float_] | float,
+    rtol: float = 1.0e-5,
+    atol: float = 1.0e-8,
+    equal_nan: bool = False,
+) -> NDArray[np.bool_]:
+    return np.logical_and(op(a, b), np.isclose(a, b, rtol=rtol, atol=atol, equal_nan=equal_nan))
+
+
 # -------------------------------------------------------------------------------------------------
 # interpolate_nz
 # -------------------------------------------------------------------------------------------------
@@ -95,120 +196,6 @@ def linear_interpolate(
         x = _interp_nan(x, copy=False)
 
     return x
-
-
-def indices_nz(
-    x: np.ndarray[shape[N], np.dtype[float_]],
-    y: np.ndarray[shape[Z], np.dtype[float_]],
-) -> tuple[np.ndarray[shape[N], np.dtype[np.intp]], np.ndarray[shape[Z], np.dtype[np.intp]]]:
-    delta = x[:, newaxis] - y[newaxis, :]
-    nx, zx = np.nonzero(np.diff(np.sign(delta), axis=1, append=0))
-    _, index = np.unique(nx, return_index=True)
-    return nx[index], zx[index]
-
-
-@overload
-def interpolate_nz(  # type: ignore[overload-overlap]
-    x: np.ndarray[shape[N], np.dtype[float_]],
-    xp: np.ndarray[shape[Z], np.dtype[float_]],
-    fp: np.ndarray[shape[N, Z], np.dtype[float_]],
-    /,
-    *,
-    mode: Literal["clip"] = ...,
-    log_x: bool = False,
-    interp_nan: bool = ...,
-) -> np.ndarray[shape[N], np.dtype[float_]]: ...
-@overload
-def interpolate_nz(
-    x: np.ndarray[shape[N], np.dtype[float_]],
-    xp: np.ndarray[shape[Z], np.dtype[float_]],
-    *args: np.ndarray[shape[N, Z], np.dtype[float_]],
-    mode: Literal["clip"] = ...,
-    log_x: bool = False,
-    interp_nan: bool = ...,
-) -> tuple[np.ndarray[shape[N], np.dtype[float_]], ...]: ...
-def interpolate_nz(
-    x: np.ndarray[shape[N], np.dtype[float_]],
-    xp: np.ndarray[shape[Z], np.dtype[float_]],
-    *args: np.ndarray[shape[N, Z], np.dtype[float_]],
-    mode: Literal["clip"] = "clip",
-    log_x: bool = False,
-    interp_nan: bool = False,
-) -> np.ndarray[shape[N], np.dtype[float_]] | tuple[np.ndarray[shape[N], np.dtype[float_]], ...]:
-    """
-    Interpolates values for multiple batches of data.
-
-    Args:
-        x: Input array of shape (N,) containing the values to be interpolated.
-        xp: Input array of shape (Z,) containing the reference values.
-        *args: Variable number of input arrays of shape (N, Z) containing additional data.
-
-    Returns:
-        np.ndarray or tuple of np.ndarray: Interpolated values for each batch.
-
-    Raises:
-        None
-
-    Examples:
-    >>> import numpy as np
-    >>> import nzthermo as nzt
-    >>> import nzthermo.functional as F
-    >>> temperature = np.array(
-    ...     [
-    ...         [303.3, 302.36, 300.16, 298.0, 296.09, 296.73, 295.96, 294.79, 293.51, 291.81],
-    ...         [303.58, 302.6, 300.41, 298.24, 296.49, 295.35, 295.62, 294.43, 293.27, 291.6],
-    ...         [303.75, 302.77, 300.59, 298.43, 296.36, 295.15, 295.32, 294.19, 292.84, 291.54],
-    ...         [303.46, 302.51, 300.34, 298.19, 296.34, 295.51, 295.06, 293.84, 292.42, 291.1],
-    ...         [303.23, 302.31, 300.12, 297.97, 296.28, 295.68, 294.83, 293.67, 292.56, 291.47],
-    ...     ]
-    ... )  # (N, Z)
-    >>> dewpoint = np.array(
-    ...     [
-    ...         [297.61, 297.36, 296.73, 296.05, 294.69, 289.18, 286.82, 285.82, 284.88, 283.81],
-    ...         [297.62, 297.36, 296.79, 296.18, 294.5, 292.07, 287.74, 286.67, 285.15, 284.02],
-    ...         [297.76, 297.51, 296.91, 296.23, 295.05, 292.9, 288.86, 287.12, 285.99, 283.98],
-    ...         [297.82, 297.56, 296.95, 296.23, 295.0, 292.47, 289.97, 288.45, 287.09, 285.17],
-    ...         [298.22, 297.95, 297.33, 296.69, 295.19, 293.16, 291.42, 289.66, 287.28, 284.31],
-    ...     ]
-    ... )  # (N, Z)
-    >>> surface_pressure = np.array([101210.0, 101300.0, 101373.0, 101430.0, 101470.0])  # (N,)
-    >>> pressure_levels = np.array(
-    ...     [101300.0, 100000.0, 97500.0, 95000.0, 92500.0, 90000.0, 87500.0, 85000.0, 82500.0, 80000.0]
-    ... )  # (Z,)
-    >>> lcl_p, lcl_t = nzt.lcl(
-    ...     surface_pressure,  # (N,)
-    ...     temperature[:, 0],  # (N,)
-    ...     dewpoint[:, 0],  # (N,)
-    ... )  # (N,), (N,)
-    >>> lcl_p
-    array([93214.26240694, 92938.06420037, 92967.83292536, 93487.43780492, 94377.76028999])
-    >>> F.interpolate_nz(lcl_p, pressure_levels, temperature, dewpoint)  # temp & dwpt values interpolated at LCL pressure
-    (
-        array([296.63569648, 296.79664494, 296.74736566, 297.07070398, 297.54936596]),
-        array([295.07855875, 294.79437914, 295.27081714, 295.4858194, 296.31665617])
-    )
-
-    """
-    fp = np.array(args)  # (B, N, Z)
-    assert fp.shape[1:] == (x.shape[0], xp.shape[0])
-    if log_x is True:
-        x = np.log(x)
-        xp = np.log(xp)
-
-    nx, zx = indices_nz(x, xp)
-
-    x0, y0 = xp[zx], fp[:, nx, zx]
-    assert mode == "clip"
-    # TODO: add support for other modes
-    zx = np.minimum(zx + 1, xp.size - 1)  # clip
-    x1, y1 = xp[zx], fp[:, nx, zx]
-
-    x = linear_interpolate(x, x0, x1, y0, y1, log_x=False, interp_nan=interp_nan)
-
-    if x.shape[0] == 1:
-        return x[0]
-
-    return tuple(x)
 
 
 # -------------------------------------------------------------------------------------------------
@@ -268,6 +255,34 @@ def mask_insert(
     return np.ma.masked_array(z, mask=~mask)
 
 
+def zero_crossing(
+    x: np.ndarray[shape[N, Z], np.dtype[float_]],
+    y: np.ndarray[shape[N, Z], np.dtype[float_]],
+    *,
+    log_x: bool = True,
+    prepend: float = -1.0,
+    eps: float = 1e-6,
+) -> tuple[
+    np.ndarray[shape[N, Z], np.dtype[float_]],
+    np.ndarray[shape[N, Z], np.dtype[float_]],
+]:
+    crossing = intersect_nz(x[:, 1:], y[:, 1:], np.zeros_like(y[:, 1:]), direction="all", log_x=log_x).full()
+    x = np.column_stack([x, crossing[0]])  # concatenate
+    y = np.column_stack([y, crossing[1]])  # concatenate
+
+    # Resort so that data are in order
+    sort = np.argsort(x, axis=1)
+    x = np.take_along_axis(x, sort, axis=1)
+    y = np.take_along_axis(y, sort, axis=1)
+
+    # Remove duplicate data points if there are any
+    discard = np.diff(x, axis=1, prepend=prepend) <= eps
+    x[discard] = np.nan
+    y[discard] = np.nan
+
+    return x[:, :], y[:, :]
+
+
 # -------------------------------------------------------------------------------------------------
 # intersect_nz
 # -------------------------------------------------------------------------------------------------
@@ -281,19 +296,13 @@ class Intersection(NamedTuple, Generic[float_]):
         (N,) = self.x.shape
         return (N,)  # type: ignore
 
-    @deprecated("Use 'bottom' instead")
-    def lower(self) -> Self:
-        return self.bottom()
-
     def bottom(self) -> Self:
         cls = self.__class__
         x, y, indices = self
-        _, idx = np.unique(indices, return_index=True)
-        return cls(x[idx], y[idx], indices[idx])
 
-    @deprecated("Use 'top' instead")
-    def upper(self) -> Self:
-        return self.top()
+        _, idx = np.unique(indices, return_index=True)
+
+        return cls(x[idx], y[idx], indices[idx])
 
     def top(self) -> Self:
         cls = self.__class__
@@ -301,13 +310,102 @@ class Intersection(NamedTuple, Generic[float_]):
         x, y, indices = self
 
         idx = np.flatnonzero(np.diff(indices, append=N))
-        idx[np.isnan(x[idx])] -= 1
-        idx = np.clip(idx, 0, N - 1)
+        # idx[np.isnan(x[idx])] -= 2
+        idx = np.clip(idx, 0, N)
 
         return cls(x[idx], y[idx], indices[idx])
 
     def to_numpy(self):
         return np.array([self.x, self.y])
+
+    def pick(
+        self, which: Literal["top", "bottom"]
+    ) -> tuple[np.ndarray[shape[N], np.dtype[float_]], np.ndarray[shape[N], np.dtype[float_]]]:
+        x, y, _ = self.bottom() if which == "bottom" else self.top()
+        return x, y
+
+    def full(self) -> tuple[np.ndarray[shape[N, Z], np.dtype[float_]], np.ndarray[shape[N, Z], np.dtype[float_]]]:
+        """
+        TODO: DOCUMENTATION!!
+        ```python
+        x = [99644.14784044            nan 99748.45094803            nan
+        91844.40614874 76853.41182469            nan 91977.69836503
+        88486.6306099  55503.21680679 45348.18988747            nan]
+        y = [ 3.76088050e-15             nan -3.96765953e-14             nan
+        1.52655666e-15 -3.96904731e-14             nan -7.35522754e-15
+        -5.77315973e-14 -5.55111512e-15  1.04360964e-14             nan]
+            indices = [0 0 1 1 2 2 2 3 3 3 3 3]
+
+        full(x, y, indices)
+        [[99644.14784044,            nan,            nan,           nan],
+        [99748.45094803,            nan,            nan,            nan],
+        [76853.41182469, 91844.40614874,            nan,            nan],
+        [45348.18988747, 55503.21680679, 88486.6306099 , 91977.69836503]]
+
+        [[ 3.76088050e-15,             nan,             nan,            nan],
+        [-3.96765953e-14,             nan,             nan,             nan],
+        [-3.96904731e-14,  1.52655666e-15,             nan,             nan],
+        [ 1.04360964e-14, -5.55111512e-15, -5.77315973e-14, -7.35522754e-15]]
+        ```
+        """
+        x = self.x
+        y = self.y
+        idx = self.indices
+
+        N = np.unique(self.indices).size
+
+        mask = np.arange(N)[:, None] == idx[None]
+        x, y = np.where(mask, x, np.nan), np.where(mask, y, np.nan)
+
+        sort = np.argsort(x, axis=1)[:, ::-1]
+        x = np.take_along_axis(x, sort, axis=1)[:, ::-1]
+        y = np.take_along_axis(y, sort, axis=1)[:, ::-1]
+        cap = np.argmax(np.isnan(x), axis=1).max()
+        x, y = x[:, :cap], y[:, :cap]
+
+        return x, y
+
+
+def find_append_zero_crossings(
+    X: np.ndarray[shape[N, Z], np.dtype[float_]], Y: np.ndarray[shape[N, Z], np.dtype[float_]]
+) -> tuple[np.ndarray[shape[N, Z], np.dtype[float_]], np.ndarray[shape[N, Z], np.dtype[float_]]]:
+    """
+    This function targets the `metpy.thermo._find_append_zero_crossings` function but with support
+    for 2D arrays.
+    """
+    x = np.log(X[:, 1:])
+    a = Y[:, 1:]
+    b = np.zeros_like(a)
+
+    ind, nearest_idx = np.nonzero(np.diff(np.sign(a - b), axis=1))
+
+    next_idx = np.clip(nearest_idx + 1, 0, X.shape[1] - 1)
+    x0, x1 = x[ind, nearest_idx], x[ind, next_idx]
+    a0, a1 = a[ind, nearest_idx], a[ind, next_idx]
+    b0, b1 = b[ind, nearest_idx], b[ind, next_idx]
+    delta_y0 = a0 - b0
+    delta_y1 = a1 - b1
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        x = (delta_y1 * x0 - delta_y0 * x1) / (delta_y1 - delta_y0)  # type: ignore
+        y = ((x - x0) / (x1 - x0)) * (a1 - a0) + a0  # type: NDArray[float_] # type: ignore
+        x = np.exp(x)
+
+    x_full = np.full_like(X, fill_value=np.nan)
+    y_full = np.full_like(Y, fill_value=np.nan)
+    x_full[ind, nearest_idx] = x
+    y_full[ind, nearest_idx] = y
+
+    x = np.column_stack([X, x_full])
+    y = np.column_stack([Y, y_full])
+
+    sort = np.argsort(x, axis=1)
+    x = x[np.arange(x.shape[0])[:, None], sort]
+    y = y[np.arange(y.shape[0])[:, None], sort]
+
+    cap = np.argmax(np.isnan(x), axis=1).max()
+
+    return x[:, :cap], y[:, :cap]
 
 
 def intersect_nz(
@@ -315,8 +413,9 @@ def intersect_nz(
     a: np.ndarray[shape[N, Z], np.dtype[float_]],
     b: np.ndarray[shape[N, Z], np.dtype[float_]],
     *,
-    direction: Literal["increasing", "decreasing"] = "increasing",  # TODO:...
+    direction: Literal["all", "increasing", "decreasing"] = "increasing",  # TODO:...
     log_x: bool = False,
+    mask_nans: bool = False,
 ) -> Intersection[float_]:
     """interpolate the points on `x` where `a` and `b` intersect.
     >>> x = np.array([1013, 1000,  975,  950])
@@ -338,8 +437,8 @@ def intersect_nz(
       indices=[0 1]
     )
     """
-    x = x.squeeze()
-    Z = x.shape[-1]
+    x = np.atleast_1d(x.squeeze())
+    N, Z = a.shape
     if not (a.shape[-1] == b.shape[-1] == Z):
         raise ValueError("a, b, and x must have the same number of elements")
     elif not (a.shape[0] == b.shape[0]):
@@ -354,6 +453,7 @@ def intersect_nz(
 
     nx, z0 = np.nonzero(mask)
     z1 = np.clip(z0 + 1, 0, Z - 1)
+    sign_change = np.sign(a[nx, z1] - b[nx, z1])
 
     if x.ndim == 1:
         x0, x1 = x[z0], x[z1]
@@ -372,4 +472,17 @@ def intersect_nz(
         if log_x is True:
             x = np.exp(x)
 
-    return Intersection(x, y, nx)  # type: ignore
+    if direction == "increasing":
+        mask = sign_change > 0
+        nans = np.diff(nx, prepend=-1).astype(bool)
+    elif direction == "decreasing":
+        mask = sign_change < 0
+        nans = np.diff(nx, append=N + 1).astype(bool)
+    else:  # all
+        return Intersection(x, y, nx)  # type: ignore
+
+    if mask_nans:
+        x[mask & nans] = np.nan
+        y[mask & nans] = np.nan
+
+    return Intersection(x[mask | nans], y[mask | nans], nx[mask | nans])
