@@ -359,8 +359,8 @@ cdef void parcel_profile_1d(
     size_t max_iters = 50,
 ) noexcept nogil:
     cdef:
-        size_t Z, z, stop
-        T p0, t0, t, p
+        size_t Z, i, stop
+        T p0, t0, reference_pressure, next_pressure
         C.LCL[T] lcl
 
     Z = pressure.shape[0]
@@ -371,21 +371,17 @@ cdef void parcel_profile_1d(
 
     # [dry ascent] 
     # parcel temperature from the surface up to the LCL
-    z = 1 # we start at the second level
-    while pressure[z] >= lcl.pressure:
-        z += 1
+    stop = 1 # we start at the second level
+    while pressure[stop] >= lcl.pressure:
+        stop += 1
 
-    stop = z # stop the dry ascent at the LCL
-    for z in prange(1, stop, schedule='dynamic'): # parallelize the dry ascent
-        out[z] = C.dry_lapse(pressure[z], p0, t0)
+    # stop = i # stop the dry ascent at the LCL
+    for i in prange(1, stop, schedule='dynamic'): # parallelize the dry ascent
+        out[i] = C.dry_lapse(pressure[i], p0, t0)
 
     # [ moist ascent ]
-    # parcel temperature from the LCL to the top of the atmosphere ( moist ascent )
-    p, t = lcl.pressure, lcl.temperature
-    for z in range(stop, Z):
-        out[z] = t = C.moist_lapse(p, pressure[z], t, step)
-        p = pressure[z]
-
+    # parcel temperature from the LCL to the top of the atmosphere
+    moist_lapse_1d(out[stop:], pressure[stop:], lcl.pressure, lcl.temperature, step)
 
 cdef T[:, :] parcel_profile_2d(
     T[:, :] pressure,
@@ -459,9 +455,6 @@ def parcel_profile(
         raise ValueError("Invalid strategy.")
     
     return out
-
-
-
 
 # ............................................................................................... #
 # parcel_profile_with_lcl

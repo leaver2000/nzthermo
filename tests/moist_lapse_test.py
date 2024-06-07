@@ -47,9 +47,9 @@ def test_moist_lapse_broadcasting(dtype):
     assert_allclose(
         ml,
         [
-            mpcalc.moist_lapse(pressure * units.pascal, temperature[i] * units.kelvin).m
+            mpcalc.moist_lapse(pressure * units.pascal, temperature[i] * units.kelvin).m  # type: ignore
             for i in range(len(temperature))
-        ],  # type: ignore
+        ],
         rtol=1e-2,
     )
 
@@ -73,9 +73,9 @@ def test_moist_lapse(dtype):
     assert_allclose(
         ml,
         [
-            mpcalc.moist_lapse(pressure[i] * units.pascal, temperature[i] * units.kelvin).m
+            mpcalc.moist_lapse(pressure[i] * units.pascal, temperature[i] * units.kelvin).m  # type: ignore
             for i in range(len(temperature))
-        ],  # type: ignore
+        ],
         rtol=1e-4,
     )
 

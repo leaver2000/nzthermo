@@ -9,7 +9,6 @@ additional support for higher dimensions in what would have normally been 1D arr
 from __future__ import annotations
 
 import operator
-import warnings
 from typing import (
     Annotated,
     Any,
@@ -251,8 +250,18 @@ def downdraft_cape(
 # -------------------------------------------------------------------------------------------------
 # el & lfc helpers
 # -------------------------------------------------------------------------------------------------
+def _sort_pressure(p, t):
+    sort = np.arange(p.shape[0])[:, newaxis], np.argsort(p, axis=1)
+    return p[sort], t[sort]
+
+
 # TODO: because the _multiple_el_lfc_options function is highly dependent on the output of
 # find_intersections combining them into a class is probably the best idea.
+def roll_nans(x: np.ndarray[shape[N, Z], np.dtype[float_]]):
+    x = np.where(np.isnan(x), np.roll(x, 1, axis=1), x)
+    return x
+
+
 def find_intersections(
     x: np.ndarray[shape[N, Z], np.dtype[float_]],
     a: np.ndarray[shape[N, Z], np.dtype[float_]],
@@ -260,11 +269,14 @@ def find_intersections(
     direction: L["increasing", "decreasing"] = "increasing",
     log_x: bool = False,
 ):
+    x = roll_nans(x)
+    a = roll_nans(a)
+    b = roll_nans(b)
+
     if log_x is True:
         x = np.log(x)
 
     x = np.broadcast_to(x.squeeze(), a.shape)
-
     ind, nearest_idx = np.nonzero(np.diff(np.sign(a - b), axis=1))
     next_idx = nearest_idx + 1
     sign_change = np.sign(a[ind, next_idx] - b[ind, next_idx])
@@ -291,9 +303,7 @@ def find_intersections(
     x_full[ind, nearest_idx] = x[...]
     y_full[ind, nearest_idx] = y[...]
 
-    sort = np.argsort(x_full, axis=1)
-    x = x_full[np.arange(a.shape[0])[:, newaxis], sort]  # [:, :-1]
-    y = y_full[np.arange(a.shape[0])[:, newaxis], sort]  # [:, :-1]
+    x, y = _sort_pressure(x_full, y_full)
 
     return x, y
 
@@ -303,14 +313,17 @@ def _multiple_el_lfc_options(
     y: np.ndarray[shape[N, Z], np.dtype[float_]],
     which: L["bottom", "top"] = "top",
 ) -> elements[shape[N], float_]:
-    x, y = np.sort(x, axis=1), np.sort(y, axis=1)
-    nx = np.arange(x.shape[0])  # [:, newaxis]
+    """
+    it is assumed that the x and y arrays are sorted in ascending order
+    >>> [[76852.646 nan nan ... ] [45336.262 88486.399 nan ... ]]
+    """
+    nx = np.arange(x.shape[0])
     if which == "bottom":
         idx = np.argmin(~np.isnan(x), axis=1) - 1  # the last non-nan value
         return elements(x[nx, idx], y[nx, idx])
 
     elif which == "top":
-        return elements(x[nx, 0], y[nx, 0])  # the first non-nan value
+        return elements(x[nx, 0], y[nx, 0])  # the first value is the uppermost value
 
     raise ValueError("which must be either 'top' or 'bottom'")
 
@@ -370,7 +383,7 @@ def lfc(
     which: L["top", "bottom"] = "top",
     lcl_p: np.ndarray | None = None,
     dewpoint_start: np.ndarray | None = None,
-    fast_approximate: bool = False,
+    # fast_approximate: bool = False,
 ) -> elements[shape[N], float_]:
     pressure = _2d(pressure)
 
@@ -384,71 +397,47 @@ def lfc(
     if parcel_temperature_profile is None:
         parcel_temperature_profile = core.parcel_profile(pressure, t0, td0)
 
-    # if lcl_p is None:
     lcl_p, lcl_t = uf.lcl(p0, t0, td0)
+    lcl_p, lcl_t = lcl_p[:, newaxis], lcl_t[:, newaxis]
 
     x, y = find_intersections(
         pressure[:, 1:], parcel_temperature_profile[:, 1:], temperature[:, 1:], "increasing", log_x=True
     )
-    # this get's a little confusing because a lower value represents a higher point in the atmosphere
-    # so when I refer to ABOVE or BELOW I am not referring to the literal value of the pressure but the
-    # altitude in the atmosphere.
-    above_lcl = x < lcl_p[:, newaxis]  # ABOVE: the LCL
-    if fast_approximate:
-        return _multiple_el_lfc_options(
-            np.where(above_lcl, x, np.nan),
-            np.where(above_lcl, y, np.nan),
-            which,
-        )
-
+    # .............................................................................................
+    # The following was modified from the metpy implementation to handel 2 arrays
+    # this is a bit tricky
+    # .............................................................................................
     el_p = find_intersections(
         pressure[:, 1:], parcel_temperature_profile[:, 1:], temperature[:, 1:], "decreasing", log_x=True
     )[0]
 
-    mask = pressure[:, :] < lcl_p[:, newaxis]
-    maybe_lfc_is_lcl = np.all(np.isnan(x), axis=1, keepdims=True)
-    no_lfc = maybe_lfc_is_lcl & np.all(
-        F.logical_or_close(
-            operator.lt,
-            np.where(mask, parcel_temperature_profile, np.nan),
-            np.where(mask, temperature, np.nan),
-        ),
-        axis=1,
-        keepdims=True,
-    )
+    potential = x < lcl_p  # ABOVE: the LCL
+    no_potential = ~potential
+    lfc_is_lcl = np.all(np.isnan(x), axis=1, keepdims=True)
+    positive_area_above_the_LCL = pressure[:, 1:] < lcl_p
 
-    above_lcl = x < lcl_p[:, newaxis]  # ABOVE: the LCL
-    # if not any idx
-    not_any = np.all(~above_lcl, axis=1, keepdims=True)
-    with warnings.catch_warnings():  # RuntimeWarning: All-NaN slice encountered
-        warnings.simplefilter("ignore", category=RuntimeWarning)
-        conditions = [
-            # if:...........................|
-            # LFC does not exist or is LCL  |
-            np.logical_or(
-                maybe_lfc_is_lcl,
-                not_any & (np.nanmin(el_p, axis=1, keepdims=True) > lcl_p[:, newaxis]),
+    # LFC does not exist or is LCL if len(x) == 0:
+    no_lfc = lfc_is_lcl & (
+        np.any(
+            F.logical_or_close(
+                operator.lt,
+                np.where(positive_area_above_the_LCL, parcel_temperature_profile[:, 1:], np.nan),
+                np.where(positive_area_above_the_LCL, temperature[:, 1:], np.nan),
             ),
-            no_lfc,  # LFC doesn't exist    |
-            # else:.........................|
-            #     if not any(idx) & min(el_p) > lcl_p: nan
-            # not_any & (np.nanmin(el_p, axis=1, keepdims=True) > lcl_p[:, newaxis]),
-            not_any,
-            # Otherwise, find all LFCs that exist above the LCL
-            # What is returned depends on which flag as described in the docstring
-            # else:
-        ]
+            axis=1,
+            keepdims=True,
+        )
+    )
+    # LFC exists. Make sure it is no lower than the LCL else:
+    no_lfc |= np.nanmin(el_p, axis=1, keepdims=True) > lcl_p
+    lfc_is_lcl |= np.all(no_potential, axis=1, keepdims=True)
 
-    x = np.select(
-        conditions,
-        [np.nan, lcl_p[:, newaxis], x],
-        np.where(above_lcl, x, np.nan),  # find all LFCs that exist above the LCL
-    )
-    y = np.select(
-        conditions,
-        [np.nan, lcl_t[:, newaxis], y],
-        np.where(above_lcl, y, np.nan),  # find all LFCs that exist above the LCL
-    )
+    condlist = [no_lfc, lfc_is_lcl, potential]
+    x_choice = [np.nan, lcl_p, x]
+    y_choice = [np.nan, lcl_t, y]
+
+    x = np.select(condlist, x_choice, np.nan)
+    y = np.select(condlist, y_choice, np.nan)
 
     return _multiple_el_lfc_options(x, y, which)
 
@@ -466,7 +455,6 @@ def cape_cin(
     parcel_profile: np.ndarray,
     which_lfc: L["bottom", "top"] = "bottom",
     which_el: L["bottom", "top"] = "top",
-    fast_approximate: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     pressure = _2d(pressure)
     lcl_p = uf.lcl_pressure(pressure[:, 0], temperature[:, 0], dewpoint[:, 0])  # ✔️
@@ -481,14 +469,10 @@ def cape_cin(
     # Convert the temperature/parcel profile to virtual temperature
     temperature = uf.virtual_temperature(temperature, uf.saturation_mixing_ratio(pressure, dewpoint))
     parcel_profile = uf.virtual_temperature(parcel_profile, parcel_mixing_ratio)
-    # Calculate LFC limit of integration
-    lfc_p = lfc(
-        pressure, temperature, dewpoint, parcel_profile, which=which_lfc, fast_approximate=fast_approximate
-    ).pressure  # ✔️
-
     # Calculate the EL limit of integration
     el_p = el(pressure, temperature, dewpoint, parcel_profile, which=which_el).pressure  # ✔️
-    null = np.isnan(lfc_p)
+    # Calculate LFC limit of integration
+    lfc_p = lfc(pressure, temperature, dewpoint, parcel_profile, which=which_lfc).pressure  # ✔️
 
     pressure = np.broadcast_to(pressure, temperature.shape)
     p_top = np.nanmin(pressure, axis=1)
@@ -502,12 +486,12 @@ def cape_cin(
     x, y = np.where(mask[newaxis, ...], [X, Y], np.nan)
 
     cape = Rd * F.nantrapz(y, np.log(x), axis=1)
-    cape[null | (cape < 0.0)] = 0.0
+    cape[(cape < 0.0)] = 0.0
 
     mask = F.logical_or_close(operator.gt, X, lfc_p)
     x, y = np.where(mask[newaxis, ...], [X, Y], np.nan)
 
     cin = Rd * F.nantrapz(y, np.log(x), axis=1)
-    cin[null | (cin > 0.0)] = 0.0
+    cin[(cin > 0.0)] = 0.0
 
     return cape, cin
