@@ -87,6 +87,78 @@ np.testing.assert_allclose(lcl_t, lcl_t_, rtol=1e-3)
 
 #### wet_bulb_temperature
 
+#### CAPE CIN
+
+```python
+isobaric = xr.open_dataset(
+    "hrrr.t00z.wrfprsf00.grib2",
+    engine="cfgrib",
+    backend_kwargs={"filter_by_keys": {"typeOfLevel": "isobaricInhPa"}},
+)
+surface = xr.open_dataset(
+    "hrrr.t00z.wrfsfcf00.grib2",
+    engine="cfgrib",
+    backend_kwargs={"filter_by_keys": {"typeOfLevel": "surface", "stepType": "instant"}},
+)
+T = isobaric["t"].to_numpy()  # (K) (Z, Y, X)
+Z, Y, X = T.shape
+N = Y * X
+T = T.reshape(Z, N).transpose()  # (N, Z)
+
+P = isobaric["isobaricInhPa"].to_numpy().astype(np.float32) * 100.0  # (Pa)
+Q = isobaric["q"].to_numpy()  # (kg/kg) (Z, Y, X)
+Q = Q.reshape(Z, N).transpose()  # (N, Z)
+
+Td = nzt.dewpoint_from_specific_humidity(P[np.newaxis], Q)
+
+prof = nzt.parcel_profile(P, T[:, 0], Td[:, 0])
+
+CAPE, CIN = nzt.cape_cin(P, T, Td, prof)
+
+CAPE = CAPE.reshape(Y, X)
+CIN = CIN.reshape(Y, X)
+
+
+lat = isobaric["latitude"].to_numpy()
+lon = isobaric["longitude"].to_numpy()
+lon = (lon + 180) % 360 - 180
+timestamp = datetime.datetime.fromisoformat(isobaric["time"].to_numpy().astype(str).item())
+
+fig, axes = plt.subplots(2, 2, figsize=(24, 12), subplot_kw={"projection": ccrs.PlateCarree()})
+fig.suptitle(f"{timestamp:%Y-%m-%dT%H:%M:%SZ} | shape {Z, Y, X} | size {Z*Y*X:,}", fontsize=16, y=0.9)
+
+# I suspect that the difference between our cape calculations and the MRMS cape calculations is due
+# to the fact we are not actually starting at the surface or accounting for surface elevation.
+# leading to inflated cape values in areas of higher elevation.
+cape = np.where(CAPE < 8000, CAPE, 8000)
+cin = np.where(CIN > -1400, CIN, -1400)
+
+for ax, data, title, cmap in zip(
+    axes[0], [cape, cin], ["NZTHERMO CAPE", "NZTHERMO CIN"], ["inferno", "inferno_r"]
+):
+    ax.coastlines(color="white", linewidth=0.25)
+    ax.set_title(title, fontsize=16)
+    ax.set_global()
+    ax.set_extent([lon.min(), lon.max(), lat.min(), lat.max()])
+    cf = ax.contourf(lon, lat, data, transform=ccrs.PlateCarree(), cmap=cmap)
+    plt.colorbar(cf, ax=ax, orientation="vertical", pad=0.05, label="J/kg", shrink=0.75)
+
+MRMS_CAPE = surface["cape"].to_numpy()
+MRMS_CIN = surface["cin"].to_numpy()
+for ax, data, title, cmap in zip(
+    axes[1], [MRMS_CAPE, MRMS_CIN], ["MRMS CAPE", "MRMS CIN"], ["inferno", "inferno_r"]
+):
+    ax.coastlines(color="white", linewidth=0.25)
+    ax.set_title(title, fontsize=16)
+    ax.set_global()
+    ax.set_extent([lon.min(), lon.max(), lat.min(), lat.max()])
+    cf = ax.contourf(lon, lat, data, transform=ccrs.PlateCarree(), cmap=cmap)
+    plt.colorbar(cf, ax=ax, orientation="vertical", pad=0.05, label="J/kg", shrink=0.75)
+
+```
+
+[![CAPE_CIN](assets/mrms_cape_cin.png)](assets/mrms_cape_cin.png)
+
 #### dcape
 
 ```python
@@ -156,7 +228,8 @@ for i, ax in enumerate(axes):
     ax.imshow(dcape[i], cmap="viridis")
 ```
 
-[![dcape](assets/dcape.png)](assets/dcape.png)
+[![DCAPE](assets/dcape.png)](assets/dcape.png)
+
 
 ### Testing
 
