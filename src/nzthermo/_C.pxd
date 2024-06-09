@@ -7,17 +7,22 @@ ctypedef fused Float:
 
 cdef extern from "<utility>" namespace "std" nogil:
     cdef cppclass pair[T, U]:
-        # ctypedef T first_type
-        # ctypedef U second_type
         T pressure    "first"
         U temperature "second"
 
 
 cdef extern from "functional.cpp" namespace "libthermo" nogil:
+    cdef cppclass point[T]:
+        T x
+        T y
+
     T linear_interpolate[T](T x, T x0, T x1, T y0, T y1) noexcept
     T degrees[T](T radians) noexcept
     T radians[T](T degrees) noexcept
-    T interpolate_z[T](T x, T* xp, T* fp, size_t size) noexcept
+    T interpolate_1d[T](T x, T* xp, T* fp, size_t size) noexcept
+    point[T] intersect_1d[T](
+        T* x, T* a, T* b, size_t size, bint log_x, bint increasing, bint bottom
+    ) noexcept
 
 
 cdef extern from "wind.cpp" namespace "libthermo" nogil:
@@ -32,6 +37,18 @@ cdef extern from "wind.cpp" namespace "libthermo" nogil:
 
 
 cdef extern from "libthermo.cpp" namespace "libthermo" nogil:
+    const double T0      # `(J/kg*K)` - freezing point in kelvin
+    const double E0      # `(Pa)` - vapor pressure at T0
+    const double Cp      # `(J/kg*K)` - specific heat of dry air
+    const double Rd      # `(J/kg*K)` - gas constant for dry air
+    const double Rv      # `(J/kg*K)` - gas constant for water vapor
+    const double Lv      # `(J/kg)` - latent heat of vaporization
+    const double P0      # `(Pa)` - standard pressure at sea level
+    const double Mw      # `(g/mol)` - molecular weight of water
+    const double Md      # `(g/mol)` - molecular weight of dry air
+    const double epsilon # `Mw / Md` - molecular weight ratio
+    const double kappa   # `Rd / Cp`  - ratio of gas constants
+
     cdef cppclass LCL[T]:
         T pressure
         T temperature
@@ -40,20 +57,20 @@ cdef extern from "libthermo.cpp" namespace "libthermo" nogil:
         T pressure
         T temperature
         T dewpoint
-
-    #  - thermodynamic functions
-    T mixing_ratio[T](T pressure, T vapor_pressure) noexcept
+    # 1x1
     T saturation_vapor_pressure[T](T temperature) noexcept
+    # 2x1
+    T mixing_ratio[T](T pressure, T vapor_pressure) noexcept
     T mixing_ratio_from_dewpoint[T](T pressure, T dewpoint) noexcept
     T saturation_mixing_ratio[T](T pressure, T temperature) noexcept
     T vapor_pressure[T](T temperature, T mixing_ratio) noexcept
+    # 3x1
     T virtual_temperature[T](T temperature, T mixing_ratio) noexcept
     T dry_lapse[T](T pressure, T reference_pressure, T temperature) noexcept
     # @overload
     T dewpoint[T](T vapor_pressure) noexcept
     # @overload
     T dewpoint_from_mixing_ratio "libthermo::dewpoint" [T](T pressure, T mixing_ratio) noexcept
-    #  - adiabatic processes
     LCL[T] lcl[T](T pressure, T temperature, T dewpoint, T eps, size_t max_iters) noexcept
     T lcl_pressure[T](T pressure, T temperature, T dewpoint, T eps, size_t max_iters) noexcept
     T moist_lapse[T](T pressure, T next_pressure, T temperature, T step) noexcept
@@ -63,8 +80,5 @@ cdef extern from "libthermo.cpp" namespace "libthermo" nogil:
     T wet_bulb_temperature[T](
         T pressure, T temperature, T dewpoint, T eps, T step, size_t max_iters
     ) noexcept
-    # T downdraft_cape[T](T* pressure, T* temperature, T* dewpoint,  size_t size) noexcept
-    # T cape_cin[T](T* pressure, T* temperature, T* dewpoint,  size_t size) noexcept
-    # sharp routine's
     T wobus[T](T temperature) noexcept
 

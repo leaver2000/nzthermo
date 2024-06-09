@@ -7,6 +7,7 @@ __all__ = [
     "OPENMP_ENABLED",
     "moist_lapse",
     "parcel_profile",
+    "parcel_profile_with_lcl",
     # ._ufunc
     "delta_t",
     "dewpoint",
@@ -21,20 +22,17 @@ __all__ = [
     "wind_direction",
     "wind_components",
     "wind_magnitude",
-    #
     "dewpoint_from_specific_humidity",
-    "downdraft_cape",
-    "el",
-    "exner_function",
     "lfc",
     "parcel_profile",
     "mixing_ratio",
-    "mixing_ratio_from_specific_humidity",
     "vapor_pressure",
     "virtual_temperature",
     # .core
+    "el",
     "cape_cin",
     "ccl",
+    "downdraft_cape",
     "most_unstable_parcel",
     # .utils
     "timeseries",
@@ -45,6 +43,7 @@ from ._core import OPENMP_ENABLED, moist_lapse, parcel_profile, parcel_profile_w
 from ._ufunc import (
     delta_t,
     dewpoint,
+    dewpoint_from_specific_humidity,
     dry_lapse,
     equivalent_potential_temperature,
     lcl,
@@ -63,13 +62,10 @@ from ._version import __version__
 from .core import (
     cape_cin,
     ccl,
-    dewpoint_from_specific_humidity,
     downdraft_cape,
     el,
-    exner_function,
     lfc,
     mixing_ratio,
-    mixing_ratio_from_specific_humidity,
     most_unstable_parcel,
 )
 from .utils import timeseries

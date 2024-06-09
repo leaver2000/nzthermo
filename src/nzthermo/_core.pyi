@@ -10,8 +10,11 @@ _R = TypeVar("_R")
 _In = TypeVar("_In")
 _Out = TypeVar("_Out")
 _Dtype_t = TypeVar("_Dtype_t", bound=np.generic)
-_DualArrayLike = SupportsArray[_Dtype_t] | NestedSequence[SupportsArray[_Dtype_t]] | _T | NestedSequence[_T]
+_DualArrayLike = (
+    SupportsArray[_Dtype_t] | NestedSequence[SupportsArray[_Dtype_t]] | _T | NestedSequence[_T]
+)
 _float = TypeVar("_float", np.float32, np.float64)
+
 OPENMP_ENABLED: bool
 
 @overload
@@ -97,3 +100,12 @@ def interpolate_nz[T: np.float_](
     log_x: bool = ...,
     interp_nan: bool = ...,
 ) -> tuple[np.ndarray[shape[N], np.dtype[T]], ...]: ...
+def intersect[T: np.float_](
+    x: np.ndarray[shape[N, Z], np.dtype[T]],
+    a: np.ndarray[shape[N, Z], np.dtype[T]],
+    b: np.ndarray[shape[N, Z], np.dtype[T]],
+    log_x: bool = ...,
+    direction: L["increasing", "decreasing"] = ...,
+    increasing: bool = ...,
+    bottom: bool = ...,
+) -> tuple[np.ndarray[shape[N], np.dtype[T]], np.ndarray[shape[N], np.dtype[T]]]: ...

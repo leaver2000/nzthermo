@@ -74,7 +74,7 @@ exclude_lines = [
 
 [tool.black]
 target-version = ['py312']
-line-length = 119
+line-length = 99
 include = '(nzthermo|tests)\/.*(\.py|\.pyi)'
 force-exclude = '(nzthermo|tests)\/.*(\.pyx)'
 
@@ -91,14 +91,14 @@ combine_as_imports = true
 
 [tool.ruff]
 target-version = "py312"
-line-length = 119
+line-length = 99
 fix = true
 
-# [tool.ruff.lint]
-# ignore = [
-#     "E731", # do not assign a lambda expression, use a def
-#     "E402", # module level import not at top of file
-#     "E402", # module level import not at top of file
-#     "E501", # line too long
-#     "E741", # do not use variables named 'l', 'O', or 'I'
-# ]
+[tool.ruff.lint]
+ignore = [
+    "E731", # do not assign a lambda expression, use a def
+    "E402", # module level import not at top of file
+    "E402", # module level import not at top of file
+    "E501", # line too long
+    "E741", # do not use variables named 'l', 'O', or 'I'
+]

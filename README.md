@@ -1,5 +1,33 @@
 # nzthermo
 
+This work has been heavily inspired by the excellent work and code base that has been developed by
+the `MetPy` team. The concept of `(N, Z)` is simply to solve for `N` profiles of `Z` levels. So
+regardless of what what you data looks like, if it can be reshaped to `(N, Z)` then it can be used
+with this library. Where possible all iterations of `N` are run in parallel using `OpenMP` and
+`Cython`.  Most of the root functions are written in `C++` and wrapped with `Cython` for use in
+`Python`.
+
+Where this code currently lacks in complete documentation it makes up for with the extensive and
+verbose usage of type annotations. For example, the `parcel_profile` function is defined as follows:
+
+```python
+def parcel_profile(
+    pressure: Pascal[np.ndarray[shape[Z], np.dtype[T]] | np.ndarray[shape[N, Z], np.dtype[T]]],
+    temperature: Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]],
+    dewpoint: Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]],
+    /,
+    *,
+    step: float = ...,
+    eps: float = ...,
+    max_iters: int = ...,
+) -> Kelvin[np.ndarray[shape[N, Z], np.dtype[T]]]: ...
+```
+
+Which make it quite clean that the pressure array is expected to be of shape `(Z,)` or `(N, Z)` and
+have the units of `Pascal`. The temperature and dewpoint arrays are expected to be of shape `(N,)`
+and have the units of `Kelvin`. The return value is expected to be of shape `(N, Z)` and have the
+units of `Kelvin`.
+
 ## Getting Started
 
 ```bash

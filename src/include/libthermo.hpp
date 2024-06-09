@@ -21,7 +21,7 @@ static constexpr double Rv = 461.52311572606084;  // `(J/kg*K)` - gas constant f
 static constexpr double Lv = 2501000.0;  // `(J/kg)` - latent heat of vaporization
 static constexpr double P0 = 100000.0;  // `(Pa)` - standard pressure at sea level
 static constexpr double Mw = 18.01528;  // `(g/mol)` - molecular weight of water
-static constexpr double Md = 28.96546e-3 * 1e3;  // `(g/mol)` - molecular weight of dry air
+static constexpr double Md = 28.96546;  // `(g/mol)` - molecular weight of dry air
 static constexpr double epsilon = Mw / Md;  // `Mw / Md` - molecular weight ratio
 static constexpr double kappa = Rd / Cp;  // `Rd / Cp`  - ratio of gas constants
 

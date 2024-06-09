@@ -5,8 +5,8 @@ from metpy.calc.tools import interpolate_1d
 from numpy.testing import assert_allclose
 
 from nzthermo._core import interpolate_nz
-from nzthermo._ufunc import lcl_pressure
-from nzthermo.core import dewpoint_from_specific_humidity
+from nzthermo._ufunc import lcl_pressure, dewpoint_from_specific_humidity
+
 
 np.set_printoptions(
     precision=3,

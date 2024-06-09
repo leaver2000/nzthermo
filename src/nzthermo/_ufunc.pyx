@@ -18,6 +18,7 @@ cimport cython
 cimport numpy as np
 
 cimport nzthermo._C as C
+from nzthermo._C cimport epsilon
 
 np.import_array()
 np.import_ufunc()
@@ -128,6 +129,13 @@ cdef T wobus(T temperature) noexcept nogil:
 @cython.ufunc # theta
 cdef T potential_temperature(T pressure, T temperature) noexcept nogil:
     return C.potential_temperature(pressure, temperature)
+
+
+@cython.ufunc
+cdef T dewpoint_from_specific_humidity(T pressure, T specific_humidity) noexcept nogil:
+    cdef T Q = specific_humidity or 1e-9
+    cdef T r = Q / (1 - Q)
+    return C.dewpoint(pressure * r / (epsilon + r))
 
 
 @cython.ufunc

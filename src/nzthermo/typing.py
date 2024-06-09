@@ -21,6 +21,7 @@ _DType_co = TypeVar("_DType_co", bound=np.generic, covariant=True)
 
 Kelvin = Annotated[_T, "Kelvin"]
 Pascal = Annotated[_T, "Pascal"]
+Dimensionless = Annotated[_T, "dimensionless"]
 Kilogram = Annotated[_T, "kg"]
 Percent = Annotated[_T, "%"]
 Ratio = Annotated[_T, "ratio"]
@@ -49,7 +50,7 @@ Z = NewType("Z", int)
 Y = NewType("Y", int)
 X = NewType("X", int)
 
-NZArray = Annotated[np.ndarray[shape[N, Z], np.dtype[np.float_]], "NZArray"]
+NZArray = Annotated[np.ndarray[shape[N, Z], np.dtype[_DType_co]], "NZArray"]
 NestedSequence: TypeAlias = "Sequence[_T | NestedSequence[_T]]"
 
 
