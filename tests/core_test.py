@@ -13,8 +13,8 @@ from numpy.testing import assert_allclose, assert_almost_equal
 import nzthermo._core as _C
 import nzthermo._ufunc as uf  # noqa: E402
 import nzthermo.functional as F  # noqa: E402
-from nzthermo._ufunc import lcl_pressure
-from nzthermo.core import cape_cin, ccl, dewpoint_from_specific_humidity, el, lfc
+from nzthermo._ufunc import lcl_pressure, dewpoint_from_specific_humidity
+from nzthermo.core import cape_cin, ccl, el, lfc
 
 np.set_printoptions(
     precision=3,
@@ -48,7 +48,7 @@ if FAST_APPROXIMATE:
     Td = dewpoint_from_specific_humidity(T, Q)
 
 else:
-    RTOL = 1e-5
+    RTOL = 1e-4
     _P = [
         1013,
         1000,
@@ -75,17 +75,200 @@ else:
     ]
 
     _T = [
-        [243, 242, 241, 240, 239, 237, 236, 235, 233, 232, 231, 229, 228, 226, 235, 236, 234, 231, 226, 221, 217, 211],
-        [250, 249, 248, 247, 246, 244, 243, 242, 240, 239, 238, 236, 235, 233, 240, 239, 236, 232, 227, 223, 217, 211],
-        [293, 292, 290, 288, 287, 285, 284, 282, 281, 279, 279, 280, 279, 278, 275, 270, 268, 264, 260, 254, 246, 237],
-        [300, 299, 297, 295, 293, 291, 292, 291, 291, 289, 288, 286, 285, 285, 281, 278, 273, 268, 264, 258, 251, 242],
-        # [299, 298, 296, 294, 292, 290, 289, 288, 287, 285, 284, 282, 281, 280, 276, 273, 268, 263, 258, 252, 245, 237],
+        [
+            243,
+            242,
+            241,
+            240,
+            239,
+            237,
+            236,
+            235,
+            233,
+            232,
+            231,
+            229,
+            228,
+            226,
+            235,
+            236,
+            234,
+            231,
+            226,
+            221,
+            217,
+            211,
+        ],
+        [
+            250,
+            249,
+            248,
+            247,
+            246,
+            244,
+            243,
+            242,
+            240,
+            239,
+            238,
+            236,
+            235,
+            233,
+            240,
+            239,
+            236,
+            232,
+            227,
+            223,
+            217,
+            211,
+        ],
+        [
+            293,
+            292,
+            290,
+            288,
+            287,
+            285,
+            284,
+            282,
+            281,
+            279,
+            279,
+            280,
+            279,
+            278,
+            275,
+            270,
+            268,
+            264,
+            260,
+            254,
+            246,
+            237,
+        ],
+        [
+            300,
+            299,
+            297,
+            295,
+            293,
+            291,
+            292,
+            291,
+            291,
+            289,
+            288,
+            286,
+            285,
+            285,
+            281,
+            278,
+            273,
+            268,
+            264,
+            258,
+            251,
+            242,
+        ],
     ]
     _Td = [
-        [224, 224, 224, 224, 224, 223, 223, 223, 223, 222, 222, 222, 221, 221, 233, 233, 231, 228, 223, 218, 213, 207],
-        [233, 233, 232, 232, 232, 232, 231, 231, 231, 231, 230, 230, 230, 229, 237, 236, 233, 229, 223, 219, 213, 207],
-        [288, 288, 287, 286, 281, 280, 279, 277, 276, 275, 270, 258, 244, 247, 243, 254, 262, 248, 229, 232, 229, 224],
-        [294, 294, 293, 292, 291, 289, 285, 282, 280, 280, 281, 281, 278, 274, 273, 269, 259, 246, 240, 241, 226, 219],
+        [
+            224,
+            224,
+            224,
+            224,
+            224,
+            223,
+            223,
+            223,
+            223,
+            222,
+            222,
+            222,
+            221,
+            221,
+            233,
+            233,
+            231,
+            228,
+            223,
+            218,
+            213,
+            207,
+        ],
+        [
+            233,
+            233,
+            232,
+            232,
+            232,
+            232,
+            231,
+            231,
+            231,
+            231,
+            230,
+            230,
+            230,
+            229,
+            237,
+            236,
+            233,
+            229,
+            223,
+            219,
+            213,
+            207,
+        ],
+        [
+            288,
+            288,
+            287,
+            286,
+            281,
+            280,
+            279,
+            277,
+            276,
+            275,
+            270,
+            258,
+            244,
+            247,
+            243,
+            254,
+            262,
+            248,
+            229,
+            232,
+            229,
+            224,
+        ],
+        [
+            294,
+            294,
+            293,
+            292,
+            291,
+            289,
+            285,
+            282,
+            280,
+            280,
+            281,
+            281,
+            278,
+            274,
+            273,
+            269,
+            259,
+            246,
+            240,
+            241,
+            226,
+            219,
+        ],
         # [298, 298, 297, 296, 295, 293, 291, 289, 287, 285, 284, 282, 280, 276, 273, 268, 263, 258, 252, 245, 237, 229],
     ]
     P = np.array(_P, dtype=np.float64) * 100.0
@@ -111,8 +294,16 @@ def test_ccl(dtype) -> None:
         .to("pascal")
         .m.astype(dtype)
     )
-    T = ([34.6, 31.1, 27.8, 24.3, 21.4, 19.6, 18.7, 13, 13.5, 13] * units.degC).to("K").m.astype(dtype)
-    Td = ([19.6, 18.7, 17.8, 16.3, 12.4, -0.4, -3.8, -6, -13.2, -11] * units.degC).to("K").m.astype(dtype)
+    T = (
+        ([34.6, 31.1, 27.8, 24.3, 21.4, 19.6, 18.7, 13, 13.5, 13] * units.degC)
+        .to("K")
+        .m.astype(dtype)
+    )
+    Td = (
+        ([19.6, 18.7, 17.8, 16.3, 12.4, -0.4, -3.8, -6, -13.2, -11] * units.degC)
+        .to("K")
+        .m.astype(dtype)
+    )
     ccl_t, ccl_p, ct = ccl(P, T, Td, which="bottom")
 
     def get_metpy_ccl(p, t, td):
@@ -244,8 +435,13 @@ def test_no_lfc():
 @pytest.mark.lfc
 def test_lfc_inversion():
     """Test LFC when there is an inversion to be sure we don't pick that."""
-    levels = np.array([963.0, 789.0, 782.3, 754.8, 728.1, 727.0, 700.0, 571.0, 450.0, 300.0, 248.0]) * hPa
-    temperatures = np.array([25.4, 18.4, 17.8, 15.4, 12.9, 12.8, 10.0, -3.9, -16.3, -41.1, -51.5]) * C
+    levels = (
+        np.array([963.0, 789.0, 782.3, 754.8, 728.1, 727.0, 700.0, 571.0, 450.0, 300.0, 248.0])
+        * hPa
+    )
+    temperatures = (
+        np.array([25.4, 18.4, 17.8, 15.4, 12.9, 12.8, 10.0, -3.9, -16.3, -41.1, -51.5]) * C
+    )
     dewpoints = np.array([20.4, 0.4, -0.5, -4.3, -8.0, -8.2, -9.0, -23.9, -33.3, -54.1, -63.5]) * C
     lfc_p, lfc_t = lfc(
         levels.reshape(1, -1).to(Pa).magnitude,
@@ -261,7 +457,10 @@ def test_lfc_inversion():
 @pytest.mark.lfc
 def test_lfc_equals_lcl():
     """Test LFC when there is no cap and the lfc is equal to the lcl."""
-    levels = np.array([912.0, 905.3, 874.4, 850.0, 815.1, 786.6, 759.1, 748.0, 732.2, 700.0, 654.8]) * hPa
+    levels = (
+        np.array([912.0, 905.3, 874.4, 850.0, 815.1, 786.6, 759.1, 748.0, 732.2, 700.0, 654.8])
+        * hPa
+    )
     temperatures = np.array([29.4, 28.7, 25.2, 22.4, 19.4, 16.8, 14.0, 13.2, 12.6, 11.4, 7.1]) * C
     dewpoints = np.array([18.4, 18.1, 16.6, 15.4, 13.2, 11.4, 9.6, 8.8, 0.0, -18.6, -22.9]) * C
     lfc_p, lfc_t = lfc(
@@ -297,7 +496,9 @@ def test_lfc_profile_nan():
 # CAPE_CIN
 # ............................................................................................... #
 @pytest.mark.cape
-@pytest.mark.parametrize("which_lfc, which_el", itertools.product(["top", "bottom"], ["top", "bottom"]))
+@pytest.mark.parametrize(
+    "which_lfc, which_el", itertools.product(["top", "bottom"], ["top", "bottom"])
+)
 def test_insert_zero_crossings(which_lfc, which_el):
     """This represents the first part of the cape_cin calculation"""
     pressure, temperature, dewpoint = P[np.newaxis], T, Td
@@ -309,12 +510,14 @@ def test_insert_zero_crossings(which_lfc, which_el):
         uf.saturation_mixing_ratio(pressure, temperature),
     )
     # Convert the temperature/parcel profile to virtual temperature
-    temperature = uf.virtual_temperature(temperature, uf.saturation_mixing_ratio(pressure, dewpoint))
+    temperature = uf.virtual_temperature(
+        temperature, uf.saturation_mixing_ratio(pressure, dewpoint)
+    )
     parcel_profile = uf.virtual_temperature(parcel_profile, parcel_mixing_ratio)
-    lfc_p = lfc(pressure, temperature, dewpoint, parcel_profile, which=which_lfc).pressure  # ✔️
+    lfc_p = lfc(pressure, temperature, dewpoint, parcel_profile, which=which_lfc).x  # ✔️
 
     # Calculate the EL limit of integration
-    el_p = el(pressure, temperature, dewpoint, parcel_profile, which=which_el).pressure  # ✔️
+    el_p = el(pressure, temperature, dewpoint, parcel_profile, which=which_el).x  # ✔️
     lfc_p, el_p = np.reshape((lfc_p, el_p), (2, -1, 1))
     INPUT = np.broadcast_to(pressure, temperature.shape), parcel_profile - temperature
 

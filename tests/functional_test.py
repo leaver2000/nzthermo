@@ -8,27 +8,235 @@ from metpy.units import units
 from numpy.testing import assert_allclose
 
 import nzthermo.functional as F
+# from nzthermo.core import find_intersections
 
 PRESSURE = np.array(
-    [1013, 1000, 975, 950, 925, 900, 875, 850, 825, 800, 775, 750, 725, 700, 650, 600, 550, 500, 450, 400, 350, 300],
+    [
+        1013,
+        1000,
+        975,
+        950,
+        925,
+        900,
+        875,
+        850,
+        825,
+        800,
+        775,
+        750,
+        725,
+        700,
+        650,
+        600,
+        550,
+        500,
+        450,
+        400,
+        350,
+        300,
+    ],
     dtype=np.float64,
 )
 PRESSURE *= 100.0
 TEMPERATURE = np.array(
     [
-        [243, 242, 241, 240, 239, 237, 236, 235, 233, 232, 231, 229, 228, 226, 235, 236, 234, 231, 226, 221, 217, 211],
-        [250, 249, 248, 247, 246, 244, 243, 242, 240, 239, 238, 236, 235, 233, 240, 239, 236, 232, 227, 223, 217, 211],
-        [293, 292, 290, 288, 287, 285, 284, 282, 281, 279, 279, 280, 279, 278, 275, 270, 268, 264, 260, 254, 246, 237],
-        [300, 299, 297, 295, 293, 291, 292, 291, 291, 289, 288, 286, 285, 285, 281, 278, 273, 268, 264, 258, 251, 242],
+        [
+            243,
+            242,
+            241,
+            240,
+            239,
+            237,
+            236,
+            235,
+            233,
+            232,
+            231,
+            229,
+            228,
+            226,
+            235,
+            236,
+            234,
+            231,
+            226,
+            221,
+            217,
+            211,
+        ],
+        [
+            250,
+            249,
+            248,
+            247,
+            246,
+            244,
+            243,
+            242,
+            240,
+            239,
+            238,
+            236,
+            235,
+            233,
+            240,
+            239,
+            236,
+            232,
+            227,
+            223,
+            217,
+            211,
+        ],
+        [
+            293,
+            292,
+            290,
+            288,
+            287,
+            285,
+            284,
+            282,
+            281,
+            279,
+            279,
+            280,
+            279,
+            278,
+            275,
+            270,
+            268,
+            264,
+            260,
+            254,
+            246,
+            237,
+        ],
+        [
+            300,
+            299,
+            297,
+            295,
+            293,
+            291,
+            292,
+            291,
+            291,
+            289,
+            288,
+            286,
+            285,
+            285,
+            281,
+            278,
+            273,
+            268,
+            264,
+            258,
+            251,
+            242,
+        ],
     ],
     dtype=np.float64,
 )
 DEWPOINT = np.array(
     [
-        [224, 224, 224, 224, 224, 223, 223, 223, 223, 222, 222, 222, 221, 221, 233, 233, 231, 228, 223, 218, 213, 207],
-        [233, 233, 232, 232, 232, 232, 231, 231, 231, 231, 230, 230, 230, 229, 237, 236, 233, 229, 223, 219, 213, 207],
-        [288, 288, 287, 286, 281, 280, 279, 277, 276, 275, 270, 258, 244, 247, 243, 254, 262, 248, 229, 232, 229, 224],
-        [294, 294, 293, 292, 291, 289, 285, 282, 280, 280, 281, 281, 278, 274, 273, 269, 259, 246, 240, 241, 226, 219],
+        [
+            224,
+            224,
+            224,
+            224,
+            224,
+            223,
+            223,
+            223,
+            223,
+            222,
+            222,
+            222,
+            221,
+            221,
+            233,
+            233,
+            231,
+            228,
+            223,
+            218,
+            213,
+            207,
+        ],
+        [
+            233,
+            233,
+            232,
+            232,
+            232,
+            232,
+            231,
+            231,
+            231,
+            231,
+            230,
+            230,
+            230,
+            229,
+            237,
+            236,
+            233,
+            229,
+            223,
+            219,
+            213,
+            207,
+        ],
+        [
+            288,
+            288,
+            287,
+            286,
+            281,
+            280,
+            279,
+            277,
+            276,
+            275,
+            270,
+            258,
+            244,
+            247,
+            243,
+            254,
+            262,
+            248,
+            229,
+            232,
+            229,
+            224,
+        ],
+        [
+            294,
+            294,
+            293,
+            292,
+            291,
+            289,
+            285,
+            282,
+            280,
+            280,
+            281,
+            281,
+            278,
+            274,
+            273,
+            269,
+            259,
+            246,
+            240,
+            241,
+            226,
+            219,
+        ],
     ],
     dtype=np.float64,
 )
@@ -76,9 +284,15 @@ def test_intersect_nz_increasing(x, a, b) -> None:
     dewpoint = np.array(b)  # (N, Z)
     # TODO: update this test with the correct upper intersect values, there was an off by
     # one error in the determination of the upper index based on the metpy implementation.
-    intersect = F.intersect_nz(pressure_levels, temperature, dewpoint, direction=direction, log_x=True, mask_nans=True)
+    intersect = F.find_intersections(
+        pressure_levels,
+        temperature,
+        dewpoint,
+        direction=direction,
+        log_x=True,  # , mask_nans=True
+    )
     bottom = intersect.bottom()
-    top = intersect.bottom()
+
     for i in range(temperature.shape[0]):
         x_, y_ = mtools.find_intersections(
             pressure_levels * units.pascal,
@@ -88,16 +302,8 @@ def test_intersect_nz_increasing(x, a, b) -> None:
             log_x=True,
         )
 
-        if x_.size != 0:
-            assert_allclose(bottom.x[i], x_.m[0], rtol=1e-3)
-            assert_allclose(bottom.y[i], y_.m[0], rtol=1e-3)
-            assert_allclose(top.x[i], x_.m[-1], rtol=1e-3)
-            assert_allclose(top.y[i], y_.m[-1], rtol=1e-3)
-        else:
-            assert np.isnan(bottom.x[i])
-            assert np.isnan(bottom.y[i])
-            assert np.isnan(top.x[i])
-            assert np.isnan(top.y[i])
+        assert_allclose(bottom.x[i], x_.m)
+        assert_allclose(bottom.y[i], y_.m)
 
 
 @pytest.mark.parametrize(
@@ -140,10 +346,11 @@ def test_intersect_nz_decreasing(x, a, b) -> None:
     dewpoint = np.array(b)  # (N, Z)
     # TODO: update this test with the correct upper intersect values, there was an off by
     # one error in the determination of the upper index based on the metpy implmentation.
-    intersect = F.intersect_nz(pressure_levels, temperature, dewpoint, direction=direction, log_x=True, mask_nans=True)
+    intersect = F.find_intersections(
+        pressure_levels, temperature, dewpoint, direction=direction, log_x=True
+    )
 
     bottom = intersect.bottom()
-    top = intersect.bottom()
 
     for i in range(temperature.shape[0]):
         x_, y_ = mtools.find_intersections(
@@ -153,16 +360,9 @@ def test_intersect_nz_decreasing(x, a, b) -> None:
             direction,
             log_x=True,
         )
-        if x_.size != 0:
-            assert_allclose(bottom.x[i], x_[0], rtol=1e-3)
-            assert_allclose(bottom.y[i], y_[0], rtol=1e-3)
-            assert_allclose(top.x[i], x_[-1], rtol=1e-3)
-            assert_allclose(top.y[i], y_[-1], rtol=1e-3)
-        else:
-            assert np.isnan(bottom.x[i])
-            assert np.isnan(bottom.y[i])
-            assert np.isnan(top.x[i])
-            assert np.isnan(top.y[i])
+
+        assert_allclose(bottom.x[i], x_, rtol=1e-3)
+        assert_allclose(bottom.y[i], y_, rtol=1e-3)
 
 
 X = [

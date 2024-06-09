@@ -1,7 +1,7 @@
 from typing import Annotated, TypeVar
 
 from ._typing import _ufunc1x1, _ufunc2x1, _ufunc2x2, _ufunc3x1, _ufunc3x2
-from .typing import Kelvin, Pascal
+from .typing import Kelvin, Pascal, Ratio
 
 _T = TypeVar("_T")
 
@@ -30,13 +30,23 @@ def wobus(temperature: Kelvin[float]) -> float: ...
 
 # 2x1
 @_ufunc2x1
-def potential_temperature(pressure: Pascal[float], temperature: Kelvin[float]) -> Theta[Kelvin[float]]: ...
+def potential_temperature(
+    pressure: Pascal[float], temperature: Kelvin[float]
+) -> Theta[Kelvin[float]]: ...
 @_ufunc2x1
 def saturation_mixing_ratio(pressure: Pascal[float], temperature: Kelvin[float]) -> float: ...
 @_ufunc2x1
-def virtual_temperature(temperature: Kelvin[float], vapor_pressure: Pascal[float]) -> Kelvin[float]: ...
+def virtual_temperature(
+    temperature: Kelvin[float], vapor_pressure: Pascal[float]
+) -> Kelvin[float]: ...
 @_ufunc2x1
 def vapor_pressure(pressure: Pascal[float], mixing_ratio: float) -> Pascal[float]: ...
+
+# cdef T dewpoint_from_specific_humidity(T pressure, T specific_humidity) noexcept nogil:
+@_ufunc2x1
+def dewpoint_from_specific_humidity(
+    pressure: Pascal[float], specific_humidity: Ratio[float]
+) -> Kelvin[float]: ...
 
 # 3x1
 @_ufunc3x1

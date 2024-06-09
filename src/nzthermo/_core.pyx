@@ -42,7 +42,7 @@ cdef extern from *:
 
 
 cdef extern from "<math.h>" nogil:
-    bint isnan(long double x)
+    bint isnan(long double x) noexcept
     const float NaN "NAN"
 
 
@@ -192,10 +192,14 @@ cdef T[:, :] moist_lapse_2d(
     with nogil, parallel():
         if BROADCAST is mode:
             for i in prange(N, schedule='dynamic'):
-                moist_lapse_1d(out[i], pressure[0, :], reference_pressure[i], temperature[i], step=step)
+                moist_lapse_1d(
+                    out[i], pressure[0, :], reference_pressure[i], temperature[i], step=step
+                )
         else: # MATRIX
             for i in prange(N, schedule='dynamic'):
-                moist_lapse_1d(out[i], pressure[i, :], reference_pressure[i], temperature[i], step=step)
+                moist_lapse_1d(
+                    out[i], pressure[i, :], reference_pressure[i], temperature[i], step=step
+                )
 
     return out
 
@@ -346,9 +350,9 @@ def moist_lapse(
     return out
 
 
-# -------------------------------------------------------------------------------------------------
+# ............................................................................................... #
 # parcel_profile
-# -------------------------------------------------------------------------------------------------
+# ............................................................................................... #
 cdef void parcel_profile_1d(
     T[:] out,      # (Z,)
     T[:] pressure,  # (Z,)
@@ -401,11 +405,15 @@ cdef T[:, :] parcel_profile_2d(
     with nogil, parallel():
         if BROADCAST is mode:
             for i in prange(N, schedule='dynamic'):
-                parcel_profile_1d(out[i], pressure[0, :], temperature[i], dewpoint[i], step, eps, max_iters)
+                parcel_profile_1d(
+                    out[i], pressure[0, :], temperature[i], dewpoint[i], step, eps, max_iters
+                )
 
         else: # MATRIX
             for i in prange(N, schedule='dynamic'):
-                parcel_profile_1d(out[i], pressure[i, :], temperature[i], dewpoint[i], step, eps, max_iters)
+                parcel_profile_1d(
+                    out[i], pressure[i, :], temperature[i], dewpoint[i], step, eps, max_iters
+                )
  
     return out
 
@@ -427,7 +435,6 @@ def parcel_profile(
 
     (pressure, temperature, dewpoint), mode = pressure_mode(pressure, temperature, dewpoint)
     N, Z = temperature.shape[0], pressure.shape[1]
-        
 
     out = np.empty((N, Z), dtype=pressure.dtype)
     if strategy == SURFACE_BASED:
@@ -453,8 +460,9 @@ def parcel_profile(
             )
     else:
         raise ValueError("Invalid strategy.")
-    
+
     return out
+
 
 # ............................................................................................... #
 # parcel_profile_with_lcl
@@ -519,17 +527,19 @@ cdef T[:, :] parcel_profile_with_lcl_2d(
 
     t_out = nzarray((N, Z), pressure.itemsize)
     p_out = nzarray((N, Z), pressure.itemsize)
-    with nogil, parallel():
 
+    with nogil, parallel():
         if BROADCAST is mode:
             for i in prange(N, schedule='dynamic'):
                 parcel_profile_with_lcl_1d(
-                    t_out[i], p_out[i], pressure[0, :], temperature[i], dewpoint[i], step, eps, max_iters
+                    t_out[i], p_out[i], 
+                    pressure[0, :], temperature[i], dewpoint[i], step, eps, max_iters
                 )
         else: # MATRIX
             for i in prange(N, schedule='dynamic'):
                 parcel_profile_with_lcl_1d(
-                    t_out[i], p_out[i], pressure[i, :], temperature[i], dewpoint[i], step, eps, max_iters
+                    t_out[i], p_out[i], 
+                    pressure[i, :], temperature[i], dewpoint[i], step, eps, max_iters
                 )
  
     return t_out
@@ -580,7 +590,8 @@ def parcel_profile_with_lcl(
     
     return out
 
-
+# ............................................................................................... #
+# interpolation
 # ............................................................................................... #
 cdef T[:] _interpolate_nz(
     T[:] x,      # (N,)
@@ -596,7 +607,7 @@ cdef T[:] _interpolate_nz(
     out = np.empty(N, dtype=np.float32 if sizeof(float) == x.itemsize else np.float64)
     with nogil, parallel():
         for n in prange(N, schedule='runtime'):
-            out[n] = C.interpolate_z(x[n], &xp[0], &fp[n, 0], Z)
+            out[n] = C.interpolate_1d(x[n], &xp[0], &fp[n, 0], Z)
 
     return out
 
@@ -681,4 +692,60 @@ def interpolate_nz(
         return out[0]
 
     return tuple(out)
+
+
+cdef intersect_2d(
+    T[:, :] x,
+    T[:, :] y0,
+    T[:, :] y1,
+    BroadcastMode mode,
+    bint log_x,
+    bint increasing,
+    bint bottom,
+):
+    cdef:
+        size_t N, Z, i
+        C.point[T] pt
+        T[:, :] out 
+
+    N, Z = y0.shape[0], y1.shape[1]
+
+    out = nzarray((2, N), x.itemsize)
+    with nogil, parallel():
+        if BROADCAST is mode:
+            for i in prange(N, schedule='dynamic'):
+                pt = C.intersect_1d(&x[0, 0], &y0[i, 0], &y1[i, 0], Z, log_x, increasing, bottom)
+                out[0, i], out[1, i] = pt.x, pt.y
+        else: # MATRIX
+            for i in prange(N, schedule='dynamic'):
+                pt = C.intersect_1d(&x[i, 0], &y0[i, 0], &y1[i, 0], Z, log_x, increasing, bottom)
+                out[0, i], out[1, i] = pt.x, pt.y
+
+    return out
+
+
+def intersect(
+    np.ndarray x,
+    np.ndarray a,
+    np.ndarray b,
+    bint log_x = False,
+    str direction = 'decreasing',
+    bint increasing = False,
+    bint bottom = True,
+):
+    cdef:
+        BroadcastMode mode
+        np.ndarray out
+
+    (x, a, b), mode = pressure_mode(x, a, b)
+
+    if increasing is False and direction == 'increasing':
+        increasing = True
     
+    out = np.empty((2, a.shape[0]), x.dtype)
+    if x.dtype == np.float64:
+        out[...] = intersect_2d[double](x, a, b, mode, log_x, increasing, bottom)
+    else:
+        out[...] = intersect_2d[float](x, a, b, mode, log_x, increasing, bottom)
+
+    return out

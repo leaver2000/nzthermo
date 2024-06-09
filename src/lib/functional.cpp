@@ -4,6 +4,24 @@
 
 namespace libthermo {
 
+/**
+ * @brief The sign function returns -1 if x < 0, 0 if x==0, 1 if x > 0. nan is returned for nan inputs.
+ * 
+ * @tparam T 
+ * @param x 
+ * @return constexpr T 
+ */
+template <floating T>
+constexpr T sign(const T x) noexcept {
+    if (isnan(x))
+        return NAN;
+    else if (x == 0.)
+        return 0.;
+    else if (x < 0)
+        return -1.;
+    return 1.;
+}
+
 template <floating T>
 constexpr bool monotonic(const T x[], const size_t size, direction direction) noexcept {
     if (direction == direction::increasing) {
@@ -31,14 +49,14 @@ constexpr T radians(const T degrees) noexcept {
 
 template <floating T>
 constexpr T norm(const T x, const T x0, const T x1) noexcept {
-    return (x - x0) / (x1 - x0);
+    return (x - x0) / LIMIT_ZERO(x1 - x0);
 }
 
 template <floating T>
 constexpr T linear_interpolate(
   const T x, const T x0, const T x1, const T y0, const T y1
 ) noexcept {
-    return y0 + (x - x0) * (y1 - y0) / (x1 - x0);
+    return y0 + (x - x0) * (y1 - y0) / LIMIT_ZERO(x1 - x0);
 }
 
 template <floating T, typename C>
@@ -71,15 +89,6 @@ size_t search_sorted(const T x[], const T value, const size_t size, const bool i
         return lower_bound(x, size, value, std::greater_equal());
 
     return upper_bound(x, size, value, std::less_equal());
-}
-
-template <floating T>
-constexpr T interpolate_z(const T x, const T xp[], const T fp[], const size_t size) noexcept {
-    const size_t i = lower_bound(xp, size, x, std::greater_equal());
-    if (i == 0)
-        return fp[0];
-
-    return linear_interpolate(x, xp[i - 1], xp[i], fp[i - 1], fp[i]);
 }
 
 template <floating T>
@@ -130,12 +139,9 @@ constexpr T fixed_point(
         p1 = fn(p0, x0, args...);
         p2 = fn(p1, x0, args...);
         delta = p2 - 2.0 * p1 + p0;
-        if (delta)
-            p2 = p0 - pow(p1 - p0, 2) / delta; /* delta squared */
 
-        err = p2;
-        if (p0)
-            err = fabs((p2 - p0) / p0); /* absolute relative error */
+        p2 = delta ? p0 - pow(p1 - p0, 2) / delta : p2; /* delta squared */
+        err = p0 ? fabs((p2 - p0) / p0) : p2; /* absolute relative error */
 
         if (err < eps)
             return p2;
@@ -147,36 +153,71 @@ constexpr T fixed_point(
 }
 
 template <floating T>
-constexpr T trapezoidal(const Fn<T, T> fn, const T a, const T b, const T n) noexcept {
-    // Grid spacing
-    T h = (b - a) / n;
+constexpr T interpolate_1d(const T x, const T xp[], const T fp[], const size_t size) noexcept {
+    const size_t i = lower_bound(xp, size, x, std::greater_equal());
+    if (i == 0)
+        return fp[0];
 
-    // Computing sum of first and last terms
-    // in above formula
-    T s = fn(a) + fn(b);
-
-    // Adding middle terms in above formula
-    for (size_t i = 1; i < n; i++)
-        s += 2 * fn(a + i * h);
-
-    // h/2 indicates (b-a)/2n. Multiplying h/2
-    // with s.
-    return (h / 2) * s;
+    return linear_interpolate(x, xp[i - 1], xp[i], fp[i - 1], fp[i]);
 }
 
 template <floating T>
-constexpr T* find_intersections(T x[], T a[], T b[], size_t size, bool log_x) {
-    T* intersections = new T[size];
+constexpr point<T> intersect_1d(
+  const T x[],
+  const T a[],
+  const T b[],
+  const size_t size,
+  const bool log_x,
+  const bool increasing,
+  const bool bottom
+) noexcept {
+    const T sign_check = increasing ? 1. : -1.;
+    T x0, x1, a0, a1, b0, b1, delta_y0, delta_y1, x_intercept, y_intercept;
+    size_t i0, i1;
+    if (bottom) {
+        for (i0 = 0, i1 = 1; i0 < size - 1; i0++, i1++) {
+            T s0 = sign(a[i0] - b[i0]);
+            T s1 = sign(a[i1] - b[i1]);
 
-    size_t nearest_idx;
-    size_t sign_change_idx;
-    //     difference = a - b
+            if ((s0 != s1) && (s1 == sign_check))
+                break;
+        }
+        if (i1 == size)
+            return {NAN, NAN};
+    } else {
+        for (i0 = size - 1, i1 = size; i0 > 0; i0--, i1--) {
+            T s0 = sign(a[i0] - b[i0]);
+            T s1 = sign(a[i1] - b[i1]);
 
-    // # Determine the point just before the intersection of the lines
-    // # Will return multiple points for multiple intersections
-    // sign_change_idx, = np.nonzero(np.diff(np.sign(difference)))
+            if ((s0 != s1) && (s1 == sign_check))
+                break;
+        }
+        if (i0 == 0)
+            return {NAN, NAN};
+    }
 
-    return intersections;
+    x0 = x[i0];
+    x1 = x[i1];
+    if (log_x) {
+        x0 = log(x0);
+        x1 = log(x1);
+    }
+
+    a0 = a[i0];
+    a1 = a[i1];
+    b0 = b[i0];
+    b1 = b[i1];
+
+    delta_y0 = a0 - b0;
+    delta_y1 = a1 - b1;
+
+    x_intercept = (delta_y1 * x0 - delta_y0 * x1) / LIMIT_ZERO(delta_y1 - delta_y0);
+    y_intercept = ((x_intercept - x0) / LIMIT_ZERO(x1 - x0)) * (a1 - a0) + a0;
+
+    if (log_x)
+        x_intercept = exp(x_intercept);
+
+    return {x_intercept, y_intercept};
 };
 
 }  // namespace libthermo

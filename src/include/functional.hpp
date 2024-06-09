@@ -7,6 +7,7 @@
 
 #include <common.hpp>
 #include <functional.hpp>
+
 namespace libthermo {
 
 typedef enum direction {
@@ -36,13 +37,9 @@ size_t search_sorted(
   const T x[], const T value, const size_t size, const bool inverted = false
 ) noexcept;
 
-template <floating T>
-constexpr T interpolate_z(const T x, const T xp[], const T fp[], const size_t size) noexcept;
-
 /**
  * see: https://github.com/numpy/numpy/blob/main/numpy/_core/src/npymath/npy_math_internal.h.src#L426
  */
-
 template <floating T>
 constexpr T heaviside(const T x, const T h0) noexcept;
 
@@ -85,7 +82,7 @@ constexpr T fixed_point(
  * Based on std::lower_bound, this iterates over an array using a binary search
  * to find the first element that does not satisfy the comparison condition. By
  * default, the comparison is std::less. Binary search expects data to be sorted
- * in ascending order -- for pressure level data, change the comparitor.
+ * in ascending order -- for pressure level data, change the comparator.
  *
  * We use a custom implementation of sharp::lower_bound rather than
  * std::lower_bound for a few reasons. First, we prefer raw pointer
@@ -136,6 +133,16 @@ template <floating T, typename C = std::less<T>>
 constexpr size_t upper_bound(const T array[], const int N, const T& value, const C cmp = C{});
 
 template <floating T>
-constexpr T trapezoidal(const Fn<T, T> fn, const T a, const T b, const T n) noexcept;
+constexpr T interpolate_1d(const T x, const T xp[], const T fp[], const size_t size) noexcept;
 
+template <floating T>
+constexpr point<T> intersect_1d(
+  const T x[],
+  const T a[],
+  const T b[],
+  const size_t size,
+  const bool log_x = false,
+  const bool increasing = true,
+  const bool bottom = true
+) noexcept;
 }  // namespace libthermo
