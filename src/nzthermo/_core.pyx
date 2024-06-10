@@ -94,10 +94,8 @@ cdef pressure_mode(
         mode = BROADCAST
     elif pressure.ndim == 2 and pressure.shape[0] == 1:
         mode = BROADCAST
-    elif pressure.ndim == 2 and pressure.shape == temperature.shape == dewpoint.shape:
-        mode = MATRIX
     else:
-        raise ValueError("Invalid pressure array shape.")
+        mode = MATRIX
     
     return (pressure, temperature, dewpoint), mode
 
@@ -434,6 +432,8 @@ def parcel_profile(
         np.ndarray out
 
     (pressure, temperature, dewpoint), mode = pressure_mode(pressure, temperature, dewpoint)
+    if mode == BROADCAST:
+        print('BROADCASTING')
     N, Z = temperature.shape[0], pressure.shape[1]
 
     out = np.empty((N, Z), dtype=pressure.dtype)

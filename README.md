@@ -30,6 +30,16 @@ units of `Kelvin`.
 
 ## Getting Started
 
+The c `templates` &  `concepts` to support both `double` and `float` data types. This requires
+when building from source that `-std=c++20` is avaliable. If working from an older version of
+Ubuntu you can update the default `c++` compiler as such.
+
+```bash
+sudo apt update -y
+sudo apt install g++-10 -y
+sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 60
+```
+
 ```bash
 python3.11 -m venv .venv
 source .venv/bin/activate

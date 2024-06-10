@@ -1,87 +1,23 @@
 from __future__ import annotations
 
-from typing import (
-    Callable,
-    SupportsIndex,
-    Any,
-    overload,
-    Literal as L,
-    TypeVar,
-    Generic,
-    NamedTuple,
-)
+from typing import Any, Callable, Literal as L, SupportsIndex, TypeVar, overload
 
 import numpy as np
-from numpy._typing._array_like import _ArrayLikeComplex_co, _ArrayLikeObject_co, _ArrayLikeTD64_co
+from numpy._typing._array_like import (
+    _ArrayLikeComplex_co,
+    _ArrayLikeObject_co,
+    _ArrayLikeTD64_co,
+)
 from numpy.typing import NDArray
 
 from .typing import N, Z, shape
+from .utils import Vector2d, exactly_2d
 
-_T = TypeVar("_T")
 float_ = TypeVar("float_", bound=np.float_)
 
 
 def not_nan(x: NDArray[Any]) -> NDArray[np.bool_]:
     return ~np.isnan(x)
-
-
-class ElementNd(NamedTuple, Generic[_T, float_]):
-    x: np.ndarray[_T, np.dtype[float_]]
-    y: np.ndarray[_T, np.dtype[float_]]
-
-
-class Element1d(ElementNd[shape[N], float_]): ...
-
-
-class Element2d(ElementNd[shape[N, Z], float_]):
-    def pick(self, which: L["bottom", "top"] = "top") -> ElementNd[shape[N], float_]:
-        x, y = self.x, self.y
-        if which == "bottom":
-            idx = np.s_[
-                np.arange(x.shape[0]),
-                np.argmin(~np.isnan(x), axis=1) - 1,  # the last non-nan value
-            ]
-
-        elif which == "top":
-            idx = np.s_[:, 0]
-
-        return ElementNd(x[idx], y[idx])
-
-    def bottom(self) -> ElementNd[shape[N], float_]:
-        return self.pick("bottom")
-
-    def top(self) -> ElementNd[shape[N], float_]:
-        return self.pick("top")
-
-
-@overload
-def exactly_2d(
-    __x: np.ndarray[Any, np.dtype[np.float_]],
-) -> np.ndarray[shape[N, Z], np.dtype[np.float_]]: ...
-@overload
-def exactly_2d(
-    *args: np.ndarray[Any, np.dtype[np.float_]],
-) -> tuple[np.ndarray[shape[N, Z], np.dtype[np.float_]]]: ...
-def exactly_2d(
-    *args: np.ndarray[Any, np.dtype[np.float_]],
-) -> (
-    np.ndarray[shape[N, Z], np.dtype[np.float_]]
-    | tuple[np.ndarray[shape[N, Z], np.dtype[np.float_]], ...]
-):
-    values = []
-    for x in args:
-        if x.ndim == 0:
-            x = x.reshape(1, 1)
-        elif x.ndim == 1:
-            x = x[np.newaxis, :]
-        elif x.ndim != 2:
-            raise ValueError("pressure must be a 1D or 2D array")
-        values.append(x)
-
-    if len(values) == 1:
-        return values[0]
-
-    return tuple(values)
 
 
 @overload
@@ -211,7 +147,7 @@ def find_intersections(
     b: np.ndarray[shape[N, Z], np.dtype[np.float_]],
     direction: L["increasing", "decreasing"] = "increasing",
     log_x: bool = False,
-) -> Element2d[np.float_]:
+) -> Vector2d[np.float_]:
     x, a, b = nanroll_2d(x, a, b)
 
     if log_x is True:
@@ -249,13 +185,13 @@ def find_intersections(
 
     clip = max(np.argmax(np.isnan(x), axis=1)) + 1
 
-    return Element2d(x[:, :clip], y[:, :clip])
+    return Vector2d(x[:, :clip], y[:, :clip])
 
 
 def find_append_zero_crossings(
     X: np.ndarray[shape[N, Z], np.dtype[np.float_]],
     Y: np.ndarray[shape[N, Z], np.dtype[np.float_]],
-) -> Element2d[np.float_]:
+) -> Vector2d[np.float_]:
     """
     This function targets the `metpy.thermo._find_append_zero_crossings` function but with support
     for 2D arrays.
@@ -291,4 +227,4 @@ def find_append_zero_crossings(
 
     clip = max(np.argmax(np.isnan(x), axis=1))
 
-    return Element2d(x[:, :clip], y[:, :clip])
+    return Vector2d(x[:, :clip], y[:, :clip])

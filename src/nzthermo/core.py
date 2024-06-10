@@ -10,86 +10,23 @@ from __future__ import annotations
 
 import operator
 import warnings
-from typing import (
-    Final,
-    Generic,
-    Literal as L,
-    NamedTuple,
-    TypeVar,
-)
-from typing import Callable, Concatenate, ParamSpec
-import functools
+from typing import Final, TypeVar
+from typing import Literal as L
+
 import numpy as np
 from numpy.typing import NDArray
 
-from . import _core as core, _ufunc as uf, functional as F
+from . import _core as core
+from . import _ufunc as uf
+from . import functional as F
 from .const import Rd, Rv
-from .typing import Kelvin, N, Pascal, Z, shape, Ratio, NZArray
+from .typing import Kelvin, N, NZArray, Pascal, Ratio, Z, shape
+from .utils import Vector1d, broadcast_nz
 
-# .....{ types }.....
-_T = TypeVar("_T")
-_P = ParamSpec("_P")
-Pair = tuple[_T, _T]
 float_ = TypeVar("float_", bound=np.float_)
 newaxis: Final[None] = np.newaxis
 
 
-class ElementNd(NamedTuple, Generic[_T, float_]):
-    x: Pascal[np.ndarray[_T, np.dtype[float_]]]
-    y: Kelvin[np.ndarray[_T, np.dtype[float_]]]
-
-
-class Element1d(ElementNd[shape[N], float_]): ...
-
-
-class Element2d(ElementNd[shape[N, Z], float_]):
-    def pick(self, which: L["bottom", "top"] = "top") -> ElementNd[shape[N], float_]:
-        x, y = self.x, self.y
-        nx = np.arange(x.shape[0])
-        if which == "bottom":
-            idx = np.argmin(~np.isnan(x), axis=1) - 1  # the last non-nan value
-            return ElementNd(x[nx, idx], y[nx, idx])
-
-        elif which == "top":
-            return ElementNd(x[nx, 0], y[nx, 0])  # the first value is the uppermost value
-
-    def bottom(self) -> ElementNd[shape[N], float_]:
-        return self.pick("bottom")
-
-    def top(self) -> ElementNd[shape[N], float_]:
-        return self.pick("top")
-
-
-def broadcast_nz(
-    f: Callable[Concatenate[NZArray[np.float_], NZArray[np.float_], NZArray[np.float_], _P], _T],
-) -> Callable[
-    Concatenate[Pascal[NDArray[float_]], Kelvin[NDArray[float_]], Kelvin[NDArray[float_]], _P], _T
-]:
-    @functools.wraps(f)
-    def wrapper(
-        pressure,
-        temperature,
-        dewpoint,
-        *args: _P.args,
-        **kwargs: _P.kwargs,
-    ) -> _T:
-        # TODO
-        # - add support for squeezing what would have been a 1d input
-        # - add support for reshaping:
-        #   (T, Z, Y, X) -> (N, Z)
-        #   (Z, Y, X) -> (N, Z)'
-        pressure, temperature, dewpoint = F.exactly_2d(pressure, temperature, dewpoint)
-        return f(pressure, temperature, dewpoint, *args, **kwargs)
-
-    return wrapper
-
-
-# =================================================================================================
-# .....{ basic thermodynamics }.....
-# None of the following require any type of array broadcasting or fancy indexing
-# TODO: because the _multiple_el_lfc_options function is highly dependent on the output of
-# find_intersections combining them into a class is probably the best idea.
-# =================================================================================================
 def mixing_ratio_from_specific_humidity(
     specific_humidity: Ratio[NDArray[float_]],
 ) -> Ratio[NDArray[float_]]:
@@ -152,7 +89,7 @@ def _multiple_el_lfc_options(
     x: np.ndarray[shape[N, Z], np.dtype[float_]],
     y: np.ndarray[shape[N, Z], np.dtype[float_]],
     which: L["bottom", "top"] = "top",
-) -> ElementNd[shape[N], float_]:
+) -> Vector1d[float_]:
     """
     it is assumed that the x and y arrays are sorted in ascending order
     >>> [[76852.646 nan nan ... ] [45336.262 88486.399 nan ... ]]
@@ -166,7 +103,7 @@ def _multiple_el_lfc_options(
     elif which == "top":
         idx = np.s_[:, 0]
 
-    return ElementNd(x[idx], y[idx])
+    return Vector1d(x[idx], y[idx])
 
 
 @broadcast_nz
@@ -178,7 +115,7 @@ def el(
     parcel_temperature_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]] | None = None,
     which: L["top", "bottom"] = "top",
     lcl_p: np.ndarray | None = None,
-) -> ElementNd[shape[N], float_]:
+) -> Vector1d[float_]:
     p0, t0, td0 = pressure[:, 0], temperature[:, 0], dewpoint[:, 0]
 
     if parcel_temperature_profile is None:
@@ -211,7 +148,7 @@ def lfc(
     parcel_temperature_profile: np.ndarray | None = None,
     which: L["top", "bottom"] = "top",
     dewpoint_start: np.ndarray[shape[N], np.dtype[float_]] | None = None,
-) -> ElementNd[shape[N], float_]:
+) -> Vector1d[float_]:
     p0, t0 = pressure[:, 0], temperature[:, 0]
     if dewpoint_start is None:
         td0 = dewpoint[:, 0]  # (N,)
@@ -285,7 +222,7 @@ def el_lfc(
     parcel_temperature_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]] | None = None,
     which_lfc: L["bottom", "top"] = "bottom",
     which_el: L["bottom", "top"] = "top",
-):
+) -> tuple[Vector1d[float_], Vector1d[float_]]:
     p0, t0, td0 = pressure[:, 0], temperature[:, 0], dewpoint[:, 0]
 
     if parcel_temperature_profile is None:
@@ -426,9 +363,6 @@ def cape_cin(
     (el_p, _), (lfc_p, _) = el_lfc(
         pressure, temperature, dewpoint, parcel_profile, which_lfc, which_el
     )
-    # el_p = el(pressure, temperature, dewpoint, parcel_profile, which=which_el).x  # ✔️
-    # # Calculate LFC limit of integration
-    # lfc_p = lfc(pressure, temperature, dewpoint, parcel_profile, which=which_lfc).x  # ✔️
 
     pressure = np.broadcast_to(pressure, temperature.shape)
     p_top = np.nanmin(pressure, axis=1)
@@ -442,7 +376,7 @@ def cape_cin(
     x, y = np.where(mask[newaxis, ...], [X, Y], np.nan)
 
     cape = Rd * F.nantrapz(y, np.log(x), axis=1)
-    cape[(cape < 0.0)] = 0.0
+    # cape[(cape < 0.0)] = 0.0
 
     mask = F.logical_or_close(operator.gt, X, lfc_p)
     x, y = np.where(mask[newaxis, ...], [X, Y], np.nan)

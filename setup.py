@@ -1,5 +1,5 @@
 #
-# sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 60
+# sudo apt update -y && sudo apt install g++-10 -y && sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 60
 from __future__ import annotations
 
 import os
@@ -57,7 +57,12 @@ else:
     #   is statically configured at compile time.
     # Dynamic scheduling:
     #  Is better when the iterations may take very different  amounts of time.
-    if (omp := os.getenv("OMP_SCHEDULE", "dynamic")) not in ("static", "dynamic", "guided", "auto"):
+    if (omp := os.getenv("OMP_SCHEDULE", "dynamic")) not in (
+        "static",
+        "dynamic",
+        "guided",
+        "auto",
+    ):
         raise OSError(f"the provided ``OMP_SCHEDULE`` is invalid got := {omp}")
     os.environ["OMP_SCHEDULE"] = omp
     define_macros += [("OMP_SCHEDULE", omp)]

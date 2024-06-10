@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import metpy.calc.tools as mtools
 import numpy as np
+import nzthermo.functional as F
 import pytest
 from metpy.calc.thermo import _find_append_zero_crossings
 from metpy.units import units
 from numpy.testing import assert_allclose
 
-import nzthermo.functional as F
-# from nzthermo.core import find_intersections
+K = units.kelvin
+Pa = units.pascal
 
 PRESSURE = np.array(
     [
@@ -289,7 +290,7 @@ def test_intersect_nz_increasing(x, a, b) -> None:
         temperature,
         dewpoint,
         direction=direction,
-        log_x=True,  # , mask_nans=True
+        log_x=True,
     )
     bottom = intersect.bottom()
 
@@ -561,10 +562,6 @@ Y = [
         -0.24344423360349765,
     ],
 ]
-
-
-K = units.kelvin
-Pa = units.pascal
 
 
 def test_insert_zero_crossings():
