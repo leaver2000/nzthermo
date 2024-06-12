@@ -137,6 +137,8 @@ constexpr T heaviside(const T x, const T h0) noexcept {
     return 1.0;
 }
 /**
+ * @author Jason Leaver - USAF 557WW/1WXG
+ * 
  * @brief Runge-Kutta 2nd order method for solving ordinary differential equations.
  * 
  * @tparam T (floating point)
@@ -144,16 +146,16 @@ constexpr T heaviside(const T x, const T h0) noexcept {
  * @param x0
  * @param x1
  * @param y
- * @param step
+ * @param step (1000.0 Pa) increasing the step will increase the speed of the calculation but may
+ * decrease the accuracy.
  * @return constexpr T
  */
 template <floating T>
-constexpr T rk2(Fn<T, T, T> fn, T x0, T x1, T y, T step /* = .1 */) noexcept {
+constexpr T rk2(Fn<T, T, T> fn, T x0, T x1, T y, T step /* 1000.0 (Pa) */) noexcept {
     T k1, delta, abs_delta;
     size_t N = 1;
 
-    delta = x1 - x0;
-    abs_delta = fabs(delta);
+    abs_delta = fabs(delta = (x1 - x0));
     if (abs_delta > step) {
         N = (size_t)ceil(abs_delta / step);
         delta = delta / (T)N;
@@ -168,6 +170,8 @@ constexpr T rk2(Fn<T, T, T> fn, T x0, T x1, T y, T step /* = .1 */) noexcept {
     return y;
 }
 /**
+ * @author Jason Leaver - USAF 557WW/1WXG
+ * 
  * @brief A fixed point of a function is the point at which evaluation of the
  * function returns the point.
  * @ref https://docs.scipy.org/doc/scipy/tutorial/optimize.html#fixed-point-solving
@@ -190,7 +194,7 @@ constexpr T fixed_point(
   const T x0,
   const Args... args
 ) noexcept {
-    T p0, p1, p2, delta, err;
+    T p0, p1, p2, delta;
 
     p0 = x0;
     for (size_t i = 0; i < max_iters; i++) {
@@ -199,9 +203,8 @@ constexpr T fixed_point(
         delta = p2 - 2.0 * p1 + p0;
 
         p2 = delta ? p0 - pow(p1 - p0, 2) / delta : p2; /* delta squared */
-        err = p0 ? fabs((p2 - p0) / p0) : p2; /* absolute relative error */
 
-        if (err < eps)
+        if ((p0 ? fabs((p2 - p0) / p0) : p2 /* absolute relative error */) < eps)
             return p2;
 
         p0 = p2;
@@ -228,6 +231,8 @@ constexpr T interpolate_1d(const T x, const T xp[], const T fp[], const size_t s
     return linear_interpolate(x, xp[i - 1], xp[i], fp[i - 1], fp[i]);
 }
 /**
+ * @author Jason Leaver - USAF 557WW/1WXG
+ * 
  * @brief Intersects two 1D functions.
  * 
  * @tparam T (floating point) 

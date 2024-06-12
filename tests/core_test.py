@@ -1,7 +1,6 @@
 # noqa
 import itertools
 import json
-from typing import Any
 
 import metpy.calc as mpcalc
 import numpy as np
@@ -258,12 +257,6 @@ LCL = uf.lcl_pressure(P[0], T[:, 0], Td[:, 0])
 assert np.all(Td <= T)
 
 
-def pressure_levels(sfc=1013.25, dtype: Any = np.float64):
-    pressure = [sfc, 1000, 975, 950, 925, 900, 875, 850, 825, 800, 775, 750]
-    pressure += [725, 700, 650, 600, 550, 500, 450, 400, 350, 300, 250, 200]
-    return np.array(pressure, dtype=dtype) * 100.0
-
-
 @pytest.mark.ccl
 @pytest.mark.parametrize("dtype", [np.float64, np.float32])
 def test_ccl(dtype) -> None:
@@ -492,10 +485,10 @@ def test_insert_zero_crossings(which_lfc, which_el):
         temperature, uf.saturation_mixing_ratio(pressure, dewpoint)
     )
     parcel_profile = uf.virtual_temperature(parcel_profile, parcel_mixing_ratio)
-    lfc_p = lfc(pressure, temperature, dewpoint, parcel_profile, which=which_lfc).x  # ✔️
+    lfc_p = lfc(pressure, temperature, dewpoint, parcel_profile, which=which_lfc).pressure  # ✔️
 
     # Calculate the EL limit of integration
-    el_p = el(pressure, temperature, dewpoint, parcel_profile, which=which_el).x  # ✔️
+    el_p = el(pressure, temperature, dewpoint, parcel_profile, which=which_el).pressure  # ✔️
     lfc_p, el_p = np.reshape((lfc_p, el_p), (2, -1, 1))
     INPUT = np.broadcast_to(pressure, temperature.shape), parcel_profile - temperature
 

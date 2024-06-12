@@ -10,6 +10,9 @@
 #include <common.hpp>
 
 namespace libthermo {
+#define DEFAULT_STEP 1000.0  // `(Pa)` - default step for moist_lapse
+#define DEFAULT_EPS 0.1  // default epsilon for lcl
+#define DEFAULT_ITERS 5  // default number of iterations for lcl
 
 /* ........................................{ const  }........................................... */
 
@@ -26,12 +29,6 @@ static constexpr double epsilon = Mw / Md;  // `Mw / Md` - molecular weight rati
 static constexpr double kappa = Rd / Cp;  // `Rd / Cp`  - ratio of gas constants
 
 /* ........................................{ struct }........................................... */
-template <floating T>
-struct LCL {
-    T pressure;
-    T temperature;
-};
-
 template <floating T>
 struct Parcel {
     T pressure;
@@ -80,29 +77,59 @@ constexpr T wet_bulb_potential_temperature(
 
 template <floating T>
 constexpr T moist_lapse(
-  const T pressure, const T next_pressure, const T temperature, const T step
+  const T pressure, const T next_pressure, const T temperature, const T step = DEFAULT_STEP
 ) noexcept;
 
 /* ........................................{ lcl  }........................................... */
 
 template <floating T>
-constexpr LCL<T> lcl(
-  const T pressure, const T temperature, const T dewpoint, const T eps, const size_t max_iters
+constexpr T lcl_pressure(
+  const T pressure,
+  const T temperature,
+  const T dewpoint,
+  const T eps = DEFAULT_EPS,
+  const size_t max_iters = DEFAULT_ITERS
 ) noexcept;
 
 template <floating T>
-constexpr T lcl_pressure(
-  const T pressure, const T temperature, const T dewpoint, const T eps, const size_t max_iters
-) noexcept;
+class lcl {
+    // TODO: a base class can be made to avoid code duplication for any struct that
+    // may be used to produce pressure and temperature fields. Then just overload the
+    // constructor with the function arguments.
+  public:
+    T pressure, temperature;
+    // default constructor
+    constexpr lcl() noexcept = default;
+    // copy constructor
+    constexpr lcl(const lcl<T>& other) noexcept = default;
+    // move constructor
+    constexpr lcl(lcl<T>&& other) noexcept = default;
+    // copy assignment operator
+    constexpr lcl<T>& operator=(const lcl<T>& other) noexcept = default;
+    // destructor
+    ~lcl() noexcept = default;
+    constexpr lcl(const T pressure, const T temperature) noexcept
+        : pressure(pressure), temperature(temperature){};
+
+    constexpr lcl(
+      const T pressure,
+      const T temperature,
+      const T dewpoint,
+      const T eps = DEFAULT_EPS,
+      const size_t max_iters = DEFAULT_ITERS
+    ) noexcept;
+
+    constexpr T wet_bulb_temperature(const T pressure, const T step = DEFAULT_STEP) noexcept;
+};
 
 template <floating T>
 constexpr T wet_bulb_temperature(
   const T pressure,
   const T temperature,
   const T dewpoint,
-  const T eps,
-  const T step,
-  const size_t max_iters
+  const T eps = DEFAULT_EPS,
+  const T step = DEFAULT_STEP,
+  const size_t max_iters = DEFAULT_ITERS
 ) noexcept;
 
 /* ........................................{ sharp  }........................................... */

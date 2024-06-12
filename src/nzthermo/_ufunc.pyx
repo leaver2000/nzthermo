@@ -206,18 +206,13 @@ cdef T wet_bulb_potential_temperature(T pressure, T temperature, T dewpoint) noe
 
 @cython.ufunc 
 cdef T wet_bulb_temperature(T pressure, T temperature, T dewpoint) noexcept nogil:
-    cdef: # the ufunc signature doesn't support keyword arguments
-        size_t max_iter = 50
-        T eps  = 0.1
-        T step = 1000.0
-
-    return C.wet_bulb_temperature(pressure, temperature, dewpoint, eps, step, max_iter)
+    return C.wet_bulb_temperature(pressure, temperature, dewpoint)
 
 
 @cython.ufunc 
 cdef T lcl_pressure(T pressure, T temperature, T dewpoint) noexcept nogil:
     cdef:
-        size_t max_iter = 50
+        size_t max_iter = 2
         T eps = 0.1
 
     return C.lcl_pressure(pressure, temperature, dewpoint, eps, max_iter)
@@ -232,10 +227,8 @@ cdef (double, double) lcl(T pressure, T temperature, T dewpoint) noexcept nogil:
     # - maintain gil
     # - cast to double 
     # - write the template in C
-    cdef:
-        size_t max_iter = 50
-        T eps = 0.1
-        C.LCL[T] lcl = C.lcl(pressure, temperature, dewpoint, eps, max_iter)
+    cdef C.lcl[T] lcl = C.lcl[T](pressure, temperature, dewpoint)
+        
 
     return <double>lcl.pressure, <double>lcl.temperature
 

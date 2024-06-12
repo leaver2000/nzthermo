@@ -9,7 +9,7 @@ additional support for higher dimensions in what would have normally been 1D arr
 from __future__ import annotations
 
 import warnings
-from typing import Final, Literal as L, TypeVar
+from typing import Final, Literal as L, TypeVar, Any
 
 import numpy as np
 from numpy.typing import NDArray
@@ -32,11 +32,13 @@ from ._ufunc import (
     wet_bulb_temperature,
 )
 from .const import Rd
-from .typing import Kelvin, N, NZArray, Pascal, Z, shape
+from .typing import Kelvin, N, Pascal, Z, shape
 from .utils import Vector1d, broadcast_nz
 
-float_ = TypeVar("float_", bound=np.float_)
+float_ = TypeVar("float_", np.float_, np.floating[Any], covariant=True)
 newaxis: Final[None] = np.newaxis
+
+_FASTPATH = {"__fastpath": True}
 
 
 # -------------------------------------------------------------------------------------------------
@@ -119,9 +121,7 @@ def ccl(
 
     rt_profile = _dewpoint(vapor_pressure(pressure, r))
 
-    p, t = F.find_intersections(pressure, rt_profile, temperature, "increasing", log_x=True).pick(
-        which
-    )
+    p, t = F.intersect_nz(pressure, rt_profile, temperature, "increasing", log_x=True).pick(which)
 
     return p, t, dry_lapse(p0, t, p)
 
@@ -138,6 +138,7 @@ def _multiple_el_lfc_options(
     it is assumed that the x and y arrays are sorted in ascending order
     >>> [[76852.646 nan nan ... ] [45336.262 88486.399 nan ... ]]
     """
+    # idx: tuple[slice, slice]
     if which == "bottom":
         idx = np.s_[
             np.arange(x.shape[0]),
@@ -152,9 +153,9 @@ def _multiple_el_lfc_options(
 
 def _el_lfc(
     pick: L["EL", "LFC", "BOTH"],
-    pressure: Pascal[NZArray[float_]],
-    temperature: Kelvin[NZArray[float_]],
-    dewpoint: Kelvin[NZArray[float_]],
+    pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
     /,
     parcel_temperature_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]] | None = None,
     which_lfc: L["bottom", "top"] = "bottom",
@@ -180,17 +181,6 @@ def _el_lfc(
     )
 
     # find the Equilibrium Level (EL)
-    if pick == "EL":
-        EL = F.intersect_nz(
-            pressure,
-            parcel_temperature_profile,
-            temperature,
-            "decreasing",
-            log_x=True,
-        )
-
-        return EL.where(EL.x < lcl_p).pick(which_el)
-
     EL = F.intersect_nz(
         pressure,
         parcel_temperature_profile,
@@ -198,18 +188,20 @@ def _el_lfc(
         "decreasing",
         log_x=True,
     )
+    if pick == "EL":
+        return EL.where(EL.pressure < lcl_p).pick(which_el)
 
-    el_p = EL.x
-    EL = EL.pick(which_el)
+    el_p = EL.pressure
 
     # find the Level of Free Convection (LFC)
-    lfc_p, lfc_t = F.find_intersections(
+    lfc_p, lfc_t = F.intersect_nz(
         pressure,
         parcel_temperature_profile,
         temperature,
         "increasing",
         log_x=True,
     )
+
     # START: conditional logic to determine the LFC
     potential = lfc_p < lcl_p  # ABOVE: the LCL
     no_potential = ~potential
@@ -217,7 +209,6 @@ def _el_lfc(
     positive_area_above_the_LCL = pressure < lcl_p
 
     # LFC does not exist or is LCL if len(x) == 0:
-
     no_lfc = is_lcl & less_or_close(
         np.where(positive_area_above_the_LCL, parcel_temperature_profile, np.nan),
         np.where(positive_area_above_the_LCL, temperature, np.nan),
@@ -241,14 +232,14 @@ def _el_lfc(
     if pick == "LFC":
         return LFC
 
-    return EL, LFC
+    return EL.pick(which_el), LFC
 
 
 @broadcast_nz
 def el(
-    pressure: Pascal[NZArray[float_]],
-    temperature: Kelvin[NZArray[float_]],
-    dewpoint: Kelvin[NZArray[float_]],
+    pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
     /,
     parcel_temperature_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]] | None = None,
     which: L["top", "bottom"] = "top",
@@ -260,9 +251,9 @@ def el(
 
 @broadcast_nz
 def lfc(
-    pressure: Pascal[NZArray[float_]],
-    temperature: Kelvin[NZArray[float_]],
-    dewpoint: Kelvin[NZArray[float_]],
+    pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
     /,
     parcel_temperature_profile: np.ndarray | None = None,
     which: L["top", "bottom"] = "top",
@@ -281,9 +272,9 @@ def lfc(
 
 @broadcast_nz
 def el_lfc(
-    pressure: Pascal[NZArray[float_]],
-    temperature: Kelvin[NZArray[float_]],
-    dewpoint: Kelvin[NZArray[float_]],
+    pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
     /,
     parcel_temperature_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]] | None = None,
     which_lfc: L["bottom", "top"] = "bottom",
@@ -341,14 +332,14 @@ def cape_cin(
         which_el,
         step,
         eps,
-        __fastpath=True,
+        **_FASTPATH,
     )
 
     el_p[np.isnan(el_p)] = np.nanmin(pressure, axis=1)
 
     lfc_p, el_p = np.reshape((lfc_p, el_p), (2, -1, 1))  # reshape for broadcasting
 
-    X, Y = F.find_append_zero_crossings(pressure, parcel_profile - temperature)  # ((N, Z), ...)
+    X, Y = F.zero_crossings(pressure, parcel_profile - temperature)  # ((N, Z), ...)
 
     # X is below the equilibrium level and above the LFC
     mask = between_or_close(X, el_p, lfc_p).astype(np.bool_)
@@ -382,7 +373,7 @@ def most_unstable_parcel(
     np.ndarray[shape[N, Z], np.dtype[np.intp]],
 ]:
     depth = 100.0 if depth is None else depth
-    p0 = pressure[:, 0] if bottom is None else bottom
+    p0 = pressure[:, 0] if bottom is None else bottom  # type: np.ndarray | float
     top = p0 - depth
 
     mask = between_or_close(pressure, p0, top).astype(np.bool_)

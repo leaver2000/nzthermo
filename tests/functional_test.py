@@ -304,8 +304,8 @@ def test_intersect_nz_increasing(x, a, b) -> None:
             log_x=True,
         )
 
-        assert_allclose(bottom.x[i], x_.m)
-        assert_allclose(bottom.y[i], y_.m)
+        assert_allclose(bottom.pressure[i], x_.m)
+        assert_allclose(bottom.temperature[i], y_.m)
 
 
 @pytest.mark.parametrize(
@@ -363,8 +363,8 @@ def test_intersect_nz_decreasing(x, a, b) -> None:
             log_x=True,
         )
 
-        assert_allclose(bottom.x[i], x_.m, rtol=1e-3)
-        assert_allclose(bottom.y[i], y_.m, rtol=1e-3)
+        assert_allclose(bottom.pressure[i], x_.m, rtol=1e-3)
+        assert_allclose(bottom.temperature[i], y_.m, rtol=1e-3)
 
 
 @pytest.mark.parametrize(

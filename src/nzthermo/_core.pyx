@@ -354,20 +354,21 @@ cdef void parcel_profile_1d(
     T[:] pressure,  # (Z,)
     T temperature,
     T dewpoint,
-    T step = 1000.0,
-    T eps = 0.1,
-    size_t max_iters = 50,
+    T step,
+    T eps,
+    size_t max_iters,
 ) noexcept nogil:
     cdef:
         size_t Z, i, stop
         T p0, t0, reference_pressure, next_pressure
-        C.LCL[T] lcl
+        C.lcl[T] lcl
 
     Z = pressure.shape[0]
     p0 = pressure[0]
     t0 = out[0] = temperature
 
-    lcl = C.lcl(p0, t0, dewpoint, eps, max_iters)
+    lcl = C.lcl[T](p0, t0, dewpoint)
+
 
     # [dry ascent] 
     # parcel temperature from the surface up to the LCL
@@ -420,9 +421,9 @@ def parcel_profile(
     np.ndarray dewpoint,
     *,
     ProfileStrategy strategy = SURFACE_BASED,
-    double step = 1000.0,
-    double eps = 0.1,
-    size_t max_iters = 50,
+    double step = 5000.0,
+    double eps = 5.0,
+    size_t max_iters = 5,
 ):
     cdef:
         size_t N, Z
@@ -470,20 +471,20 @@ cdef void parcel_profile_with_lcl_1d(
     T[:] pressure,  # (Z,)
     T temperature,
     T dewpoint,
-    T step = 1000.0,
-    T eps = 0.1,
-    size_t max_iters = 50,
+    T step,
+    T eps,
+    size_t max_iters,
 ) noexcept nogil:
     cdef:
         size_t Z, z, stop
         T p0, t0, t, p
-        C.LCL[T] lcl
+        C.lcl[T] lcl
 
     Z = pressure.shape[0]
     p0 = pressure[0]
     t0 = t_out[0] = temperature
 
-    lcl = C.lcl(p0, t0, dewpoint, eps, max_iters)
+    lcl = C.lcl[T](p0, t0, dewpoint)#, eps, max_iters)
 
     # [dry ascent] 
     # parcel temperature from the surface up to the LCL
@@ -512,9 +513,9 @@ cdef T[:, :] parcel_profile_with_lcl_2d(
     T[:] temperature,
     T[:] dewpoint,
     BroadcastMode mode,
-    T step = 1000.0,
-    T eps = 0.1,
-    size_t max_iters = 50,
+    T step,
+    T eps,
+    size_t max_iters,
 ) noexcept:
     cdef:
         size_t N, Z, i

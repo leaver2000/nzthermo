@@ -1,7 +1,7 @@
 from typing import Annotated, ParamSpec, TypeVar
 
 from ._typing import _ufunc1x1, _ufunc2x1, _ufunc2x2, _ufunc3x1, _ufunc3x2
-from .typing import Kelvin, Pascal, Ratio
+from .typing import Kelvin, Pascal, Dimensionless
 
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
@@ -49,10 +49,12 @@ def virtual_temperature(
     temperature: Kelvin[float], vapor_pressure: Pascal[float]
 ) -> Kelvin[float]: ...
 @_ufunc2x1
-def vapor_pressure(pressure: Pascal[float], mixing_ratio: float) -> Pascal[float]: ...
+def vapor_pressure(
+    pressure: Pascal[float], mixing_ratio: Dimensionless[float]
+) -> Pascal[float]: ...
 @_ufunc2x1
 def dewpoint_from_specific_humidity(
-    pressure: Pascal[float], specific_humidity: Ratio[float]
+    pressure: Pascal[float], specific_humidity: Dimensionless[float]
 ) -> Kelvin[float]: ...
 
 # 3x1

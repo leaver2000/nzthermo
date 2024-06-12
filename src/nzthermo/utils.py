@@ -4,7 +4,6 @@ import datetime
 import functools
 import textwrap
 from typing import (
-    Any,
     Callable,
     Concatenate,
     Generic,
@@ -14,6 +13,7 @@ from typing import (
     Self,
     TypeVar,
     overload,
+    Any,
 )
 
 import numpy as np
@@ -25,12 +25,12 @@ from .typing import Kelvin, N, NestedSequence, NZArray, Pascal, SupportsArray, Z
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
 Pair = tuple[_T, _T]
-float_ = TypeVar("float_", bound=np.float_)
+float_ = TypeVar("float_", np.float_, np.floating[Any], covariant=True)
 
 
 class VectorNd(NamedTuple, Generic[_T, float_]):
-    x: np.ndarray[_T, np.dtype[float_]]
-    y: np.ndarray[_T, np.dtype[float_]]
+    pressure: Pascal[np.ndarray[_T, np.dtype[float_]]]
+    temperature: Kelvin[np.ndarray[_T, np.dtype[float_]]]
 
     def where(
         self,
@@ -41,54 +41,53 @@ class VectorNd(NamedTuple, Generic[_T, float_]):
         if y_fill is None:
             y_fill = x_fill
         return self.__class__(
-            np.where(condition, self.x, x_fill),
-            np.where(condition, self.y, y_fill),
+            np.where(condition, self.pressure, x_fill),
+            np.where(condition, self.temperature, y_fill),
         )
 
     def __repr__(self) -> str:
         prefix = " " * 2
         return "\n".join(
             f"{name} {textwrap.indent(np.array2string(x), prefix).removeprefix(prefix)}"
-            for name, x in zip("xy", self)
+            for name, x in zip(["pressure", "temperature"], self)
         )
 
-    __str__ = __repr__
+    def __str__(self) -> str:
+        return self.__repr__()
 
 
 class Vector1d(VectorNd[shape[N], float_]): ...
 
 
 class Vector2d(VectorNd[shape[N, Z], float_]):
-    def pick(self, which: L["bottom", "top"]) -> VectorNd[shape[N], float_]:
-        x, y = self.x, self.y
-        nx = np.arange(x.shape[0])
+    def pick(self, which: L["bottom", "top"]) -> Vector1d[float_]:
+        p, t = self.pressure, self.temperature
+        nx = np.arange(p.shape[0])
         if which == "bottom":
-            idx = np.argmin(~np.isnan(x), axis=1) - 1  # the last non-nan value
-            return VectorNd(x[nx, idx], y[nx, idx])
+            idx = np.argmin(~np.isnan(p), axis=1) - 1  # the last non-nan value
+            return Vector1d(p[nx, idx], t[nx, idx])
 
         elif which == "top":
-            return VectorNd(x[nx, 0], y[nx, 0])  # the first value is the uppermost value
+            return Vector1d(p[nx, 0], t[nx, 0])  # the first value is the uppermost value
 
-    def bottom(self) -> VectorNd[shape[N], float_]:
+    def bottom(self) -> Vector1d[float_]:
         return self.pick("bottom")
 
-    def top(self) -> VectorNd[shape[N], float_]:
+    def top(self) -> Vector1d[float_]:
         return self.pick("top")
 
 
 @overload
-def exactly_2d(
-    __x: np.ndarray[Any, np.dtype[np.float_]],
-) -> np.ndarray[shape[N, Z], np.dtype[np.float_]]: ...
+def exactly_2d(x: NDArray[float_], /) -> np.ndarray[shape[N, Z], np.dtype[float_]]: ...
 @overload
 def exactly_2d(
-    *args: np.ndarray[Any, np.dtype[np.float_]],
-) -> tuple[np.ndarray[shape[N, Z], np.dtype[np.float_]], ...]: ...
+    *args: NDArray[float_],
+) -> tuple[np.ndarray[shape[N, Z], np.dtype[float_]], ...]: ...
 def exactly_2d(
-    *args: np.ndarray[Any, np.dtype[np.float_]],
+    *args: NDArray[float_],
 ) -> (
-    np.ndarray[shape[N, Z], np.dtype[np.float_]]
-    | tuple[np.ndarray[shape[N, Z], np.dtype[np.float_]], ...]
+    np.ndarray[shape[N, Z], np.dtype[float_]]
+    | tuple[np.ndarray[shape[N, Z], np.dtype[float_]], ...]
 ):
     values = []
     for x in args:
@@ -107,18 +106,21 @@ def exactly_2d(
 
 
 def broadcast_nz(
-    f: Callable[Concatenate[NZArray[np.float_], NZArray[np.float_], NZArray[np.float_], _P], _T],
+    f: Callable[Concatenate[NZArray[float_], NZArray[float_], NZArray[float_], _P], _T],
 ) -> Callable[
     Concatenate[
-        Pascal[NDArray[np.float_]], Kelvin[NDArray[np.float_]], Kelvin[NDArray[np.float_]], _P
+        Pascal[NDArray[float_] | NestedSequence[float]],
+        Kelvin[NDArray[float_]] | NestedSequence[float],
+        Kelvin[NDArray[float_]] | NestedSequence[float],
+        _P,
     ],
     _T,
 ]:
     @functools.wraps(f)
     def wrapper(
-        pressure: NDArray[np.float_],
-        temperature: NDArray[np.float_],
-        dewpoint: NDArray[np.float_],
+        pressure: NDArray[float_] | NestedSequence[float],
+        temperature: NDArray[float_] | NestedSequence[float],
+        dewpoint: NDArray[float_] | NestedSequence[float],
         *args: _P.args,
         **kwargs: _P.kwargs,
     ) -> _T:
@@ -128,9 +130,11 @@ def broadcast_nz(
         #   (T, Z, Y, X) -> (N, Z)
         #   (Z, Y, X) -> (N, Z)'
         if kwargs.pop("__fastpath", False):
-            return f(pressure, temperature, dewpoint, *args, **kwargs)
+            return f(pressure, temperature, dewpoint, *args, **kwargs)  # type: ignore
 
-        pressure, temperature, dewpoint = exactly_2d(pressure, temperature, dewpoint)
+        pressure, temperature, dewpoint = exactly_2d(
+            np.asarray(pressure), np.asarray(temperature), np.asarray(dewpoint)
+        )
         return f(pressure, temperature, dewpoint, *args, **kwargs)
 
     return wrapper
@@ -189,14 +193,14 @@ class Timeseries(NamedTuple):
 def timeseries(
     datetime: (
         SupportsArray[np.int_ | np.float_ | np.str_]
-        | NestedSequence[SupportsArray[np.int_ | np.float_ | np.str_]]
+        | NestedSequence[SupportsArray[np.int_ | float_ | np.str_]]
         | NestedSequence[str | datetime.datetime | int | float]
         | str
         | datetime.datetime
         | int
         | float
         | np.int_
-        | np.float_
+        | float_
         | np.str_
     ),
 ) -> Timeseries:

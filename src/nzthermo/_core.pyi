@@ -48,18 +48,6 @@ def moist_lapse[T: np.float_](
     step: float = ...,
     dtype: type[T | float] | L["float32", "float64"] | None = ...,
 ) -> Kelvin[np.ndarray[Any, np.dtype[T]]]: ...
-def lcl[T: np.float_](
-    pressure: Pascal[np.ndarray[shape[N], np.dtype[T]]],
-    temperature: Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]],
-    dewpoint: Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]],
-    *,
-    max_iters: int = ...,
-    tolerance: float = ...,
-    dtype: type[T | float] | L["float32", "float64"] | None = ...,
-) -> tuple[
-    Pascal[np.ndarray[shape[N], np.dtype[T]]],
-    Kelvin[np.ndarray[shape[N], np.dtype[T]]],
-]: ...
 def parcel_profile[T: np.float_](
     pressure: Pascal[np.ndarray[shape[Z], np.dtype[T]] | np.ndarray[shape[N, Z], np.dtype[T]]],
     temperature: Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]],

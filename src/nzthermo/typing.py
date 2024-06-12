@@ -50,7 +50,7 @@ Z = NewType("Z", int)
 Y = NewType("Y", int)
 X = NewType("X", int)
 
-NZArray = Annotated[np.ndarray[shape[N, Z], np.dtype[_DType_co]], "NZArray"]
+NZArray = np.ndarray[shape[N, Z], np.dtype[_DType_co]]
 NestedSequence: TypeAlias = "Sequence[_T | NestedSequence[_T]]"
 
 

@@ -21,12 +21,10 @@ def not_nan(x: NDArray[Any]) -> NDArray[np.bool_]:
 
 
 @overload
-def nanroll_2d(
-    __x: np.ndarray[Any, np.dtype[np.float_]],
-) -> np.ndarray[shape[N, Z], np.dtype[np.float_]]: ...
+def nanroll_2d(__x: NDArray[np.float_]) -> np.ndarray[shape[N, Z], np.dtype[np.float_]]: ...
 @overload
 def nanroll_2d(
-    *args: np.ndarray[Any, np.dtype[np.float_]],
+    *args: NDArray[np.float_],
 ) -> tuple[np.ndarray[shape[N, Z], np.dtype[np.float_]], ...]: ...
 def nanroll_2d(
     *args: np.ndarray[Any, np.dtype[np.float_]],
@@ -35,9 +33,8 @@ def nanroll_2d(
     | tuple[np.ndarray[shape[N, Z], np.dtype[np.float_]], ...]
 ):
     args = exactly_2d(*args)
-    values = []
-    for x in args:
-        values.append(np.where(np.isnan(x), np.roll(x, 1, axis=1), x))
+
+    values = [np.where(np.isnan(x), np.roll(x, 1, axis=1), x) for x in args]
 
     if len(values) == 1:
         return values[0]
