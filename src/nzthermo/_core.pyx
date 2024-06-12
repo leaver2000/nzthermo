@@ -92,8 +92,6 @@ cdef pressure_mode(
     if pressure.ndim == 1:
         pressure = pressure.reshape(1, -1)
         mode = BROADCAST
-    elif pressure.ndim == 2 and pressure.shape[0] == 1:
-        mode = BROADCAST
     else:
         mode = MATRIX
     
@@ -390,9 +388,9 @@ cdef T[:, :] parcel_profile_2d(
     T[:] temperature,
     T[:] dewpoint,
     BroadcastMode mode,
-    T step = 1000.0,
-    T eps = 0.1,
-    size_t max_iters = 50,
+    T step,
+    T eps,
+    size_t max_iters,
 ) noexcept:
     cdef:
         size_t N, Z, i
@@ -432,8 +430,7 @@ def parcel_profile(
         np.ndarray out
 
     (pressure, temperature, dewpoint), mode = pressure_mode(pressure, temperature, dewpoint)
-    if mode == BROADCAST:
-        print('BROADCASTING')
+
     N, Z = temperature.shape[0], pressure.shape[1]
 
     out = np.empty((N, Z), dtype=pressure.dtype)

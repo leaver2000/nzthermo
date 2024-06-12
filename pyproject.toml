@@ -102,3 +102,7 @@ ignore = [
     "E501", # line too long
     "E741", # do not use variables named 'l', 'O', or 'I'
 ]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"

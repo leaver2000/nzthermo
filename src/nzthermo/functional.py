@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Literal as L, SupportsIndex, TypeVar, overload
+from typing import Any, Literal as L, SupportsIndex, TypeVar, overload
 
 import numpy as np
 from numpy._typing._array_like import (
@@ -43,32 +43,6 @@ def nanroll_2d(
         return values[0]
 
     return tuple(values)
-
-
-def logical_or_close(
-    op: Callable[
-        [NDArray[np.float_] | float, NDArray[np.float_] | float], NDArray[np.bool_] | bool
-    ],
-    a: NDArray[np.float_] | float,
-    b: NDArray[np.float_] | float,
-    rtol: float = 1.0e-5,
-    atol: float = 1.0e-8,
-    equal_nan: bool = False,
-) -> NDArray[np.bool_]:
-    return np.logical_or(op(a, b), np.isclose(a, b, rtol=rtol, atol=atol, equal_nan=equal_nan))
-
-
-def logical_and_close(
-    op: Callable[
-        [NDArray[np.float_] | float, NDArray[np.float_] | float], NDArray[np.bool_] | bool
-    ],
-    a: NDArray[np.float_] | float,
-    b: NDArray[np.float_] | float,
-    rtol: float = 1.0e-5,
-    atol: float = 1.0e-8,
-    equal_nan: bool = False,
-) -> NDArray[np.bool_]:
-    return np.logical_and(op(a, b), np.isclose(a, b, rtol=rtol, atol=atol, equal_nan=equal_nan))
 
 
 def nantrapz(
@@ -141,13 +115,34 @@ def nantrapz(
     return np.nansum(d * (y[tuple(slice1)] + y[tuple(slice2)]) / 2.0, axis=axis)
 
 
-def find_intersections(
+def intersect_nz(
     x: np.ndarray[shape[N, Z], np.dtype[np.float_]],
     a: np.ndarray[shape[N, Z], np.dtype[np.float_]],
     b: np.ndarray[shape[N, Z], np.dtype[np.float_]],
     direction: L["increasing", "decreasing"] = "increasing",
     log_x: bool = False,
 ) -> Vector2d[np.float_]:
+    """
+    NOTE: this function will leave a trailing `nan` value at the end of the array, and clip the
+    array to the length of the longest column.
+
+    >>> x = np.linspace(5, 30, 17)
+    >>> y1 = 3 * x**2
+    >>> y2 = 100 * x - 650
+    >>> x = np.concatenate((x, -x), axis=0)
+    >>> y1 = np.concatenate((y1, -y1), axis=0)
+    >>> y2 = np.concatenate((y2, -y2), axis=0)
+    >>> intersect = F.intersect_nz(x, y1, y2)
+    >>> intersect
+    x [[-8.88842282 24.44536424         nan]]
+    y [[-238.84228188 1794.53642384           nan]]
+    >>> intersect.bottom()
+    x [24.44536424]
+    y [1794.53642384]
+    >>> intersect.top()
+    x [-8.88842282]
+    y [-238.84228188]
+    """
     x, a, b = nanroll_2d(x, a, b)
 
     if log_x is True:
@@ -169,16 +164,16 @@ def find_intersections(
         if log_x:
             x = np.exp(x)
 
+    x_full = np.full_like(a, fill_value=np.nan)
+    y_full = np.full_like(a, fill_value=np.nan)
+
     if direction == "increasing":
         x[sign_change <= 0] = np.nan  # increasing
     else:
         x[sign_change >= 0] = np.nan
 
-    x_full = np.full_like(a, fill_value=np.nan)
-    y_full = np.full_like(a, fill_value=np.nan)
-
-    x_full[ind, nearest_idx] = x[...]
-    y_full[ind, nearest_idx] = y[...]
+    x_full[ind, nearest_idx] = x
+    y_full[ind, nearest_idx] = y
 
     sort = np.arange(x_full.shape[0])[:, np.newaxis], np.argsort(x_full, axis=1)
     x, y = x_full[sort], y_full[sort]
@@ -188,43 +183,47 @@ def find_intersections(
     return Vector2d(x[:, :clip], y[:, :clip])
 
 
-def find_append_zero_crossings(
-    X: np.ndarray[shape[N, Z], np.dtype[np.float_]],
+find_intersections = intersect_nz
+
+
+def zero_crossings(
+    X: np.ndarray[shape[N, Z], np.dtype[np.float_]] | np.ndarray[shape[N], np.dtype[np.float_]],
     Y: np.ndarray[shape[N, Z], np.dtype[np.float_]],
 ) -> Vector2d[np.float_]:
     """
     This function targets the `metpy.thermo._find_append_zero_crossings` function but with support
     for 2D arrays.
+
+
+    >>> F.find_append_zero_crossings(x, x - y)
     """
+    N, Z = Y.shape
+    X = np.broadcast_to(X, (N, Z))
+
+    x_full, y_full = np.full((2, N, Z), fill_value=np.nan, dtype=X.dtype)
+
     x = np.log(X[:, 1:])
-    a = Y[:, 1:]
-    b = np.zeros_like(a)
+    y = Y[:, 1:]
 
-    ind, nearest_idx = np.nonzero(np.diff(np.sign(a - b), axis=1))
+    nx, z0 = np.nonzero(np.diff(np.sign(y), axis=1))
+    z1 = z0 + 1
 
-    next_idx = np.clip(nearest_idx + 1, 0, X.shape[1] - 1)
-    x0, x1 = x[ind, nearest_idx], x[ind, next_idx]
-    a0, a1 = a[ind, nearest_idx], a[ind, next_idx]
-    b0, b1 = b[ind, nearest_idx], b[ind, next_idx]
-    delta_y0 = a0 - b0
-    delta_y1 = a1 - b1
+    x0, x1 = x[nx, z0], x[nx, z1]
+    y0, y1 = y[nx, z0], y[nx, z1]
 
     with np.errstate(divide="ignore", invalid="ignore"):
-        x = (delta_y1 * x0 - delta_y0 * x1) / (delta_y1 - delta_y0)  # type: ignore
-        y = ((x - x0) / (x1 - x0)) * (a1 - a0) + a0  # type: NDArray[float_] # type: ignore
-        x = np.exp(x)
+        x_full[nx, z0] = np.exp(x := (y1 * x0 - y0 * x1) / (y1 - y0))
+        y_full[nx, z0] = ((x - x0) / (x1 - x0)) * (y1 - y0) + y0
 
-    x_full = np.full_like(X, fill_value=np.nan)
-    y_full = np.full_like(Y, fill_value=np.nan)
-    x_full[ind, nearest_idx] = x
-    y_full[ind, nearest_idx] = y
+    x, y = np.concatenate([X, x_full], axis=1), np.concatenate([Y, y_full], axis=1)
 
-    x = np.column_stack([X, x_full])
-    y = np.column_stack([Y, y_full])
-
-    sort = np.arange(x.shape[0])[:, None], np.argsort(x, axis=1)
+    sort = np.arange(N)[:, np.newaxis], np.argsort(x, axis=1, kind="quicksort")
+    # this will sort all of the values with the lowest value first and all of the nan values last
     x, y = x[sort], y[sort]
-
+    # clip axis 1 to the last non nan value.
     clip = max(np.argmax(np.isnan(x), axis=1))
 
     return Vector2d(x[:, :clip], y[:, :clip])
+
+
+find_append_zero_crossings = zero_crossings

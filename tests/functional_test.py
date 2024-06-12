@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import metpy.calc.tools as mtools
 import numpy as np
-import nzthermo.functional as F
 import pytest
 from metpy.calc.thermo import _find_append_zero_crossings
 from metpy.units import units
 from numpy.testing import assert_allclose
+
+import nzthermo.functional as F
 
 K = units.kelvin
 Pa = units.pascal
@@ -362,8 +363,26 @@ def test_intersect_nz_decreasing(x, a, b) -> None:
             log_x=True,
         )
 
-        assert_allclose(bottom.x[i], x_, rtol=1e-3)
-        assert_allclose(bottom.y[i], y_, rtol=1e-3)
+        assert_allclose(bottom.x[i], x_.m, rtol=1e-3)
+        assert_allclose(bottom.y[i], y_.m, rtol=1e-3)
+
+
+@pytest.mark.parametrize(
+    "direction, expected",
+    [
+        ("increasing", [[[24.44, np.nan]], [[1794.53, np.nan]]]),
+        ("decreasing", [[[8.89, np.nan]], [[238.84, np.nan]]]),
+    ],
+)
+def test_find_intersections(direction, expected):
+    """Test finding the intersection of two curves functionality."""
+    x = np.linspace(5, 30, 17)
+    y1 = 3 * x**2
+    y2 = 100 * x - 650
+    # Note: Truth is what we will get with this sampling, not the mathematical intersection
+    x_int, y_int = F.find_intersections(x, y1, y2, direction=direction)
+    assert_allclose(x_int, expected[0], rtol=1e-2)
+    assert_allclose(y_int, expected[1], rtol=1e-2)
 
 
 X = [

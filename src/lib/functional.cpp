@@ -5,7 +5,8 @@
 namespace libthermo {
 
 /**
- * @brief The sign function returns -1 if x < 0, 0 if x==0, 1 if x > 0. nan is returned for nan inputs.
+ * @brief The sign function returns -1 if x < 0, 0 if x==0, 1 if x > 0. nan is returned for nan
+ * inputs.
  * 
  * @tparam T 
  * @param x 
@@ -58,7 +59,32 @@ constexpr T linear_interpolate(
 ) noexcept {
     return y0 + (x - x0) * (y1 - y0) / LIMIT_ZERO(x1 - x0);
 }
-
+/**
+ * @author Kelton Halbert - NWS Storm Prediction Center/OU-CIWRO
+ *
+ * @brief Finds the index of the lower bound that does not satisfy element value
+ *
+ * Based on std::lower_bound, this iterates over an array using a binary search
+ * to find the first element that does not satisfy the comparison condition. By
+ * default, the comparison is std::less. Binary search expects data to be sorted
+ * in ascending order -- for pressure level data, change the comparator.
+ *
+ * We use a custom implementation of sharp::lower_bound rather than
+ * std::lower_bound for a few reasons. First, we prefer raw pointer
+ * arrays over vectors for easy integration with SWIG bindings,
+ * C code, and the potential future in which this runs on CUDA
+ * architecture. Currently, the algorithms in the STL library are
+ * not supported by the CUDA STL, but the types in <functional>
+ * (i.e. std::less) are supported by the CUDA STL. Additionally, this
+ * implementation of lower_bound is designed to reduce branching.
+ *
+ * @param   array   The array to search over
+ * @param   N       The length of the array
+ * @param   value   The value for lower-bound comparison
+ * @param   cmp     The comparator
+ *
+ * @return  Index of lower bound
+ */
 template <floating T, typename C>
 constexpr size_t lower_bound(const T array[], const int N, const T& value, const C cmp) {
     int len = N;
@@ -90,7 +116,15 @@ size_t search_sorted(const T x[], const T value, const size_t size, const bool i
 
     return upper_bound(x, size, value, std::less_equal());
 }
-
+/**
+ * @brief The Heaviside step function, or the unit step function, usually denoted by H or θ, is a
+ * mathematical function that is zero for negative arguments and one for positive arguments.
+ * 
+ * @tparam T (floating point)
+ * @param x 
+ * @param h0 
+ * @return constexpr T 
+ */
 template <floating T>
 constexpr T heaviside(const T x, const T h0) noexcept {
     if (isnan(x))
@@ -102,7 +136,17 @@ constexpr T heaviside(const T x, const T h0) noexcept {
 
     return 1.0;
 }
-
+/**
+ * @brief Runge-Kutta 2nd order method for solving ordinary differential equations.
+ * 
+ * @tparam T (floating point)
+ * @param fn
+ * @param x0
+ * @param x1
+ * @param y
+ * @param step
+ * @return constexpr T
+ */
 template <floating T>
 constexpr T rk2(Fn<T, T, T> fn, T x0, T x1, T y, T step /* = .1 */) noexcept {
     T k1, delta, abs_delta;
@@ -123,7 +167,21 @@ constexpr T rk2(Fn<T, T, T> fn, T x0, T x1, T y, T step /* = .1 */) noexcept {
 
     return y;
 }
-
+/**
+ * @brief A fixed point of a function is the point at which evaluation of the
+ * function returns the point.
+ * @ref https://docs.scipy.org/doc/scipy/tutorial/optimize.html#fixed-point-solving
+ *
+ * @tparam T (floating point)
+ * @tparam Args (...floating point)
+ * @param fn
+ * @param max_iters
+ * @param eps
+ * @param x0
+ * @param args
+ *
+ * @return (T) fixed point (T) (if found, else NAN)
+ */
 template <floating T, floating... Args>
 constexpr T fixed_point(
   const Fn<T, T, T, Args...> fn,
@@ -151,7 +209,16 @@ constexpr T fixed_point(
 
     return NAN;
 }
-
+/**
+ * @brief Interpolates a 1D function using a linear interpolation.
+ * 
+ * @tparam T 
+ * @param x 
+ * @param xp 
+ * @param fp 
+ * @param size 
+ * @return constexpr T 
+ */
 template <floating T>
 constexpr T interpolate_1d(const T x, const T xp[], const T fp[], const size_t size) noexcept {
     const size_t i = lower_bound(xp, size, x, std::greater_equal());
@@ -160,7 +227,19 @@ constexpr T interpolate_1d(const T x, const T xp[], const T fp[], const size_t s
 
     return linear_interpolate(x, xp[i - 1], xp[i], fp[i - 1], fp[i]);
 }
-
+/**
+ * @brief Intersects two 1D functions.
+ * 
+ * @tparam T (floating point) 
+ * @param x 
+ * @param a 
+ * @param b 
+ * @param size 
+ * @param log_x 
+ * @param increasing 
+ * @param bottom 
+ * @return constexpr point<T>
+ */
 template <floating T>
 constexpr point<T> intersect_1d(
   const T x[],

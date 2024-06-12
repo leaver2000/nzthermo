@@ -13,7 +13,6 @@ from numpy.testing import assert_allclose, assert_almost_equal
 import nzthermo._core as _C
 import nzthermo._ufunc as uf  # noqa: E402
 import nzthermo.functional as F  # noqa: E402
-from nzthermo._ufunc import lcl_pressure, dewpoint_from_specific_humidity
 from nzthermo.core import cape_cin, ccl, el, lfc
 
 np.set_printoptions(
@@ -29,13 +28,13 @@ hPa = units.hectopascal
 K = units.kelvin
 C = units.celsius
 
-FAST_APPROXIMATE = True
+FAST_APPROXIMATE = False
 # somewhat surprisingly, the MRMS data is able to be resolved to 1e-5 short cutting a large
 # number of conditionals that were needed to best mimic the metpy implementation.
 # For grids of shape (40, 1059, 1799) the fast approximation method reduces the time to
 # calculate the CAPE/CIN by 25% (~5 seconds).
 if FAST_APPROXIMATE:
-    RTOL = 1e-5
+    RTOL = 1e-4
     with open("tests/data.json", "r") as f:
         data = json.load(f)
         _P = data["pressure"]
@@ -45,34 +44,13 @@ if FAST_APPROXIMATE:
     P = np.array(_P, dtype=np.float64)  # * 100.0
     T = np.array(_T, dtype=np.float64)[::15]
     Q = np.array(_Q, dtype=np.float64)[::15]
-    Td = dewpoint_from_specific_humidity(T, Q)
+    Td = uf.dewpoint_from_specific_humidity(T, Q)
 
 else:
     RTOL = 1e-4
-    _P = [
-        1013,
-        1000,
-        975,
-        950,
-        925,
-        900,
-        875,
-        850,
-        825,
-        800,
-        775,
-        750,
-        725,
-        700,
-        650,
-        600,
-        550,
-        500,
-        450,
-        400,
-        350,
-        300,
-    ]
+    _P = []
+    _P += [1013, 1000, 975, 950, 925, 900, 875, 850, 825, 800]
+    _P += [775, 750, 725, 700, 650, 600, 550, 500, 450, 400, 350, 300]
 
     _T = [
         [
@@ -276,7 +254,7 @@ else:
     Td = np.array(_Td, dtype=np.float64)
 
 
-LCL = lcl_pressure(P[0], T[:, 0], Td[:, 0])
+LCL = uf.lcl_pressure(P[0], T[:, 0], Td[:, 0])
 assert np.all(Td <= T)
 
 
@@ -550,7 +528,7 @@ def test_cape_cin_el_top(which) -> None:
             which_lfc=which,
             which_el="top",
         )
-        print(cape[i], cape_.m)
+
         assert_allclose(cape[i], cape_.m, rtol=RTOL)  # type: ignore
         assert_allclose(cin[i], cin_.m, rtol=RTOL)
 

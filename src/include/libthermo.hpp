@@ -105,50 +105,8 @@ constexpr T wet_bulb_temperature(
   const size_t max_iters
 ) noexcept;
 
-// template <floating T>
-// constexpr T downdraft_cape(
-//   const T pressure[], const T temperature[], const T dewpoint[], const size_t size
-// ) noexcept;
-
-// template <floating T>
-// constexpr T cape_cin(
-//   const T pressure[], const T temperature[], const T dewpoint[], const size_t size
-// ) noexcept;
 /* ........................................{ sharp  }........................................... */
 
-/**
- * \author John Hart - NSSFC KCMO / NWSSPC OUN
- *
- * \brief Computes the difference between the wet-bulb potential<!--
- * --> temperatures for saturated and dry air given the temperature.
- *
- * The Wobus Function (wobf) is defined as the difference between
- * the wet-bulb potential temperature for saturated air (WBPTS)
- * and the wet-bulb potential temperature for dry air (WBPTD) given
- * the same temperature in Celsius.
- *
- * WOBF(T) := WBPTS - WBPTD
- *
- * Although WBPTS and WBPTD are functions of both pressure and
- * temperature, it is assumed their difference is a function of
- * temperature only. The difference is also proportional to the
- * heat imparted to a parcel.
- *
- * This function uses a polynomial approximation to the wobus function,
- * fitted to values in Table 78 of PP.319-322 of the Smithsonian Meteorological
- * Tables by Roland List (6th Revised Edition). Herman Wobus, a mathematician
- * for the Navy Weather Research Facility in Norfolk, VA computed these
- * coefficients a very long time ago, as he was retired as of the time of
- * the documentation found on this routine written in 1981.
- *
- * It was shown by Robert Davies-Jones (2007) that the Wobus function has
- * a slight dependence on pressure, which results in errors of up to 1.2
- * degrees Kelvin in the temperature of a lifted parcel.
- *
- * \param   temperature     (degK)
- *
- * \return  wobf            (degK)
- */
 template <floating T>
 constexpr T wobus(T temperature);
 

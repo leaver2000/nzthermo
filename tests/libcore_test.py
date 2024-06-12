@@ -5,8 +5,7 @@ from metpy.calc.tools import interpolate_1d
 from numpy.testing import assert_allclose
 
 from nzthermo._core import interpolate_nz
-from nzthermo._ufunc import lcl_pressure, dewpoint_from_specific_humidity
-
+from nzthermo._ufunc import dewpoint_from_specific_humidity, lcl_pressure
 
 np.set_printoptions(
     precision=3,
@@ -24,9 +23,9 @@ with open("tests/data.json", "r") as f:
     _Q = data["specific_humidity"]
 
 
-P = np.array(_P, dtype=np.float64)  # * 100.0
-T = np.array(_T, dtype=np.float64)[::]
-Q = np.array(_Q, dtype=np.float64)[::]
+P = np.array(_P, dtype=np.float64)
+T = np.array(_T, dtype=np.float64)
+Q = np.array(_Q, dtype=np.float64)
 Td = dewpoint_from_specific_humidity(T, Q)
 LCL = lcl_pressure(P[0], T[:, 0], Td[:, 0])
 

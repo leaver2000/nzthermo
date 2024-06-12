@@ -2,20 +2,22 @@ from __future__ import annotations
 
 import datetime
 import functools
+import textwrap
 from typing import (
     Any,
     Callable,
     Concatenate,
     Generic,
+    Literal as L,
     NamedTuple,
     ParamSpec,
+    Self,
     TypeVar,
     overload,
 )
-from typing import Literal as L
 
 import numpy as np
-from numpy.typing import NDArray
+from numpy.typing import ArrayLike, NDArray
 
 from ._ufunc import delta_t
 from .typing import Kelvin, N, NestedSequence, NZArray, Pascal, SupportsArray, Z, shape
@@ -30,12 +32,34 @@ class VectorNd(NamedTuple, Generic[_T, float_]):
     x: np.ndarray[_T, np.dtype[float_]]
     y: np.ndarray[_T, np.dtype[float_]]
 
+    def where(
+        self,
+        condition: np.ndarray[_T, np.dtype[np.bool_]],
+        x_fill: ArrayLike = np.nan,
+        y_fill: ArrayLike | None = None,
+    ) -> Self:
+        if y_fill is None:
+            y_fill = x_fill
+        return self.__class__(
+            np.where(condition, self.x, x_fill),
+            np.where(condition, self.y, y_fill),
+        )
+
+    def __repr__(self) -> str:
+        prefix = " " * 2
+        return "\n".join(
+            f"{name} {textwrap.indent(np.array2string(x), prefix).removeprefix(prefix)}"
+            for name, x in zip("xy", self)
+        )
+
+    __str__ = __repr__
+
 
 class Vector1d(VectorNd[shape[N], float_]): ...
 
 
 class Vector2d(VectorNd[shape[N, Z], float_]):
-    def pick(self, which: L["bottom", "top"] = "top") -> VectorNd[shape[N], float_]:
+    def pick(self, which: L["bottom", "top"]) -> VectorNd[shape[N], float_]:
         x, y = self.x, self.y
         nx = np.arange(x.shape[0])
         if which == "bottom":
@@ -59,7 +83,7 @@ def exactly_2d(
 @overload
 def exactly_2d(
     *args: np.ndarray[Any, np.dtype[np.float_]],
-) -> tuple[np.ndarray[shape[N, Z], np.dtype[np.float_]]]: ...
+) -> tuple[np.ndarray[shape[N, Z], np.dtype[np.float_]], ...]: ...
 def exactly_2d(
     *args: np.ndarray[Any, np.dtype[np.float_]],
 ) -> (
@@ -85,13 +109,16 @@ def exactly_2d(
 def broadcast_nz(
     f: Callable[Concatenate[NZArray[np.float_], NZArray[np.float_], NZArray[np.float_], _P], _T],
 ) -> Callable[
-    Concatenate[Pascal[NDArray[float_]], Kelvin[NDArray[float_]], Kelvin[NDArray[float_]], _P], _T
+    Concatenate[
+        Pascal[NDArray[np.float_]], Kelvin[NDArray[np.float_]], Kelvin[NDArray[np.float_]], _P
+    ],
+    _T,
 ]:
     @functools.wraps(f)
     def wrapper(
-        pressure,
-        temperature,
-        dewpoint,
+        pressure: NDArray[np.float_],
+        temperature: NDArray[np.float_],
+        dewpoint: NDArray[np.float_],
         *args: _P.args,
         **kwargs: _P.kwargs,
     ) -> _T:
@@ -100,6 +127,9 @@ def broadcast_nz(
         # - add support for reshaping:
         #   (T, Z, Y, X) -> (N, Z)
         #   (Z, Y, X) -> (N, Z)'
+        if kwargs.pop("__fastpath", False):
+            return f(pressure, temperature, dewpoint, *args, **kwargs)
+
         pressure, temperature, dewpoint = exactly_2d(pressure, temperature, dewpoint)
         return f(pressure, temperature, dewpoint, *args, **kwargs)
 
