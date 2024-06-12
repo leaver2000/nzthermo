@@ -23,7 +23,6 @@ def moist_lapse[T: np.float_](
     temperature: Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]],
     reference_pressure: Pascal[np.ndarray[shape[N], np.dtype[np.float_]]],
     *,
-    step: float = ...,
     dtype: type[T | float] | L["float32", "float64"] | None = ...,
 ) -> Kelvin[np.ndarray[shape[N], np.dtype[T]]]: ...
 @overload
@@ -36,7 +35,6 @@ def moist_lapse[T: np.float_](
     temperature: Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]],
     reference_pressure: Pascal[np.ndarray[N, np.dtype[np.float_]]] | None = ...,
     *,
-    step: float = ...,
     dtype: type[T | float] | L["float32", "float64"] | None = ...,
 ) -> Kelvin[np.ndarray[shape[N, Z], np.dtype[T]]]: ...
 @overload
@@ -45,7 +43,6 @@ def moist_lapse[T: np.float_](
     temperature: Kelvin[np.ndarray[Any, np.dtype[np.float_]]],
     reference_pressure: Pascal[np.ndarray[Any, np.dtype[np.float_]]] | None = ...,
     *,
-    step: float = ...,
     dtype: type[T | float] | L["float32", "float64"] | None = ...,
 ) -> Kelvin[np.ndarray[Any, np.dtype[T]]]: ...
 def parcel_profile[T: np.float_](
@@ -55,9 +52,6 @@ def parcel_profile[T: np.float_](
     /,
     *,
     strategy: L[0] = ...,
-    step: float = ...,
-    eps: float = ...,
-    max_iters: int = ...,
 ) -> Kelvin[np.ndarray[shape[N, Z], np.dtype[T]]]: ...
 def parcel_profile_with_lcl[T: np.float_](
     pressure: Pascal[np.ndarray[shape[Z], np.dtype[T]] | np.ndarray[shape[N, Z], np.dtype[T]]],
@@ -66,9 +60,6 @@ def parcel_profile_with_lcl[T: np.float_](
     /,
     *,
     strategy: L[0] = ...,
-    step: float = ...,
-    eps: float = ...,
-    max_iters: int = ...,
 ) -> Kelvin[np.ndarray[shape[N, Z], np.dtype[T]]]: ...
 @overload
 def interpolate_nz[T: np.float_](

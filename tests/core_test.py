@@ -28,12 +28,11 @@ K = units.kelvin
 C = units.celsius
 
 FAST_APPROXIMATE = False
-# somewhat surprisingly, the MRMS data is able to be resolved to 1e-5 short cutting a large
-# number of conditionals that were needed to best mimic the metpy implementation.
-# For grids of shape (40, 1059, 1799) the fast approximation method reduces the time to
-# calculate the CAPE/CIN by 25% (~5 seconds).
+RTOL = 1e-4
+# TODO: update the mock data to be more diverse in the profile selection specifically targeting
+# *weird* profiles. and combine those profiles with a supplementary set of test cases that can be
+# modified within the conftest.py
 if FAST_APPROXIMATE:
-    RTOL = 1e-4
     with open("tests/data.json", "r") as f:
         data = json.load(f)
         _P = data["pressure"]
@@ -46,7 +45,6 @@ if FAST_APPROXIMATE:
     Td = uf.dewpoint_from_specific_humidity(T, Q)
 
 else:
-    RTOL = 1e-4
     _P = []
     _P += [1013, 1000, 975, 950, 925, 900, 875, 850, 825, 800]
     _P += [775, 750, 725, 700, 650, 600, 550, 500, 450, 400, 350, 300]

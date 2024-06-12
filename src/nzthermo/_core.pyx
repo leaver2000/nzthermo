@@ -145,7 +145,7 @@ cdef T[:] dispatch(
 # moist adibatic lapse rate
 # ............................................................................................... #
 cdef void moist_lapse_1d(
-    T[:] out, T[:] pressure, T reference_pressure, T temperature, T step
+    T[:] out, T[:] pressure, T reference_pressure, T temperature
 ) noexcept nogil:
     """Moist adiabatic lapse rate for a 1D array of pressure levels."""
     cdef:
@@ -166,7 +166,7 @@ cdef void moist_lapse_1d(
             out[i] = NaN
         else:
             out[i] = temperature = C.moist_lapse(
-                reference_pressure, next_pressure, temperature, step
+                reference_pressure, next_pressure, temperature
             )
             reference_pressure = next_pressure
 
@@ -176,7 +176,7 @@ cdef T[:, :] moist_lapse_2d(
     T[:] reference_pressure, 
     T[:] temperature, 
     BroadcastMode mode,
-    T step, 
+    
 ) noexcept:
     cdef:
         size_t N, Z, i
@@ -189,12 +189,12 @@ cdef T[:, :] moist_lapse_2d(
         if BROADCAST is mode:
             for i in prange(N, schedule='dynamic'):
                 moist_lapse_1d(
-                    out[i], pressure[0, :], reference_pressure[i], temperature[i], step=step
+                    out[i], pressure[0, :], reference_pressure[i], temperature[i]
                 )
         else: # MATRIX
             for i in prange(N, schedule='dynamic'):
                 moist_lapse_1d(
-                    out[i], pressure[i, :], reference_pressure[i], temperature[i], step=step
+                    out[i], pressure[i, :], reference_pressure[i], temperature[i]
                 )
 
     return out
@@ -205,7 +205,6 @@ def moist_lapse(
     np.ndarray temperature,
     np.ndarray reference_pressure = None,
     *,
-    T step = 1000.0,
     object dtype = None,
 ):
     """
@@ -330,7 +329,6 @@ def moist_lapse(
             reference_pressure.astype(np.float32),
             temperature.astype(np.float32), 
             mode=mode,
-            step=step,
         )
     else:
         out[...] = moist_lapse_2d[double](
@@ -338,7 +336,6 @@ def moist_lapse(
             reference_pressure.astype(np.float64),
             temperature.astype(np.float64),
             mode=mode,
-            step=step,
         )
     if mode == ELEMENT_WISE:
         out = out.squeeze(1)
@@ -354,9 +351,7 @@ cdef void parcel_profile_1d(
     T[:] pressure,  # (Z,)
     T temperature,
     T dewpoint,
-    T step,
-    T eps,
-    size_t max_iters,
+    
 ) noexcept nogil:
     cdef:
         size_t Z, i, stop
@@ -382,7 +377,7 @@ cdef void parcel_profile_1d(
 
     # [ moist ascent ]
     # parcel temperature from the LCL to the top of the atmosphere
-    moist_lapse_1d(out[stop:], pressure[stop:], lcl.pressure, lcl.temperature, step)
+    moist_lapse_1d(out[stop:], pressure[stop:], lcl.pressure, lcl.temperature)
 
 cdef T[:, :] parcel_profile_2d(
     T[:, :] pressure,
@@ -402,15 +397,11 @@ cdef T[:, :] parcel_profile_2d(
     with nogil, parallel():
         if BROADCAST is mode:
             for i in prange(N, schedule='dynamic'):
-                parcel_profile_1d(
-                    out[i], pressure[0, :], temperature[i], dewpoint[i], step, eps, max_iters
-                )
+                parcel_profile_1d(out[i], pressure[0, :], temperature[i], dewpoint[i])
 
         else: # MATRIX
             for i in prange(N, schedule='dynamic'):
-                parcel_profile_1d(
-                    out[i], pressure[i, :], temperature[i], dewpoint[i], step, eps, max_iters
-                )
+                parcel_profile_1d(out[i], pressure[i, :], temperature[i], dewpoint[i])
  
     return out
 
@@ -421,8 +412,8 @@ def parcel_profile(
     np.ndarray dewpoint,
     *,
     ProfileStrategy strategy = SURFACE_BASED,
-    double step = 5000.0,
-    double eps = 5.0,
+    double step = 1000.0,
+    double eps = 0.1,
     size_t max_iters = 5,
 ):
     cdef:
@@ -471,9 +462,6 @@ cdef void parcel_profile_with_lcl_1d(
     T[:] pressure,  # (Z,)
     T temperature,
     T dewpoint,
-    T step,
-    T eps,
-    size_t max_iters,
 ) noexcept nogil:
     cdef:
         size_t Z, z, stop
@@ -504,7 +492,7 @@ cdef void parcel_profile_with_lcl_1d(
     
     
     for z in range(stop + 1, Z):
-        t_out[z] = t = C.moist_lapse(p, pressure[z - 1], t, step)
+        t_out[z] = t = C.moist_lapse(p, pressure[z - 1], t)
         p_out[z] = p = pressure[z - 1]
 
 
@@ -513,9 +501,6 @@ cdef T[:, :] parcel_profile_with_lcl_2d(
     T[:] temperature,
     T[:] dewpoint,
     BroadcastMode mode,
-    T step,
-    T eps,
-    size_t max_iters,
 ) noexcept:
     cdef:
         size_t N, Z, i
@@ -531,13 +516,13 @@ cdef T[:, :] parcel_profile_with_lcl_2d(
             for i in prange(N, schedule='dynamic'):
                 parcel_profile_with_lcl_1d(
                     t_out[i], p_out[i], 
-                    pressure[0, :], temperature[i], dewpoint[i], step, eps, max_iters
+                    pressure[0, :], temperature[i], dewpoint[i]
                 )
         else: # MATRIX
             for i in prange(N, schedule='dynamic'):
                 parcel_profile_with_lcl_1d(
                     t_out[i], p_out[i], 
-                    pressure[i, :], temperature[i], dewpoint[i], step, eps, max_iters
+                    pressure[i, :], temperature[i], dewpoint[i]
                 )
  
     return t_out
@@ -549,9 +534,6 @@ def parcel_profile_with_lcl(
     np.ndarray dewpoint,
     *,
     ProfileStrategy strategy = SURFACE_BASED,
-    double step = 1000.0,
-    double eps = 0.1,
-    size_t max_iters = 50,
 ):
     cdef:
         size_t N, Z
@@ -569,9 +551,7 @@ def parcel_profile_with_lcl(
                 temperature.astype(np.float64),
                 dewpoint.astype(np.float64),
                 mode,
-                step,
-                eps,
-                max_iters,
+                
             )
         else:
             out[...] = parcel_profile_with_lcl_2d[float](
@@ -579,9 +559,7 @@ def parcel_profile_with_lcl(
                 temperature.astype(np.float32),
                 dewpoint.astype(np.float32),
                 mode,
-                <float>step,
-                <float>eps,
-                max_iters,
+                
             )
     else:
         raise ValueError("Invalid strategy.")

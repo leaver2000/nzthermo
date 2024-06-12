@@ -211,11 +211,9 @@ cdef T wet_bulb_temperature(T pressure, T temperature, T dewpoint) noexcept nogi
 
 @cython.ufunc 
 cdef T lcl_pressure(T pressure, T temperature, T dewpoint) noexcept nogil:
-    cdef:
-        size_t max_iter = 2
-        T eps = 0.1
+    return C.lcl_pressure(pressure, temperature, dewpoint)
+    
 
-    return C.lcl_pressure(pressure, temperature, dewpoint, eps, max_iter)
 
 # 3x2
 @cython.ufunc

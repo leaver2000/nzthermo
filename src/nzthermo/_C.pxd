@@ -55,7 +55,6 @@ cdef extern from "libthermo.cpp" namespace "libthermo" nogil:
         lcl() noexcept
         lcl(T pressure, T temperature) noexcept
         lcl(T pressure, T temperature, T dewpoint) noexcept
-        lcl(T pressure, T temperature, T dewpoint, T eps, size_t max_iters) noexcept
 
     
     # 1x1
@@ -72,14 +71,11 @@ cdef extern from "libthermo.cpp" namespace "libthermo" nogil:
     T dewpoint[T](T vapor_pressure) noexcept
     T dewpoint[T](T pressure, T mixing_ratio) noexcept # .. overload ..
     
-    T lcl_pressure[T](T pressure, T temperature, T dewpoint, T eps, size_t max_iters) noexcept
+    T lcl_pressure[T](T pressure, T temperature, T dewpoint) noexcept
 
-    T moist_lapse[T](T pressure, T next_pressure, T temperature, T step) noexcept
+    T moist_lapse[T](T pressure, T next_pressure, T temperature) noexcept
     T potential_temperature[T](T pressure, T temperature) noexcept # theta
     T equivalent_potential_temperature[T](T pressure, T temperature, T dewpoint) noexcept # theta_e
     T wet_bulb_potential_temperature[T](T pressure, T temperature, T dewpoint) noexcept # theta_w
     T wet_bulb_temperature[T](T pressure, T temperature, T dewpoint) noexcept
-    T wet_bulb_temperature[T](
-        T pressure, T temperature, T dewpoint, T eps, T step, size_t max_iters
-    ) noexcept
     T wobus[T](T temperature) noexcept
