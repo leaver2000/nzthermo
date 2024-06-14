@@ -22,64 +22,21 @@ Pa = units.pascal
 hPa = units.hectopascal
 K = units.kelvin
 C = units.celsius
-ASSERT_CIN = False
-FAST_APPROXIMATE = True
-RTOL = 1e-1
+
 PRESSURE_ABSOLUTE_TOLERANCE = 2000.0
 PRESSURE_RELATIVE_TOLERANCE = 500
 TEMPERATURE_ABSOLUTE_TOLERANCE = 1.0
 # ............................................................................................... #
+# load up the test data
 data = np.load("tests/data.npz", allow_pickle=False)
+# this specific step uses the failing tests cases for the cape_cin function
 step = np.s_[
     [19, 20, 25, 44, 46, 48, 88, 89, 116, 119, 144, 146, 149, 166, 238, 268, 297],
     :,
 ]
+
 step = np.s_[:]
 P, T, Td = data["P"], data["T"][step], data["Td"][step]
-
-
-# ............................................................................................... #
-# CAPE_CIN
-# ............................................................................................... #
-@pytest.mark.cape_cin
-@pytest.mark.parametrize(
-    "which_lfc, which_el",
-    itertools.product(
-        ["top", "bottom"],
-        # ["top", "bottom"],
-        ["bottom"],
-    ),
-)
-def test_cape_cin(which_lfc, which_el):
-    pressure, temperature, dewpoint = P[np.newaxis], T, Td
-
-    parcel_profile = _C.parcel_profile(pressure[0, :], temperature[:, 0], dewpoint[:, 0])
-    CAPE, CIN = cape_cin(
-        pressure,
-        temperature,
-        dewpoint,
-        parcel_profile,
-        which_lfc=which_lfc,
-        which_el=which_el,
-    )
-    count = 0
-    indexes = []
-    for i in range(T.shape[0]):
-        CAPE_, CIN_ = mpcalc.cape_cin(
-            P * Pa,
-            T[i] * K,
-            Td[i] * K,
-            parcel_profile[i] * K,
-            which_lfc=which_lfc,
-            which_el=which_el,
-        )
-        if not np.allclose(CAPE[i], CAPE_.m, atol=1000):
-            count += 1
-            indexes.append(i)
-
-    print(f"\nCAPE_CIN [{which_lfc} {which_el}]: {count=} {indexes=}")
-
-
 # ............................................................................................... #
 
 
@@ -212,17 +169,17 @@ def test_lfc_basic():
     assert_almost_equal(lfc_t, 9.705, 2)
 
 
-# @pytest.mark.lfc
-# def test_lfc_ml():
-#     """Test Mixed-Layer LFC calculation."""
-#     # levels = np.array([959.0, 779.2, 751.3, 724.3, 700.0, 269.0]) * hPa
-#     # temperatures = np.array([22.2, 14.6, 12.0, 9.4, 7.0, -49.0]) * C
-#     # dewpoints = np.array([19.0, -11.2, -10.8, -10.4, -10.0, -53.2]) * C
-#     # __, t_mixed, td_mixed = mixed_parcel(levels, temperatures, dewpoints)
-#     # mixed_parcel_prof = _C.parcel_profile(levels, t_mixed, td_mixed)
-#     # lfc_p, lfc_t = lfc(levels, temperatures, dewpoints, mixed_parcel_prof)
-#     # assert_almost_equal(lfc_p, 601.225 * hPa, 2)
-#     # assert_almost_equal(lfc_t, -1.90688 * units.degC, 2)
+@pytest.mark.skip(reason="the mixed parcel profile is not implemented yet")
+def test_lfc_ml():
+    """Test Mixed-Layer LFC calculation."""
+    levels = np.array([959.0, 779.2, 751.3, 724.3, 700.0, 269.0]) * hPa
+    temperatures = np.array([22.2, 14.6, 12.0, 9.4, 7.0, -49.0]) * C
+    dewpoints = np.array([19.0, -11.2, -10.8, -10.4, -10.0, -53.2]) * C
+    __, t_mixed, td_mixed = mixed_parcel(levels, temperatures, dewpoints)
+    mixed_parcel_prof = _C.parcel_profile(levels, t_mixed, td_mixed)
+    lfc_p, lfc_t = lfc(levels, temperatures, dewpoints, mixed_parcel_prof)
+    assert_almost_equal(lfc_p, 601.225 * hPa, 2)
+    assert_almost_equal(lfc_t, -1.90688 * units.degC, 2)
 
 
 @pytest.mark.lfc
@@ -312,3 +269,49 @@ def test_most_unstable_parcel_index(depth) -> None:
             for i in range(T.shape[0])
         ],
     )
+
+
+# ............................................................................................... #
+# CAPE_CIN
+# ............................................................................................... #
+@pytest.mark.cape_cin
+@pytest.mark.parametrize(
+    "which_lfc, which_el",
+    itertools.product(["top", "bottom"], ["top", "bottom"]),
+)
+def test_cape_cin(which_lfc, which_el):
+    """
+    TODO currently this test is passing on 95% of the cases, need to investigate the.
+    there error appears to be something in the logic block of the el_lfc function.
+
+    The current test cases run 500 samples and we are failing on 17 of them specifically when
+    `which_el=bottom` parameter is used. realistically using the lower EL is not a typical use
+    case but it should still be tested.
+    """
+    pressure, temperature, dewpoint = P[np.newaxis], T, Td
+
+    parcel_profile = _C.parcel_profile(pressure[0, :], temperature[:, 0], dewpoint[:, 0])
+    CAPE, CIN = cape_cin(
+        pressure,
+        temperature,
+        dewpoint,
+        parcel_profile,
+        which_lfc=which_lfc,
+        which_el=which_el,
+    )
+    count = 0
+    indexes = []
+    for i in range(T.shape[0]):
+        CAPE_, CIN_ = mpcalc.cape_cin(
+            P * Pa,
+            T[i] * K,
+            Td[i] * K,
+            parcel_profile[i] * K,
+            which_lfc=which_lfc,
+            which_el=which_el,
+        )
+        if not np.allclose(CAPE[i], CAPE_.m, atol=1000):
+            count += 1
+            indexes.append(i)
+
+    print(f"\nCAPE_CIN [{which_lfc} {which_el}]: {count=} {indexes=}")
