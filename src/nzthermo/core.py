@@ -2,28 +2,29 @@
 # pyright: reportReturnType=none
 # pyright: reportAssignmentType=none
 """
-This is an implementation of the metpy thermodynamics module but without the pint requirement and
-additional support for higher dimensions in what would have normally been 1D arrays
+The calculations in this module are based on the MetPy library. These calculations supplement
+the original implementation in areas where previously only support for `1D profiles
+(not higher-dimension vertical cross sections or grids)`.
 """
 
 from __future__ import annotations
 
 import warnings
-from typing import Final, Literal as L, TypeVar, Any
+from typing import Any, Final, Literal as L, TypeVar
 
 import numpy as np
 from numpy.typing import NDArray
 
 from . import _core as core, functional as F
 from ._ufunc import (
-    between_or_close,
+    between_or_close as _between_or_close,
     dewpoint as _dewpoint,
     dry_lapse,
     equivalent_potential_temperature,
-    greater_or_close,
+    greater_or_close as _greater_or_close,
     lcl,
     lcl_pressure,
-    less_or_close,
+    less_or_close as _less_or_close,
     mixing_ratio,
     saturation_mixing_ratio,
     saturation_vapor_pressure,
@@ -38,7 +39,10 @@ from .utils import Vector1d, broadcast_nz
 float_ = TypeVar("float_", np.float_, np.floating[Any], covariant=True)
 newaxis: Final[None] = np.newaxis
 
-_FASTPATH = {"__fastpath": True}
+_FASTPATH: dict[str, Any] = {"__fastpath": True}
+between_or_close = lambda x, a, b: _between_or_close(x, a, b).astype(np.bool_)
+greater_or_close = lambda x, y: _greater_or_close(x, y).astype(np.bool_)
+less_or_close = lambda x, y: _less_or_close(x, y).astype(np.bool_)
 
 
 # -------------------------------------------------------------------------------------------------
@@ -50,6 +54,24 @@ def downdraft_cape(
     temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
     dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
 ) -> np.ndarray[shape[N], np.dtype[float_]]:
+    """Calculate downward CAPE (DCAPE).
+
+    Calculate the downward convective available potential energy (DCAPE) of a given upper air
+    profile. Downward CAPE is the maximum negative buoyancy energy available to a descending
+    parcel. Parcel descent is assumed to begin from the lowest equivalent potential temperature
+    between 700 and 500 hPa. This parcel is lowered moist adiabatically from the environmental
+    wet bulb temperature to the surface.  This assumes the parcel remains saturated
+    throughout the descent.
+
+    Parameters
+    ----------
+    TODO: add parameters
+
+    Examples
+    --------
+    TODO: add examples
+
+    """
     N, _ = temperature.shape
 
     mid_layer_idx = ((pressure <= 7e4) & (pressure >= 5e4)).squeeze()
@@ -146,9 +168,15 @@ def _multiple_el_lfc_options(
         ]
 
     elif which == "top":
-        idx = np.s_[:, 0]
+        idx = np.s_[
+            np.arange(x.shape[0]),
+            np.argmax(~np.isnan(x), axis=1),  # the first non-nan value
+        ]
 
     return Vector1d(x[idx], y[idx])
+
+
+_USING_EXTRA_EL_LOGIC = False
 
 
 def _el_lfc(
@@ -161,8 +189,6 @@ def _el_lfc(
     which_lfc: L["bottom", "top"] = "bottom",
     which_el: L["bottom", "top"] = "top",
     dewpoint_start: np.ndarray[shape[N], np.dtype[float_]] | None = None,
-    step: float = 1000.0,
-    eps: float = 0.1,
 ) -> tuple[Vector1d[float_], Vector1d[float_]] | Vector1d[float_]:
     p0, t0 = pressure[:, 0], temperature[:, 0]
     if dewpoint_start is None:
@@ -171,7 +197,7 @@ def _el_lfc(
         td0 = dewpoint_start
 
     if parcel_temperature_profile is None:
-        parcel_temperature_profile = core.parcel_profile(pressure, t0, td0, step=step, eps=eps)
+        parcel_temperature_profile = core.parcel_profile(pressure, t0, td0)
 
     lcl_p, lcl_t = (x[:, newaxis] for x in lcl(p0, t0, td0))
     pressure, parcel_temperature_profile, temperature = (
@@ -191,8 +217,6 @@ def _el_lfc(
     if pick == "EL":
         return EL.where(EL.pressure < lcl_p).pick(which_el)
 
-    el_p = EL.pressure
-
     # find the Level of Free Convection (LFC)
     lfc_p, lfc_t = F.intersect_nz(
         pressure,
@@ -201,34 +225,51 @@ def _el_lfc(
         "increasing",
         log_x=True,
     )
-
-    # START: conditional logic to determine the LFC
     potential = lfc_p < lcl_p  # ABOVE: the LCL
-    no_potential = ~potential
-    is_lcl = np.all(np.isnan(lfc_p), axis=1, keepdims=True)
+
+    # positive_area_above_the_LCL = less_or_close(pressure, lcl_p)
     positive_area_above_the_LCL = pressure < lcl_p
 
     # LFC does not exist or is LCL if len(x) == 0:
-    no_lfc = is_lcl & less_or_close(
+    no_lfc = np.isnan(lfc_p).all(axis=1, keepdims=True)
+
+    lfc_exists_and_has_potential = ~no_lfc & potential
+    lfc_is_the_lcl = no_lfc & greater_or_close(
         np.where(positive_area_above_the_LCL, parcel_temperature_profile, np.nan),
         np.where(positive_area_above_the_LCL, temperature, np.nan),
     ).any(axis=1, keepdims=True)
+    # if _USING_EXTRA_EL_LOGIC:
+    # this causes some of the tests to fail but other to pass with a higher precision.
+    # not really quite sure where to go with this.
 
-    # LFC exists. Make sure it is no lower than the LCL else:
-    with warnings.catch_warnings():  # RuntimeWarning: All-NaN slice encountered
+    with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=RuntimeWarning)
-        no_lfc |= np.nanmin(el_p, axis=1, keepdims=True) > lcl_p
-        is_lcl |= np.all(no_potential, axis=1, keepdims=True)
-    # END: conditional logic to determine the LFC
 
-    condlist = [no_lfc, is_lcl, potential]
-    x_choice = [np.nan, lcl_p, lfc_p]
-    y_choice = [np.nan, lcl_t, lfc_t]
+        lfc_is_the_lcl |= np.logical_and(
+            lfc_p > lcl_p,
+            (np.nanmax(EL.pressure, axis=1, keepdims=True) < lcl_p),
+            # np.isnan(EL.pressure).all(axis=1, keepdims=True),
+        ).any(axis=1, keepdims=True)
 
-    lfc_p = np.select(condlist, x_choice, np.nan)
-    lfc_t = np.select(condlist, y_choice, np.nan)
+    condlist = [
+        lfc_exists_and_has_potential,
+        lfc_is_the_lcl,
+    ]
 
-    LFC = _multiple_el_lfc_options(lfc_p, lfc_t, which_lfc)
+    lfc_p = np.select(condlist, [lfc_p, lcl_p], np.nan)
+    lfc_t = np.select(condlist, [lfc_t, lcl_t], np.nan)
+
+    if which_lfc == "top":
+        LFC = Vector1d(
+            np.nanmin(lfc_p, axis=1),
+            np.nanmin(lfc_t, axis=1),
+        )
+    else:
+        LFC = Vector1d(
+            np.nanmax(lfc_p, axis=1),
+            np.nanmax(lfc_t, axis=1),
+        )
+
     if pick == "LFC":
         return LFC
 
@@ -279,8 +320,7 @@ def el_lfc(
     parcel_temperature_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]] | None = None,
     which_lfc: L["bottom", "top"] = "bottom",
     which_el: L["bottom", "top"] = "top",
-    step: float = 1000.0,
-    eps: float = 0.1,
+    dewpoint_start: np.ndarray[shape[N], np.dtype[float_]] | None = None,
 ) -> tuple[Vector1d[float_], Vector1d[float_]]:
     return _el_lfc(
         "BOTH",
@@ -290,14 +330,36 @@ def el_lfc(
         parcel_temperature_profile,
         which_lfc=which_lfc,
         which_el=which_el,
-        step=step,
-        eps=eps,
+        dewpoint_start=dewpoint_start,
     )
 
 
 # -------------------------------------------------------------------------------------------------
 # cape_cin
 # -------------------------------------------------------------------------------------------------
+def most_unstable_parcel_index(
+    pressure,
+    temperature,
+    dewpoint,
+    /,
+    depth: float = 30000.0,
+    height: float | None = None,
+    bottom: float | None = None,
+):
+    if height is not None:
+        raise NotImplementedError("height argument is not implemented")
+
+    pressure = np.atleast_2d(pressure)
+    p0 = pressure[:, 0] if bottom is None else np.asarray(bottom)  # .reshape(-1, 1)
+    top = p0 - depth
+    (mask,) = np.nonzero(between_or_close(pressure, top, p0).astype(np.bool_).squeeze())
+    t_layer = temperature[:, mask]
+    td_layer = dewpoint[:, mask]
+    p_layer = pressure[:, mask]
+    theta_e = equivalent_potential_temperature(p_layer, t_layer, td_layer)
+    return np.argmax(theta_e, axis=1)
+
+
 @broadcast_nz
 def cape_cin(
     pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
@@ -307,8 +369,6 @@ def cape_cin(
     parcel_profile: np.ndarray,
     which_lfc: L["bottom", "top"] = "bottom",
     which_el: L["bottom", "top"] = "top",
-    step: float = 1000.0,
-    eps: float = 0.1,
 ) -> tuple[np.ndarray, np.ndarray]:
     lcl_p = lcl_pressure(pressure[:, 0], temperature[:, 0], dewpoint[:, 0])  # ✔️
 
@@ -330,23 +390,27 @@ def cape_cin(
         parcel_profile,
         which_lfc,
         which_el,
-        step,
-        eps,
         **_FASTPATH,
     )
 
-    el_p[np.isnan(el_p)] = np.nanmin(pressure, axis=1)
+    # el_p[np.isnan(el_p)] = np.nanmin(pressure, axis=1)
 
     lfc_p, el_p = np.reshape((lfc_p, el_p), (2, -1, 1))  # reshape for broadcasting
 
     X, Y = F.zero_crossings(pressure, parcel_profile - temperature)  # ((N, Z), ...)
 
-    # X is below the equilibrium level and above the LFC
     mask = between_or_close(X, el_p, lfc_p).astype(np.bool_)
+    print(
+        "NOTE TO SELF currently the error occurs in highly specific scenarios while using EL bottom",
+        Y,
+        X,
+        el_p,
+        lfc_p,
+        sep="\n",
+    )
     x, y = np.where(mask[newaxis, ...], [X, Y], np.nan)
-
     cape = Rd * F.nantrapz(y, np.log(x), axis=1)
-    cape[(cape < 0.0)] = 0.0
+    # cape[(cape < 0.0)] = 0.0
 
     # X is below the LFC
     mask = greater_or_close(X, lfc_p).astype(np.bool_)
@@ -373,16 +437,16 @@ def most_unstable_parcel(
     np.ndarray[shape[N, Z], np.dtype[np.intp]],
 ]:
     depth = 100.0 if depth is None else depth
-    p0 = pressure[:, 0] if bottom is None else bottom  # type: np.ndarray | float
+    p0 = (pressure[:, 0] if bottom is None else np.asarray(bottom)).reshape(-1, 1)
     top = p0 - depth
 
+    n = np.arange(temperature.shape[0])
     mask = between_or_close(pressure, p0, top).astype(np.bool_)
-    p = pressure[:, mask]
-    t = temperature[:, mask]
-    td = dewpoint[:, mask]
+    p = pressure[n, mask]
+    t = temperature[n, mask]
+    td = dewpoint[n, mask]
 
-    theta_e = equivalent_potential_temperature(p, t, td)
-    idx = np.argmax(theta_e, axis=1)
-    n = np.arange(t.shape[0])
+    # theta_e = equivalent_potential_temperature(p, t, td)
+    # idx = np.argmax(theta_e, axis=1)
 
-    return p[n, idx], t[n, idx], td[n, idx], np.array([n, idx])
+    # return p[n, idx], t[n, idx], td[n, idx], np.array([n, idx])

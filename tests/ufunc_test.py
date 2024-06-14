@@ -5,13 +5,13 @@ from metpy.units import units
 from numpy.testing import assert_allclose
 
 from nzthermo._ufunc import (
+    dewpoint_from_specific_humidity,
     equivalent_potential_temperature,
     lcl,
     potential_temperature,
     wet_bulb_potential_temperature,
     wet_bulb_temperature,
     wind_components,
-    dewpoint_from_specific_humidity,
 )
 
 Pa = units.pascal

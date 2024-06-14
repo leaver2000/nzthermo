@@ -1,7 +1,7 @@
 from typing import Annotated, ParamSpec, TypeVar
 
 from ._typing import _ufunc1x1, _ufunc2x1, _ufunc2x2, _ufunc3x1, _ufunc3x2
-from .typing import Kelvin, Pascal, Dimensionless
+from .typing import Dimensionless, Kelvin, Pascal
 
 _P = ParamSpec("_P")
 _T = TypeVar("_T")

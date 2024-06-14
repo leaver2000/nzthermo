@@ -11,20 +11,16 @@ from typing import (
     Sequence,
     TypeAlias,
     TypeVar,
-    runtime_checkable,
 )
 
 import numpy as np
 
 _T = TypeVar("_T")
-_DType_co = TypeVar("_DType_co", bound=np.generic, covariant=True)
+_T_co = TypeVar("_T_co", bound=np.generic, covariant=True)
 
 Kelvin = Annotated[_T, "Kelvin"]
 Pascal = Annotated[_T, "Pascal"]
 Dimensionless = Annotated[_T, "dimensionless"]
-Kilogram = Annotated[_T, "kg"]
-Percent = Annotated[_T, "%"]
-Ratio = Annotated[_T, "ratio"]
 
 
 if sys.version_info >= (3, 11):
@@ -50,13 +46,12 @@ Z = NewType("Z", int)
 Y = NewType("Y", int)
 X = NewType("X", int)
 
-NZArray = np.ndarray[shape[N, Z], np.dtype[_DType_co]]
+
 NestedSequence: TypeAlias = "Sequence[_T | NestedSequence[_T]]"
 
 
-@runtime_checkable
-class SupportsArray(Protocol[_DType_co]):
-    def __array__(self) -> np.ndarray[Any, np.dtype[_DType_co]]: ...
+class SupportsArray(Protocol[_T_co]):
+    def __array__(self) -> np.ndarray[Any, np.dtype[_T_co]]: ...
 
 
 class SupportsArrayUFunc(Protocol):
@@ -67,3 +62,8 @@ class SupportsArrayUFunc(Protocol):
         *inputs: Any,
         **kwargs: Any,
     ) -> Any: ...
+
+
+class SupportsDType(Protocol[_T_co]):
+    @property
+    def dtype(self) -> np.dtype[_T_co]: ...

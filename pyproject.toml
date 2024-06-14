@@ -43,6 +43,7 @@ markers = [
     "cape_lfc",
     "cape_lfc_top",
     "cape_lfc_bottom",
+    "mu_cape",
 
 ]
 

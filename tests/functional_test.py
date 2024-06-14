@@ -8,240 +8,20 @@ from metpy.units import units
 from numpy.testing import assert_allclose
 
 import nzthermo.functional as F
+from nzthermo._core import parcel_profile as _parcel_profile  # noqa
+from nzthermo._ufunc import (  # noqa
+    lcl_pressure,
+    saturation_mixing_ratio,
+    virtual_temperature,
+)
+from nzthermo.core import _FASTPATH, el_lfc  # noqa
 
 K = units.kelvin
 Pa = units.pascal
 
-PRESSURE = np.array(
-    [
-        1013,
-        1000,
-        975,
-        950,
-        925,
-        900,
-        875,
-        850,
-        825,
-        800,
-        775,
-        750,
-        725,
-        700,
-        650,
-        600,
-        550,
-        500,
-        450,
-        400,
-        350,
-        300,
-    ],
-    dtype=np.float64,
-)
-PRESSURE *= 100.0
-TEMPERATURE = np.array(
-    [
-        [
-            243,
-            242,
-            241,
-            240,
-            239,
-            237,
-            236,
-            235,
-            233,
-            232,
-            231,
-            229,
-            228,
-            226,
-            235,
-            236,
-            234,
-            231,
-            226,
-            221,
-            217,
-            211,
-        ],
-        [
-            250,
-            249,
-            248,
-            247,
-            246,
-            244,
-            243,
-            242,
-            240,
-            239,
-            238,
-            236,
-            235,
-            233,
-            240,
-            239,
-            236,
-            232,
-            227,
-            223,
-            217,
-            211,
-        ],
-        [
-            293,
-            292,
-            290,
-            288,
-            287,
-            285,
-            284,
-            282,
-            281,
-            279,
-            279,
-            280,
-            279,
-            278,
-            275,
-            270,
-            268,
-            264,
-            260,
-            254,
-            246,
-            237,
-        ],
-        [
-            300,
-            299,
-            297,
-            295,
-            293,
-            291,
-            292,
-            291,
-            291,
-            289,
-            288,
-            286,
-            285,
-            285,
-            281,
-            278,
-            273,
-            268,
-            264,
-            258,
-            251,
-            242,
-        ],
-    ],
-    dtype=np.float64,
-)
-DEWPOINT = np.array(
-    [
-        [
-            224,
-            224,
-            224,
-            224,
-            224,
-            223,
-            223,
-            223,
-            223,
-            222,
-            222,
-            222,
-            221,
-            221,
-            233,
-            233,
-            231,
-            228,
-            223,
-            218,
-            213,
-            207,
-        ],
-        [
-            233,
-            233,
-            232,
-            232,
-            232,
-            232,
-            231,
-            231,
-            231,
-            231,
-            230,
-            230,
-            230,
-            229,
-            237,
-            236,
-            233,
-            229,
-            223,
-            219,
-            213,
-            207,
-        ],
-        [
-            288,
-            288,
-            287,
-            286,
-            281,
-            280,
-            279,
-            277,
-            276,
-            275,
-            270,
-            258,
-            244,
-            247,
-            243,
-            254,
-            262,
-            248,
-            229,
-            232,
-            229,
-            224,
-        ],
-        [
-            294,
-            294,
-            293,
-            292,
-            291,
-            289,
-            285,
-            282,
-            280,
-            280,
-            281,
-            281,
-            278,
-            274,
-            273,
-            269,
-            259,
-            246,
-            240,
-            241,
-            226,
-            219,
-        ],
-    ],
-    dtype=np.float64,
-)
+data = np.load("tests/data.npz", allow_pickle=False)
+step = np.s_[:]
+P, T, Td = data["P"], data["T"][step], data["Td"][step]
 
 
 @pytest.mark.parametrize(
@@ -583,7 +363,7 @@ Y = [
 ]
 
 
-def test_insert_zero_crossings():
+def test_insert_zero_crossings() -> None:
     crossings = F.find_append_zero_crossings(np.array(X), np.array(Y))
     for i in range(len(X)):
         x_, y_ = _find_append_zero_crossings(X[i] * Pa, Y[i] * K)
@@ -592,3 +372,55 @@ def test_insert_zero_crossings():
         y = y[: len(y_)]
         assert_allclose(x, x_.m)
         assert_allclose(y, y_.m)
+
+
+def test_insert_zero_crossings_specifically_for_cape_cin() -> None:
+    """The top half of this test cases replicates a partial implementation of our cape_cin function
+    which is currently failing under similar test conditions.  However, the test asserts that
+    the zero_crossing function is not the source of the error."""
+    pressure = P[np.newaxis, :]
+    temperature = T[:, :]
+    dewpoint = Td[:, :]
+    lcl_p = lcl_pressure(pressure[:, 0], temperature[:, 0], dewpoint[:, 0])  # ✔️
+    parcel_profile = _parcel_profile(pressure.squeeze(), temperature[:, 0], dewpoint[:, 0])  # ✔️
+
+    # The mixing ratio of the parcel comes from the dewpoint below the LCL, is saturated
+    # # based on the temperature above the LCL
+    parcel_mixing_ratio = np.where(
+        pressure > lcl_p[:, np.newaxis],  # below_lcl
+        saturation_mixing_ratio(pressure, dewpoint),
+        saturation_mixing_ratio(pressure, temperature),
+    )
+    # Convert the temperature/parcel profile to virtual temperature
+    temperature = virtual_temperature(temperature, saturation_mixing_ratio(pressure, dewpoint))
+    parcel_profile = virtual_temperature(parcel_profile, parcel_mixing_ratio)
+    # Calculate the EL limit of integration
+    (el_p, _), (lfc_p, _) = el_lfc(
+        pressure,
+        temperature,
+        dewpoint,
+        parcel_profile,
+        "bottom",
+        "top",
+        **_FASTPATH,
+    )
+
+    lfc_p, el_p = np.reshape((lfc_p, el_p), (2, -1, 1))  # reshape for broadcasting
+    delta = parcel_profile - temperature
+    X, Y = F.zero_crossings(pressure, delta)  # ((N, Z), ...)
+
+    for i in range(temperature.shape[0]):
+        x_, y_ = _find_append_zero_crossings(
+            pressure[0] * Pa,
+            delta[i] * K,
+        )
+
+        assert_allclose(
+            X[i][~np.isnan(X[i])],
+            x_.m,
+        )
+
+        assert_allclose(
+            Y[i][~np.isnan(Y[i])],
+            y_.m,
+        )

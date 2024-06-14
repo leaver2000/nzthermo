@@ -38,25 +38,21 @@ cdef T abs(T x) noexcept nogil:
 @cython.ufunc
 cdef bint less_or_close(T x, T y) noexcept nogil:
     return (
-        x == x
-        and y == y # nan check
+        x == x and y == y # nan check
         and (x < y or abs(x - y) <= (1.0e-05 * abs(y)))
     )
 
 @cython.ufunc
 cdef bint greater_or_close(T x, T y) noexcept nogil:
     return (
-        x == x
-        and y == y # nan check
+        x == x and y == y # nan check
         and (x > y or abs(x - y) <= (1.0e-05 * abs(y)))
     )
 
 @cython.ufunc
 cdef bint between_or_close(T x, T y0, T y1) noexcept nogil:
     return (
-        x == x
-        and y0 == y0
-        and y1 == y1 # nan check
+        x == x and y0 == y0 and y1 == y1 # nan check
         and (x > y0 or abs(x - y0) <= (1.0e-05 * abs(y0)))
         and (x < y1 or abs(x - y1) <= (1.0e-05 * abs(y1)))
     )
@@ -226,7 +222,6 @@ cdef (double, double) lcl(T pressure, T temperature, T dewpoint) noexcept nogil:
     # - cast to double 
     # - write the template in C
     cdef C.lcl[T] lcl = C.lcl[T](pressure, temperature, dewpoint)
-        
 
     return <double>lcl.pressure, <double>lcl.temperature
 

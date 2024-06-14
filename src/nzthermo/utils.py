@@ -1,30 +1,30 @@
 from __future__ import annotations
 
-import datetime
 import functools
 import textwrap
 from typing import (
+    Any,
     Callable,
     Concatenate,
     Generic,
     Literal as L,
+    Mapping,
     NamedTuple,
     ParamSpec,
     Self,
+    TypeGuard,
     TypeVar,
     overload,
-    Any,
 )
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from ._ufunc import delta_t
-from .typing import Kelvin, N, NestedSequence, NZArray, Pascal, SupportsArray, Z, shape
+from .typing import Kelvin, N, NestedSequence, Pascal, SupportsDType, Z, shape
 
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
-Pair = tuple[_T, _T]
 float_ = TypeVar("float_", np.float_, np.floating[Any], covariant=True)
 
 
@@ -46,7 +46,7 @@ class VectorNd(NamedTuple, Generic[_T, float_]):
         )
 
     def __repr__(self) -> str:
-        prefix = " " * 2
+        prefix = "  "
         return "\n".join(
             f"{name} {textwrap.indent(np.array2string(x), prefix).removeprefix(prefix)}"
             for name, x in zip(["pressure", "temperature"], self)
@@ -106,7 +106,15 @@ def exactly_2d(
 
 
 def broadcast_nz(
-    f: Callable[Concatenate[NZArray[float_], NZArray[float_], NZArray[float_], _P], _T],
+    f: Callable[
+        Concatenate[
+            Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
+            Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+            Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+            _P,
+        ],
+        _T,
+    ],
 ) -> Callable[
     Concatenate[
         Pascal[NDArray[float_] | NestedSequence[float]],
@@ -140,79 +148,311 @@ def broadcast_nz(
     return wrapper
 
 
-class Timeseries(NamedTuple):
-    years: NDArray[np.uint32]
-    months: NDArray[np.uint32]
-    days: NDArray[np.uint32]
-    hours: NDArray[np.uint32]
-    minutes: NDArray[np.uint32]
-    seconds: NDArray[np.uint32]
-    microseconds: NDArray[np.uint32]
+# ............................................................................................... #
+# TIME SERIES UTILITIES
+# ............................................................................................... #
+UNIX_EPOCH = 2440587.5
 
-    @property
-    def leap_year(self) -> NDArray[np.bool_]:
-        return (self.years % 4 == 0) & ((self.years % 100 != 0) | (self.years % 400 != 0))
+calendar = np.void
+unix = np.int64
+julian = np.float64
+datetime64 = np.datetime64
 
-    @property
-    def leap_day(self) -> NDArray[np.bool_]:
-        return (self.months == 2) & (self.days == 29)
 
-    def to_datetime64(self) -> NDArray[np.datetime64]:
-        Y, M, D, h, m, s, us = (
-            a.astype(f"timedelta64[{x}]")
-            for a, x in zip(self, ("Y", "M", "D", "h", "m", "s", "us"))
+_DT1 = TypeVar("_DT1", datetime64, calendar, julian, unix)
+_DT2 = TypeVar("_DT2", datetime64, calendar, julian, unix)
+DType_DT1 = np.dtype[_DT1] | type[_DT1] | SupportsDType[_DT1]
+
+
+@overload
+def isdtype(x: NDArray[Any], /, dtype: DType_DT1[_DT1]) -> TypeGuard[NDArray[_DT1]]: ...
+@overload
+def isdtype(x: np.dtype[_DT1], /, dtype: DType_DT1[_DT1]) -> TypeGuard[np.dtype[_DT1]]: ...
+@overload
+def isdtype(x: type[_DT1], /, dtype: DType_DT1[_DT1]) -> TypeGuard[np.dtype[_DT1]]: ...
+def isdtype(
+    x: NDArray[Any] | np.dtype[_DT1] | type[_DT1], /, dtype: DType_DT1[_DT1]
+) -> TypeGuard[NDArray[_DT1]] | TypeGuard[np.dtype[_DT1]]:
+    if isinstance(x, np.dtype):
+        x_dtype = x
+    elif isinstance(x, type):
+        x_dtype = np.dtype(x)
+    else:
+        x_dtype = x.dtype
+
+    if dtype is calendar:
+        return (
+            np.issubdtype(x_dtype, calendar)
+            and x_dtype.names is not None
+            and (
+                {"year", "month", "day", "hour", "minute", "second", "microsecond"}.issubset(
+                    x_dtype.names
+                )
+            )
         )
-        out = np.zeros(Y.shape, dtype="datetime64[Y]")
-        out += Y - 1970
+    return np.issubdtype(x_dtype, dtype)
 
-        out = out.astype("datetime64[M]")
-        out += M - 1
 
-        out = out.astype("datetime64[D]")
-        out += D - 1
+def leap_year(x: NDArray[datetime64 | calendar | julian | unix]) -> NDArray[np.bool_]:
+    x = to_date(x)
+    year = x["year"]
+    return (year % 4 == 0) & ((year % 100 != 0) | (year % 400 == 0))
 
-        out = out.astype("datetime64[h]")
-        out += h
 
-        out = out.astype("datetime64[m]")
-        out += m
+def leap_day(
+    x: NDArray[datetime64 | calendar | julian | unix],
+) -> NDArray[np.bool_]:
+    x = to_date(x)
+    year, month, day = x["year"], x["month"], x["day"]
+    return leap_year(year) & (month == 2) & (day == 29)
 
-        out = out.astype("datetime64[s]")
-        out += s
 
-        out = out.astype("datetime64[us]")
-        out += us
+# ............................................................................................... #
+# calendar
+# ............................................................................................... #
+def to_date(
+    x: NDArray[datetime64 | calendar | julian | unix],
+) -> np.recarray[Any, np.dtype[calendar]]:
+    if isdtype(x, calendar):
+        return x.view(np.recarray)
+    elif isdtype(x, unix) or isdtype(x, julian):
+        x = to_datetime64(x)
+
+    out = np.recarray(
+        x.shape, dtype=np.dtype([("year", np.int32), ("month", np.int32), ("day", np.int32)])
+    )
+
+    Y, M, D = (x.astype(f"datetime64[{s}]") for s in "YMD")
+
+    out["year"] = Y + 1970
+    out["month"] = (M - Y) + 1
+    out["day"] = (D - M) + 1
+
+    return out
+
+
+def to_calendar(
+    x: NDArray[datetime64 | calendar | julian | unix],
+) -> np.recarray[Any, np.dtype[calendar]]:
+    if isdtype(x, calendar):
+        return x.view(np.recarray)
+    elif isdtype(x, unix) or isdtype(x, julian):
+        x = to_datetime64(x)
+
+    out = np.recarray(
+        x.shape,
+        dtype=np.dtype(
+            [
+                ("year", np.int32),
+                ("month", np.int32),
+                ("day", np.int32),
+                ("hour", np.int32),
+                ("minute", np.int32),
+                ("second", np.int32),
+                ("microsecond", np.int32),
+            ]
+        ),
+    )
+
+    Y, M, D, h, m, s = (x.astype(f"datetime64[{s}]") for s in "YMDhms")
+
+    out["year"] = Y + 1970
+    out["month"] = (M - Y) + 1
+    out["day"] = (D - M) + 1
+    out["hour"] = (x - D).astype("timedelta64[h]", copy=False)
+    out["minute"] = (x - h).astype("timedelta64[m]", copy=False)
+    out["second"] = (x - m).astype("timedelta64[s]", copy=False)
+    out["microsecond"] = (x - s).astype("timedelta64[us]", copy=False)
+
+    return out
+
+
+# ............................................................................................... #
+# datetime64
+# ............................................................................................... #
+def to_datetime64(
+    x: NDArray[datetime64 | calendar | julian | unix],
+) -> NDArray[datetime64]:
+    if isdtype(x, datetime64):
+        return x
+    elif isdtype(x, julian):
+        return np.ceil((x - UNIX_EPOCH) * 86400).astype("datetime64[s]", copy=False)
+    elif isdtype(x, unix):
+        return x.astype("datetime64[s]", copy=False)
+    elif isdtype(x, calendar):
+        out = np.zeros(x.shape, dtype="datetime64[Y]")
+        out += x["year"].astype("timedelta64[Y]") - np.timedelta64(1970, "Y")
+
+        out = out.astype("datetime64[M]", copy=False)
+        out += x["month"] - np.timedelta64(1, "M")
+
+        out = out.astype("datetime64[D]", copy=False)
+        out += x["day"] - np.timedelta64(1, "D")
+
+        out = out.astype("datetime64[h]", copy=False)
+        out += x["hour"].astype("timedelta64[h]")
+
+        out = out.astype("datetime64[m]", copy=False)
+        out += x["minute"].astype("timedelta64[m]")
+
+        out = out.astype("datetime64[s]", copy=False)
+        out += x["second"].astype("timedelta64[s]")
+
+        out = out.astype("datetime64[us]", copy=False)
+        out += x["microsecond"].astype("timedelta64[us]")
 
         return out  # type: ignore
 
-    @property
+    raise NotImplementedError
+
+
+# ............................................................................................... #
+# unix
+# ............................................................................................... #
+def to_unixtime(x: NDArray[datetime64 | calendar | julian | unix]) -> NDArray[unix]:
+    if isdtype(x, unix):
+        return x
+    elif isdtype(x, datetime64):
+        return x.astype(unix, copy=True)
+    elif isdtype(x, julian):
+        return np.ceil((x - UNIX_EPOCH) * 86400).astype(unix, copy=False)
+    elif isdtype(x, calendar):
+        return (
+            to_datetime64(x)
+            .astype("datetime64[s]", copy=False)  # drop microsecond precision
+            .astype(unix, copy=False)
+        )
+
+    raise NotImplementedError
+
+
+# ............................................................................................... #
+# julian
+# ............................................................................................... #
+def to_julian_day(x: NDArray[datetime64 | calendar | julian | unix]) -> NDArray[julian]:
+    if isdtype(x, julian):
+        return x
+
+    cd = to_calendar(x)
+
+    Y = cd["year"]
+    M = cd["month"]
+    D = cd["day"]
+    h = cd["hour"]
+    m = cd["minute"]
+    s = cd["second"]
+    ms = cd["microsecond"]
+
+    f = np.ceil((M - 14) / 12)
+    ymd = (
+        np.ceil((1461 * (Y + 4800 + f)) / 4)
+        + np.ceil((367 * (M - 2 - 12 * f)) / 12)
+        - np.ceil((3 * np.ceil((Y + 4900 + f) / 100)) / 4)
+        + D
+        - 32075
+    )
+    hms = (h * 3600 + m * 60 + (s + (ms / 1_000_000))) / 86400
+    return ymd + hms - 0.5
+
+
+_string_map = {
+    "datetime64": datetime64,
+    "calendar": calendar,
+    "julian": julian,
+    "unix": unix,
+}
+
+_function_map: Mapping[
+    type[datetime64 | calendar | julian | unix], Callable[[NDArray[Any]], NDArray[Any]]
+] = {datetime64: to_datetime64, calendar: to_calendar, julian: to_julian_day, unix: to_unixtime}
+
+
+def cast_to(
+    x: NDArray[datetime64 | calendar | julian | unix], dtype: type[_DT2] | str
+) -> NDArray[_DT2]:
+    if isinstance(dtype, str):
+        return _function_map[_string_map[dtype]](x)
+
+    return _function_map[dtype](x)
+
+
+class timeseries(np.ndarray[Any, np.dtype[_DT1]]):
+    @overload
+    def __new__(
+        cls,
+        data: Any,
+        dtype: L[
+            "datetime64",
+            "datetime64[Y]",
+            "datetime64[M]",
+            "datetime64[W]",
+            "datetime64[D]",
+            "datetime64[h]",
+            "datetime64[m]",
+            "datetime64[s]",
+            "datetime64[ms]",
+            "datetime64[us]",
+            "datetime64[ns]",
+        ] = ...,
+    ) -> timeseries[datetime64]: ...
+    @overload
+    def __new__(
+        cls,
+        data: Any,
+        dtype: np.dtype[_DT1] = ...,
+    ) -> timeseries[_DT1]: ...
+    def __new__(
+        cls,
+        data: Any,
+        dtype: np.dtype[_DT1]
+        | L[
+            "datetime64",
+            "datetime64[Y]",
+            "datetime64[M]",
+            "datetime64[W]",
+            "datetime64[D]",
+            "datetime64[h]",
+            "datetime64[m]",
+            "datetime64[s]",
+            "datetime64[ms]",
+            "datetime64[us]",
+            "datetime64[ns]",
+        ]
+        | None = None,
+    ) -> timeseries[Any]:
+        return np.array(data, dtype).view(timeseries)
+
+    @overload
+    def to(self, dtype: L["unix"]) -> timeseries[unix]: ...
+    @overload
+    def to(self, dtype: L["datetime64"]) -> timeseries[datetime64]: ...
+    @overload
+    def to(self, dtype: L["calendar"]) -> timeseries[calendar]: ...
+    @overload
+    def to(self, dtype: L["julian"]) -> timeseries[julian]: ...
+    @overload
+    def to(self, dtype: type[_DT2]) -> timeseries[_DT2]: ...
+    def to(
+        self, dtype: type[_DT2] | L["unix", "datetime64", "calendar", "julian"]
+    ) -> timeseries[Any]:
+        return cast_to(self, dtype).view(timeseries)
+
+    def to_date(self) -> timeseries[calendar]:
+        return self.to(calendar)
+
+    def to_calendar(self) -> timeseries[calendar]:
+        return self.to(calendar)
+
+    def to_datetime64(self) -> timeseries[datetime64]:
+        return self.to(datetime64)
+
+    def to_unixtime(self) -> timeseries[unix]:
+        return self.to(unix)
+
+    def to_julian_day(self) -> timeseries[julian]:
+        return self.to(julian)
+
     def delta_t(self) -> NDArray[np.float64]:
-        return delta_t(self.years, self.months)
+        date = self.to_date().view(np.recarray)
 
-
-def timeseries(
-    datetime: (
-        SupportsArray[np.int_ | np.float_ | np.str_]
-        | NestedSequence[SupportsArray[np.int_ | float_ | np.str_]]
-        | NestedSequence[str | datetime.datetime | int | float]
-        | str
-        | datetime.datetime
-        | int
-        | float
-        | np.int_
-        | float_
-        | np.str_
-    ),
-) -> Timeseries:
-    dt = np.asarray(datetime, dtype=np.datetime64)
-    out = np.empty((7,) + dt.shape, dtype="u4")
-    Y, M, D, h, m, s = (dt.astype(f"M8[{x}]") for x in "YMDhms")
-    out[0] = Y + 1970  # Gregorian Year
-    out[1] = (M - Y) + 1  # month
-    out[2] = (D - M) + 1  # day
-    out[3] = (dt - D).astype("m8[h]")  # hour
-    out[4] = (dt - h).astype("m8[m]")  # minute
-    out[5] = (dt - m).astype("m8[s]")  # second
-    out[6] = (dt - s).astype("m8[us]")  # microsecond
-
-    return Timeseries(*out)
+        return delta_t(date["year"], date["month"])

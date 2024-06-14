@@ -35,9 +35,15 @@ __all__ = [
     "ccl",
     "downdraft_cape",
     "most_unstable_parcel",
+    "most_unstable_parcel_index",
     # .utils
     "timeseries",
 ]
+
+try:
+    from ._version import __version__
+except ImportError:
+    __version__ = "undefined"
 
 from . import functional
 from ._core import OPENMP_ENABLED, moist_lapse, parcel_profile, parcel_profile_with_lcl
@@ -60,7 +66,6 @@ from ._ufunc import (
     wind_direction,
     wind_magnitude,
 )
-from ._version import __version__
 from .core import (
     cape_cin,
     ccl,
@@ -69,5 +74,6 @@ from .core import (
     lfc,
     mixing_ratio,
     most_unstable_parcel,
+    most_unstable_parcel_index,
 )
 from .utils import timeseries
