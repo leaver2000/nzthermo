@@ -9,7 +9,6 @@ the original implementation in areas where previously only support for `1D profi
 
 from __future__ import annotations
 
-import warnings
 from typing import Any, Final, Literal as L, TypeVar
 
 import numpy as np
@@ -176,7 +175,10 @@ def _multiple_el_lfc_options(
     return Vector1d(x[idx], y[idx])
 
 
-_USING_EXTRA_EL_LOGIC = False
+def anyz(
+    x: np.ndarray[shape[N, Z], np.dtype[float_]],
+) -> np.ndarray[shape[N, L[1]], np.dtype[np.bool_]]:
+    return np.any(x, axis=1, keepdims=True)
 
 
 def _el_lfc(
@@ -199,7 +201,7 @@ def _el_lfc(
     if parcel_temperature_profile is None:
         parcel_temperature_profile = core.parcel_profile(pressure, t0, td0)
 
-    lcl_p, lcl_t = (x[:, newaxis] for x in lcl(p0, t0, td0))
+    LCL = Vector1d.from_func(lcl, p0, t0, td0).unsqueeze()
     pressure, parcel_temperature_profile, temperature = (
         pressure[:, 1:],
         parcel_temperature_profile[:, 1:],
@@ -215,65 +217,41 @@ def _el_lfc(
         log_x=True,
     )
     if pick == "EL":
-        return EL.where(EL.pressure < lcl_p).pick(which_el)
+        return EL.where(EL.is_above(LCL)).pick(which_el)
 
     # find the Level of Free Convection (LFC)
-    lfc_p, lfc_t = F.intersect_nz(
+    positive_area_above_the_LCL = LCL.is_above(pressure, close=True)
+    parcel_temperature_profile, temperature = (
+        np.where(positive_area_above_the_LCL, parcel_temperature_profile, np.nan),
+        np.where(positive_area_above_the_LCL, temperature, np.nan),
+    )
+    LFC = F.intersect_nz(
         pressure,
         parcel_temperature_profile,
         temperature,
         "increasing",
         log_x=True,
     )
-    potential = lfc_p < lcl_p  # ABOVE: the LCL
 
-    # positive_area_above_the_LCL = less_or_close(pressure, lcl_p)
-    positive_area_above_the_LCL = pressure < lcl_p
+    no_lfc = LFC.is_nan().all(axis=1, keepdims=True)
 
-    # LFC does not exist or is LCL if len(x) == 0:
-    no_lfc = np.isnan(lfc_p).all(axis=1, keepdims=True)
-
-    lfc_exists_and_has_potential = ~no_lfc & potential
-    lfc_is_the_lcl = no_lfc & greater_or_close(
-        np.where(positive_area_above_the_LCL, parcel_temperature_profile, np.nan),
-        np.where(positive_area_above_the_LCL, temperature, np.nan),
+    lfc_is_the_lfc = ~no_lfc & LFC.is_above(LCL)
+    lfc_is_the_lcl = no_lfc & _greater_or_close(parcel_temperature_profile, temperature).astype(
+        np.bool_
     ).any(axis=1, keepdims=True)
-    # if _USING_EXTRA_EL_LOGIC:
-    # this causes some of the tests to fail but other to pass with a higher precision.
-    # not really quite sure where to go with this.
 
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=RuntimeWarning)
+    lfc_is_the_lcl |= ~no_lfc & LCL.is_above(LFC.bottom()).any(axis=1, keepdims=True)
 
-        lfc_is_the_lcl |= np.logical_and(
-            lfc_p > lcl_p,
-            (np.nanmax(EL.pressure, axis=1, keepdims=True) < lcl_p),
-            # np.isnan(EL.pressure).all(axis=1, keepdims=True),
-        ).any(axis=1, keepdims=True)
-
-    condlist = [
-        lfc_exists_and_has_potential,
-        lfc_is_the_lcl,
-    ]
-
-    lfc_p = np.select(condlist, [lfc_p, lcl_p], np.nan)
-    lfc_t = np.select(condlist, [lfc_t, lcl_t], np.nan)
-
-    if which_lfc == "top":
-        LFC = Vector1d(
-            np.nanmin(lfc_p, axis=1),
-            np.nanmin(lfc_t, axis=1),
-        )
-    else:
-        LFC = Vector1d(
-            np.nanmax(lfc_p, axis=1),
-            np.nanmax(lfc_t, axis=1),
-        )
+    LFC = LFC.select(
+        [lfc_is_the_lfc, lfc_is_the_lcl],
+        [LFC.pressure, LCL.pressure],
+        [LFC.temperature, LCL.temperature],
+    )
 
     if pick == "LFC":
-        return LFC
+        return LFC.pick(which_lfc)
 
-    return EL.pick(which_el), LFC
+    return EL.pick(which_el), LFC.pick(which_lfc)
 
 
 @broadcast_nz
@@ -383,43 +361,33 @@ def cape_cin(
     temperature = virtual_temperature(temperature, saturation_mixing_ratio(pressure, dewpoint))
     parcel_profile = virtual_temperature(parcel_profile, parcel_mixing_ratio)
     # Calculate the EL limit of integration
-    (el_p, _), (lfc_p, _) = el_lfc(
+    (el_p, _), (lfc_p, _) = _el_lfc(
+        "BOTH",
         pressure,
         temperature,
         dewpoint,
         parcel_profile,
         which_lfc,
         which_el,
-        **_FASTPATH,
     )
 
-    # el_p[np.isnan(el_p)] = np.nanmin(pressure, axis=1)
+    el_p[np.isnan(el_p)] = np.nanmin(pressure, axis=1)
 
     lfc_p, el_p = np.reshape((lfc_p, el_p), (2, -1, 1))  # reshape for broadcasting
 
     X, Y = F.zero_crossings(pressure, parcel_profile - temperature)  # ((N, Z), ...)
 
-    mask = between_or_close(X, el_p, lfc_p).astype(np.bool_)
-    print(
-        "NOTE TO SELF currently the error occurs in highly specific scenarios while using EL bottom",
-        Y,
-        X,
-        el_p,
-        lfc_p,
-        sep="\n",
-    )
+    mask = _between_or_close(X, el_p, lfc_p).astype(np.bool_)
     x, y = np.where(mask[newaxis, ...], [X, Y], np.nan)
-    cape = Rd * F.nantrapz(y, np.log(x), axis=1)
-    # cape[(cape < 0.0)] = 0.0
+    CAPE = Rd * F.nantrapz(y, np.log(x), axis=1)
+    CAPE[(CAPE < 0.0)] = 0.0
 
-    # X is below the LFC
-    mask = greater_or_close(X, lfc_p).astype(np.bool_)
+    mask = _greater_or_close(X, lfc_p).astype(np.bool_)
     x, y = np.where(mask[newaxis, ...], [X, Y], np.nan)
+    CIN = Rd * F.nantrapz(y, np.log(x), axis=1)
+    CIN[(CIN > 0.0)] = 0.0
 
-    cin = Rd * F.nantrapz(y, np.log(x), axis=1)
-    cin[(cin > 0.0)] = 0.0
-
-    return cape, cin
+    return CAPE, CIN
 
 
 @broadcast_nz

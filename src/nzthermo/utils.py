@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import functools
-import textwrap
 from typing import (
     Any,
     Callable,
@@ -12,6 +11,7 @@ from typing import (
     NamedTuple,
     ParamSpec,
     Self,
+    Sequence,
     TypeGuard,
     TypeVar,
     overload,
@@ -20,7 +20,7 @@ from typing import (
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from ._ufunc import delta_t
+from ._ufunc import delta_t, greater_or_close, less_or_close
 from .typing import Kelvin, N, NestedSequence, Pascal, SupportsDType, Z, shape
 
 _T = TypeVar("_T")
@@ -28,7 +28,7 @@ _P = ParamSpec("_P")
 float_ = TypeVar("float_", np.float_, np.floating[Any], covariant=True)
 
 
-class VectorNd(NamedTuple, Generic[_T, float_]):
+class PVectorNd(NamedTuple, Generic[_T, float_]):
     pressure: Pascal[np.ndarray[_T, np.dtype[float_]]]
     temperature: Kelvin[np.ndarray[_T, np.dtype[float_]]]
 
@@ -45,21 +45,74 @@ class VectorNd(NamedTuple, Generic[_T, float_]):
             np.where(condition, self.temperature, y_fill),
         )
 
+    def is_below(
+        self, pressure: Pascal[NDArray[np.float_]] | PVectorNd, *, close: bool = False
+    ) -> NDArray[np.bool_]:
+        if isinstance(pressure, PVectorNd):
+            pressure = pressure.pressure
+        if not close:
+            return self.pressure > pressure
+
+        return less_or_close(self.pressure, pressure).astype(np.bool_)
+
+    def is_above(
+        self, pressure: Pascal[NDArray[np.float_]] | PVectorNd, *, close: bool = False
+    ) -> NDArray[np.bool_]:
+        if isinstance(pressure, PVectorNd):
+            pressure = pressure.pressure
+        if not close:
+            return self.pressure < pressure
+
+        return greater_or_close(self.pressure, pressure).astype(np.bool_)
+
+    def is_nan(self) -> NDArray[np.bool_]:
+        return np.isnan(self.pressure)
+
+    def select(
+        self,
+        condlist: Sequence[NDArray[np.bool_]],
+        x_choice: Sequence[NDArray[float_]],
+        y_choice: Sequence[NDArray[float_]],
+        x_default: ArrayLike = np.nan,
+        y_default: ArrayLike | None = None,
+    ) -> Self:
+        if y_default is None:
+            y_default = x_default
+        return self.__class__(
+            np.select(condlist, x_choice, default=x_default),
+            np.select(condlist, y_choice, default=y_default),
+        )
+
     def __repr__(self) -> str:
-        prefix = "  "
         return "\n".join(
-            f"{name} {textwrap.indent(np.array2string(x), prefix).removeprefix(prefix)}"
+            f"[{name}, {x.shape}]\n{np.array2string(x, precision=2)}"
             for name, x in zip(["pressure", "temperature"], self)
         )
 
     def __str__(self) -> str:
         return self.__repr__()
 
+    @classmethod
+    def from_func(
+        cls,
+        func: Callable[
+            _P,
+            tuple[Pascal[NDArray[float_]], Kelvin[NDArray[float_]]],
+        ],
+        *args: _P.args,
+        **kwargs: _P.kwargs,
+    ) -> Self:
+        x, y = func(*args, **kwargs)
+        return cls(x, y)
 
-class Vector1d(VectorNd[shape[N], float_]): ...
+
+class Vector1d(PVectorNd[shape[N], float_]):
+    def unsqueeze(self) -> Vector2d[float_]:
+        s = np.s_[:, np.newaxis]
+        return Vector2d(self.pressure[s], self.temperature[s])
 
 
-class Vector2d(VectorNd[shape[N, Z], float_]):
+class Vector2d(PVectorNd[shape[N, Z], float_]):
     def pick(self, which: L["bottom", "top"]) -> Vector1d[float_]:
         p, t = self.pressure, self.temperature
         nx = np.arange(p.shape[0])
@@ -75,6 +128,11 @@ class Vector2d(VectorNd[shape[N, Z], float_]):
 
     def top(self) -> Vector1d[float_]:
         return self.pick("top")
+
+    def sort(self) -> Self:
+        N = self.pressure.shape[0]
+        sort = np.arange(N)[:, np.newaxis], np.argsort(self.pressure, axis=1, kind="quicksort")
+        return self.__class__(self.pressure[sort], self.temperature[sort])
 
 
 @overload
