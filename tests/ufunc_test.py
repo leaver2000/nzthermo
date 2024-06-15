@@ -5,6 +5,7 @@ from metpy.units import units
 from numpy.testing import assert_allclose
 
 from nzthermo._ufunc import (
+    dewpoint_from_specific_humidity,
     equivalent_potential_temperature,
     lcl,
     potential_temperature,
@@ -13,8 +14,22 @@ from nzthermo._ufunc import (
     wind_components,
 )
 
+Pa = units.pascal
+K = units.kelvin
+dimensionless = units.dimensionless
 WIND_DIRECTIONS = np.array([0, 90, 180, 270, 360])
 WIND_MAGNITUDES = np.array([10, 20, 30, 40, 50])
+
+
+def test_dewpoints() -> None:
+    pressure = 101325.0
+    sh = 0.01
+
+    assert_allclose(
+        dewpoint_from_specific_humidity(pressure, sh),
+        mpcalc.dewpoint_from_specific_humidity(pressure * Pa, sh * dimensionless).to(K).m,
+        rtol=1e-4,
+    )
 
 
 def test_wind_components() -> None:
@@ -38,9 +53,7 @@ def test_wet_bulb_temperature(dtype):
     assert_allclose(
         wet_bulb_temperature(pressure, temperature, dewpoint),
         [
-            mpcalc.wet_bulb_temperature(
-                pressure[i] * units.pascal, temperature[i] * units.kelvin, dewpoint[i] * units.kelvin
-            ).m
+            mpcalc.wet_bulb_temperature(pressure[i] * Pa, temperature[i] * K, dewpoint[i] * K).m
             for i in range(len(temperature))
         ],
         rtol=1e-4,
@@ -55,7 +68,7 @@ def test_potential_temperature(dtype):
     assert_allclose(
         potential_temperature(pressure, temperature),
         [
-            mpcalc.potential_temperature(pressure[i] * units.pascal, temperature[i] * units.kelvin).m
+            mpcalc.potential_temperature(pressure[i] * Pa, temperature[i] * K).m
             for i in range(len(temperature))
         ],
         rtol=1e-4,
@@ -71,9 +84,7 @@ def test_lcl(dtype) -> None:
     lcl_p, lcl_t = lcl(pressure, temperature, dewpoint)
 
     for i in range(len(temperature)):
-        lcl_p_, lcl_t_ = mpcalc.lcl(
-            pressure[i] * units.pascal, temperature[i] * units.kelvin, dewpoint[i] * units.kelvin
-        )
+        lcl_p_, lcl_t_ = mpcalc.lcl(pressure[i] * Pa, temperature[i] * K, dewpoint[i] * K)
         assert_allclose(lcl_p[i], lcl_p_.m, rtol=1e-4)  # type: ignore
         assert_allclose(lcl_t[i], lcl_t_.m, rtol=1e-4)
 
@@ -87,7 +98,7 @@ def test_equivalent_potential_temperature(dtype):
         equivalent_potential_temperature(pressure, temperature, dewpoint),
         [
             mpcalc.equivalent_potential_temperature(
-                pressure[i] * units.pascal, temperature[i] * units.kelvin, dewpoint[i] * units.kelvin
+                pressure[i] * Pa, temperature[i] * K, dewpoint[i] * K
             ).m
             for i in range(len(temperature))
         ],
@@ -104,7 +115,7 @@ def test_wet_bulb_potential_temperature(dtype):
         wet_bulb_potential_temperature(pressure, temperature, dewpoint),
         [
             mpcalc.wet_bulb_potential_temperature(
-                pressure[i] * units.pascal, temperature[i] * units.kelvin, dewpoint[i] * units.kelvin
+                pressure[i] * Pa, temperature[i] * K, dewpoint[i] * K
             ).m  # type: ignore
             for i in range(len(temperature))
         ],

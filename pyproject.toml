@@ -30,21 +30,26 @@ write_to = "src/nzthermo/_version.py"
 testpaths = ["tests/"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
 markers = [
+    "self: this is a flag to target a specifc test",
     "ccl: test functions for convective condensation level",
     # "lcl: test functions for lifting condensation level",
     "lfc: test functions for level of free convection",
     "el: test functions for equilibrium level",
     "cape: test functions for convective available potential energy",
+    "cape_cin",
     "cape_el",
     "cape_el_top",
     "cape_el_bottom",
     "cape_lfc",
     "cape_lfc_top",
     "cape_lfc_bottom",
-
+    "mu_cape",
+    "parcel_profile",
+    "regression",
 ]
+
+pythonpath = ["src"]
 
 [tool.coverage.run]
 plugins = ["Cython.Coverage"]
@@ -102,3 +107,9 @@ ignore = [
     "E501", # line too long
     "E741", # do not use variables named 'l', 'O', or 'I'
 ]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.12"
+reportOverlappingOverload = "none"

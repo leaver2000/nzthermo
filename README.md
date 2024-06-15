@@ -30,10 +30,22 @@ units of `Kelvin`.
 
 ## Getting Started
 
+The C++ source code uses `templates` & `concepts` to support both `double` and `float` data types.
+This requires when building from source that `-std=c++20` is available. If working from an older
+version of Ubuntu you can update the default `c++` compiler as such.
+
+```bash
+sudo apt update -y
+sudo apt install g++-10 -y
+sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 60
+```
+
+The code can be installed into a virtual environment with the following commands.
+
 ```bash
 python3.11 -m venv .venv
 source .venv/bin/activate
-pip install .           
+pip install git+https://github.com/leaver2000/nzthermo@master
 ```
 
 ### Development
@@ -43,7 +55,10 @@ There are some additional tools that useful for development. These can be instal
 
 ```bash
 pip install -r requirements.dev.txt
+# dump the build directly into the src/ directory and generate the _version.py
+pip install --no-deps --upgrade --target src/ .  
 python setup.py build_ext --inplace
+python setup.py clean --all build_ext --inplace
 ```
 
 ### functions

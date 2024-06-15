@@ -32,6 +32,32 @@ ctypedef fused integer:
     long
 
 
+cdef T abs(T x) noexcept nogil:
+    return x if x > 0 else -x
+
+@cython.ufunc
+cdef bint less_or_close(T x, T y) noexcept nogil:
+    return (
+        x == x and y == y # nan check
+        and (x < y or abs(x - y) <= (1.0e-05 * abs(y)))
+    )
+
+@cython.ufunc
+cdef bint greater_or_close(T x, T y) noexcept nogil:
+    return (
+        x == x and y == y # nan check
+        and (x > y or abs(x - y) <= (1.0e-05 * abs(y)))
+    )
+
+@cython.ufunc
+cdef bint between_or_close(T x, T y0, T y1) noexcept nogil:
+    return (
+        x == x and y0 == y0 and y1 == y1 # nan check
+        and (x > y0 or abs(x - y0) <= (1.0e-05 * abs(y0)))
+        and (x < y1 or abs(x - y1) <= (1.0e-05 * abs(y1)))
+    )
+
+
 # ............................................................................................... #
 #  - wind
 # ............................................................................................... #
@@ -126,6 +152,11 @@ cdef T wobus(T temperature) noexcept nogil:
     return C.wobus(temperature)
 
 # 2x1
+@cython.ufunc
+cdef T mixing_ratio(T partial_pressure, T total_pressure) noexcept nogil:
+    return epsilon * partial_pressure / (total_pressure - partial_pressure)
+
+
 @cython.ufunc # theta
 cdef T potential_temperature(T pressure, T temperature) noexcept nogil:
     return C.potential_temperature(pressure, temperature)
@@ -171,21 +202,14 @@ cdef T wet_bulb_potential_temperature(T pressure, T temperature, T dewpoint) noe
 
 @cython.ufunc 
 cdef T wet_bulb_temperature(T pressure, T temperature, T dewpoint) noexcept nogil:
-    cdef: # the ufunc signature doesn't support keyword arguments
-        size_t max_iter = 50
-        T eps  = 0.1
-        T step = 1000.0
-
-    return C.wet_bulb_temperature(pressure, temperature, dewpoint, eps, step, max_iter)
+    return C.wet_bulb_temperature(pressure, temperature, dewpoint)
 
 
 @cython.ufunc 
 cdef T lcl_pressure(T pressure, T temperature, T dewpoint) noexcept nogil:
-    cdef:
-        size_t max_iter = 50
-        T eps = 0.1
+    return C.lcl_pressure(pressure, temperature, dewpoint)
+    
 
-    return C.lcl_pressure(pressure, temperature, dewpoint, eps, max_iter)
 
 # 3x2
 @cython.ufunc
@@ -197,10 +221,7 @@ cdef (double, double) lcl(T pressure, T temperature, T dewpoint) noexcept nogil:
     # - maintain gil
     # - cast to double 
     # - write the template in C
-    cdef:
-        size_t max_iter = 50
-        T eps = 0.1
-        C.LCL[T] lcl = C.lcl(pressure, temperature, dewpoint, eps, max_iter)
+    cdef C.lcl[T] lcl = C.lcl[T](pressure, temperature, dewpoint)
 
     return <double>lcl.pressure, <double>lcl.temperature
 

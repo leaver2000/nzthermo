@@ -1,10 +1,17 @@
-from typing import Annotated, TypeVar
+from typing import Annotated, ParamSpec, TypeVar
 
 from ._typing import _ufunc1x1, _ufunc2x1, _ufunc2x2, _ufunc3x1, _ufunc3x2
-from .typing import Kelvin, Pascal, Ratio
+from .typing import Dimensionless, Kelvin, Pascal
 
+_P = ParamSpec("_P")
 _T = TypeVar("_T")
 
+@_ufunc2x1
+def less_or_close(x: float, y: float) -> bool: ...
+@_ufunc2x1
+def greater_or_close(x: float, y: float) -> bool: ...
+@_ufunc3x1
+def between_or_close(x: float, y0: float, y1: float) -> bool: ...
 @_ufunc2x1
 def delta_t(year: int, month: int) -> float: ...
 
@@ -30,6 +37,8 @@ def wobus(temperature: Kelvin[float]) -> float: ...
 
 # 2x1
 @_ufunc2x1
+def mixing_ratio(partial_pressure: Pascal[float], total_pressure: Pascal[float]) -> float: ...
+@_ufunc2x1
 def potential_temperature(
     pressure: Pascal[float], temperature: Kelvin[float]
 ) -> Theta[Kelvin[float]]: ...
@@ -40,12 +49,12 @@ def virtual_temperature(
     temperature: Kelvin[float], vapor_pressure: Pascal[float]
 ) -> Kelvin[float]: ...
 @_ufunc2x1
-def vapor_pressure(pressure: Pascal[float], mixing_ratio: float) -> Pascal[float]: ...
-
-# cdef T dewpoint_from_specific_humidity(T pressure, T specific_humidity) noexcept nogil:
+def vapor_pressure(
+    pressure: Pascal[float], mixing_ratio: Dimensionless[float]
+) -> Pascal[float]: ...
 @_ufunc2x1
 def dewpoint_from_specific_humidity(
-    pressure: Pascal[float], specific_humidity: Ratio[float]
+    pressure: Pascal[float], specific_humidity: Dimensionless[float]
 ) -> Kelvin[float]: ...
 
 # 3x1

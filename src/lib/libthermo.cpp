@@ -76,7 +76,7 @@ template <floating T>
 constexpr T wet_bulb_potential_temperature(
   const T pressure, const T temperature, const T dewpoint
 ) noexcept {
-    const T theta_e = equivalent_potential_temperature<T>(pressure, temperature, dewpoint);
+    const T theta_e = equivalent_potential_temperature(pressure, temperature, dewpoint);
     if (theta_e <= 173.15)
         return theta_e;
     const T x = theta_e / T0;
@@ -111,7 +111,7 @@ constexpr T find_lcl(T pressure, T reference_pressure, T temperature, T mixing_r
     const T td = dewpoint(pressure, mixing_ratio);
     const T p = reference_pressure * pow(td / temperature, 1.0 / (Rd / Cp));
 
-    return std::isnan(p) ? pressure : p;
+    return isnan(p) ? pressure : p;
 }
 
 template <floating T>
@@ -122,15 +122,22 @@ constexpr T lcl_pressure(
 
     return fixed_point(find_lcl<T>, max_iters, eps, pressure, temperature, r);
 }
+
 template <floating T>
-constexpr LCL<T> lcl(
+constexpr lcl<T>::lcl(
   const T pressure, const T temperature, const T dewpoint, const T eps, const size_t max_iters
 ) noexcept {
     const T r = mixing_ratio(saturation_vapor_pressure(dewpoint), pressure);
     const T lcl_p = fixed_point(find_lcl<T>, max_iters, eps, pressure, temperature, r);
     const T lcl_t = libthermo::dewpoint(lcl_p, r);
 
-    return {lcl_p, lcl_t};
+    this->pressure = lcl_p;
+    this->temperature = lcl_t;
+}
+
+template <floating T>
+constexpr T lcl<T>::wet_bulb_temperature(const T pressure, const T step) noexcept {
+    return moist_lapse(this->pressure, pressure, this->temperature, step);
 }
 
 template <floating T>
@@ -142,10 +149,44 @@ constexpr T wet_bulb_temperature(
   const T step,
   const size_t max_iters
 ) noexcept {
-    const LCL x = lcl(pressure, temperature, dewpoint, eps, max_iters);
-    return moist_lapse(x.pressure, pressure, x.temperature, step);
+    return lcl<T>(pressure, temperature, dewpoint, eps, max_iters)
+      .wet_bulb_temperature(pressure, step);
 }
 
+/**
+ * 
+ * \author John Hart - NSSFC KCMO / NWSSPC OUN
+ *
+ * \brief Computes the difference between the wet-bulb potential<!--
+ * --> temperatures for saturated and dry air given the temperature.
+ *
+ * The Wobus Function (wobf) is defined as the difference between
+ * the wet-bulb potential temperature for saturated air (WBPTS)
+ * and the wet-bulb potential temperature for dry air (WBPTD) given
+ * the same temperature in Celsius.
+ *
+ * WOBF(T) := WBPTS - WBPTD
+ *
+ * Although WBPTS and WBPTD are functions of both pressure and
+ * temperature, it is assumed their difference is a function of
+ * temperature only. The difference is also proportional to the
+ * heat imparted to a parcel.
+ *
+ * This function uses a polynomial approximation to the wobus function,
+ * fitted to values in Table 78 of PP.319-322 of the Smithsonian Meteorological
+ * Tables by Roland List (6th Revised Edition). Herman Wobus, a mathematician
+ * for the Navy Weather Research Facility in Norfolk, VA computed these
+ * coefficients a very long time ago, as he was retired as of the time of
+ * the documentation found on this routine written in 1981.
+ *
+ * It was shown by Robert Davies-Jones (2007) that the Wobus function has
+ * a slight dependence on pressure, which results in errors of up to 1.2
+ * degrees Kelvin in the temperature of a lifted parcel.
+ *
+ * @param   temperature     (degK)
+ *
+ * @return  wobf            (degK)
+ */
 template <floating T>
 constexpr T wobus(T temperature) {
     T pol;

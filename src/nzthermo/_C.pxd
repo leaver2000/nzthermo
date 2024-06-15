@@ -24,6 +24,15 @@ cdef extern from "functional.cpp" namespace "libthermo" nogil:
         T* x, T* a, T* b, size_t size, bint log_x, bint increasing, bint bottom
     ) noexcept
 
+    size_t search_sorted[T](T* x, T value, size_t size, bint inverted) noexcept
+
+
+cdef inline size_t search_pressure(Float[:] pressure, Float value) noexcept nogil:
+    cdef size_t Z = pressure.shape[0]
+    if pressure[Z - 1] > value:
+        return Z
+    return search_sorted(&pressure[0], value, Z, True)
+
 
 cdef extern from "wind.cpp" namespace "libthermo" nogil:
     cdef cppclass WindComponents[T]:
@@ -49,14 +58,13 @@ cdef extern from "libthermo.cpp" namespace "libthermo" nogil:
     const double epsilon # `Mw / Md` - molecular weight ratio
     const double kappa   # `Rd / Cp`  - ratio of gas constants
 
-    cdef cppclass LCL[T]:
+    cdef cppclass lcl[T]:
         T pressure
         T temperature
+        lcl() noexcept
+        lcl(T pressure, T temperature) noexcept
+        lcl(T pressure, T temperature, T dewpoint) noexcept
 
-    cdef cppclass Parcel[T]:
-        T pressure
-        T temperature
-        T dewpoint
     # 1x1
     T saturation_vapor_pressure[T](T temperature) noexcept
     # 2x1
@@ -69,16 +77,11 @@ cdef extern from "libthermo.cpp" namespace "libthermo" nogil:
     T dry_lapse[T](T pressure, T reference_pressure, T temperature) noexcept
     # @overload
     T dewpoint[T](T vapor_pressure) noexcept
-    # @overload
-    T dewpoint_from_mixing_ratio "libthermo::dewpoint" [T](T pressure, T mixing_ratio) noexcept
-    LCL[T] lcl[T](T pressure, T temperature, T dewpoint, T eps, size_t max_iters) noexcept
-    T lcl_pressure[T](T pressure, T temperature, T dewpoint, T eps, size_t max_iters) noexcept
-    T moist_lapse[T](T pressure, T next_pressure, T temperature, T step) noexcept
+    T dewpoint[T](T pressure, T mixing_ratio) noexcept # .. overload ..
+    T lcl_pressure[T](T pressure, T temperature, T dewpoint) noexcept
+    T moist_lapse[T](T pressure, T next_pressure, T temperature) noexcept
     T potential_temperature[T](T pressure, T temperature) noexcept # theta
     T equivalent_potential_temperature[T](T pressure, T temperature, T dewpoint) noexcept # theta_e
     T wet_bulb_potential_temperature[T](T pressure, T temperature, T dewpoint) noexcept # theta_w
-    T wet_bulb_temperature[T](
-        T pressure, T temperature, T dewpoint, T eps, T step, size_t max_iters
-    ) noexcept
+    T wet_bulb_temperature[T](T pressure, T temperature, T dewpoint) noexcept
     T wobus[T](T temperature) noexcept
-

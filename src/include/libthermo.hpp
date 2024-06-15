@@ -10,6 +10,9 @@
 #include <common.hpp>
 
 namespace libthermo {
+#define DEFAULT_STEP 1000.0  // `(Pa)` - default step for moist_lapse
+#define DEFAULT_EPS 0.1  // default epsilon for lcl
+#define DEFAULT_ITERS 5  // default number of iterations for lcl
 
 /* ........................................{ const  }........................................... */
 
@@ -26,12 +29,6 @@ static constexpr double epsilon = Mw / Md;  // `Mw / Md` - molecular weight rati
 static constexpr double kappa = Rd / Cp;  // `Rd / Cp`  - ratio of gas constants
 
 /* ........................................{ struct }........................................... */
-template <floating T>
-struct LCL {
-    T pressure;
-    T temperature;
-};
-
 template <floating T>
 struct Parcel {
     T pressure;
@@ -80,75 +77,63 @@ constexpr T wet_bulb_potential_temperature(
 
 template <floating T>
 constexpr T moist_lapse(
-  const T pressure, const T next_pressure, const T temperature, const T step
+  const T pressure, const T next_pressure, const T temperature, const T step = DEFAULT_STEP
 ) noexcept;
 
 /* ........................................{ lcl  }........................................... */
 
 template <floating T>
-constexpr LCL<T> lcl(
-  const T pressure, const T temperature, const T dewpoint, const T eps, const size_t max_iters
+constexpr T lcl_pressure(
+  const T pressure,
+  const T temperature,
+  const T dewpoint,
+  const T eps = DEFAULT_EPS,
+  const size_t max_iters = DEFAULT_ITERS
 ) noexcept;
 
 template <floating T>
-constexpr T lcl_pressure(
-  const T pressure, const T temperature, const T dewpoint, const T eps, const size_t max_iters
-) noexcept;
+class lcl {
+    // TODO: a base class can be made to avoid code duplication for any struct that
+    // may be used to produce pressure and temperature fields. Then just overload the
+    // constructor with the function arguments.
+  public:
+    T pressure, temperature;
+    // default constructor
+    constexpr lcl() noexcept = default;
+    // copy constructor
+    constexpr lcl(const lcl<T>& other) noexcept = default;
+    // move constructor
+    constexpr lcl(lcl<T>&& other) noexcept = default;
+    // copy assignment operator
+    constexpr lcl<T>& operator=(const lcl<T>& other) noexcept = default;
+    // destructor
+    ~lcl() noexcept = default;
+    constexpr lcl(const T pressure, const T temperature) noexcept
+        : pressure(pressure), temperature(temperature){};
+
+    constexpr lcl(
+      const T pressure,
+      const T temperature,
+      const T dewpoint,
+      const T eps = DEFAULT_EPS,
+      const size_t max_iters = DEFAULT_ITERS
+    ) noexcept;
+
+    constexpr T wet_bulb_temperature(const T pressure, const T step = DEFAULT_STEP) noexcept;
+};
 
 template <floating T>
 constexpr T wet_bulb_temperature(
   const T pressure,
   const T temperature,
   const T dewpoint,
-  const T eps,
-  const T step,
-  const size_t max_iters
+  const T eps = DEFAULT_EPS,
+  const T step = DEFAULT_STEP,
+  const size_t max_iters = DEFAULT_ITERS
 ) noexcept;
 
-// template <floating T>
-// constexpr T downdraft_cape(
-//   const T pressure[], const T temperature[], const T dewpoint[], const size_t size
-// ) noexcept;
-
-// template <floating T>
-// constexpr T cape_cin(
-//   const T pressure[], const T temperature[], const T dewpoint[], const size_t size
-// ) noexcept;
 /* ........................................{ sharp  }........................................... */
 
-/**
- * \author John Hart - NSSFC KCMO / NWSSPC OUN
- *
- * \brief Computes the difference between the wet-bulb potential<!--
- * --> temperatures for saturated and dry air given the temperature.
- *
- * The Wobus Function (wobf) is defined as the difference between
- * the wet-bulb potential temperature for saturated air (WBPTS)
- * and the wet-bulb potential temperature for dry air (WBPTD) given
- * the same temperature in Celsius.
- *
- * WOBF(T) := WBPTS - WBPTD
- *
- * Although WBPTS and WBPTD are functions of both pressure and
- * temperature, it is assumed their difference is a function of
- * temperature only. The difference is also proportional to the
- * heat imparted to a parcel.
- *
- * This function uses a polynomial approximation to the wobus function,
- * fitted to values in Table 78 of PP.319-322 of the Smithsonian Meteorological
- * Tables by Roland List (6th Revised Edition). Herman Wobus, a mathematician
- * for the Navy Weather Research Facility in Norfolk, VA computed these
- * coefficients a very long time ago, as he was retired as of the time of
- * the documentation found on this routine written in 1981.
- *
- * It was shown by Robert Davies-Jones (2007) that the Wobus function has
- * a slight dependence on pressure, which results in errors of up to 1.2
- * degrees Kelvin in the temperature of a lifted parcel.
- *
- * \param   temperature     (degK)
- *
- * \return  wobf            (degK)
- */
 template <floating T>
 constexpr T wobus(T temperature);
 
