@@ -362,20 +362,17 @@ cdef void parcel_profile_1d(
 
     lcl = C.lcl[T](p0, t0, dewpoint)
 
-
     # [dry ascent] 
-    # parcel temperature from the surface up to the LCL
-    stop = 1 # we start at the second level
-    while pressure[stop] >= lcl.pressure:
-        stop += 1
-
-    # stop = i # stop the dry ascent at the LCL
-    for i in prange(1, stop, schedule='dynamic'): # parallelize the dry ascent
+    # stop the dry ascent at the LCL
+    stop = C.search_pressure(pressure, lcl.pressure)
+    for i in prange(0, stop, schedule='dynamic'): # parallelize the dry ascent
         out[i] = C.dry_lapse(pressure[i], p0, t0)
+    
 
     # [ moist ascent ]
-    # parcel temperature from the LCL to the top of the atmosphere
-    moist_lapse_1d(out[stop:], pressure[stop:], lcl.pressure, lcl.temperature)
+    if stop != Z:
+        moist_lapse_1d(out[stop:], pressure[stop:], lcl.pressure, lcl.temperature)
+
 
 cdef T[:, :] parcel_profile_2d(
     T[:, :] pressure,
@@ -475,13 +472,10 @@ cdef void parcel_profile_with_lcl_1d(
     lcl = C.lcl[T](p0, t0, td0)
 
 
-    # [dry ascent] .. parcel temperature from the surface up to the LCL ..
-    stop = 1 # we start at the second level
-    while pressure[stop] >= lcl.pressure:
-        stop += 1 # we can speed up the search by using a binary search
 
-    pt[0] = t0
-    for i in prange(1, stop, schedule='dynamic'): # parallelize the dry ascent
+    # [dry ascent] .. parcel temperature from the surface up to the LCL ..
+    stop = C.search_pressure(pressure, lcl.pressure)
+    for i in prange(0, stop, schedule='dynamic'): # parallelize the dry ascent
         pt[i] = C.dry_lapse(pressure[i], p0, t0)
 
     ep[:stop] = pressure[:stop]
@@ -505,14 +499,13 @@ cdef void parcel_profile_with_lcl_1d(
         dewpoint[stop]
     )
     pt[stop] = lcl.temperature
-
     # [ moist ascent ] .. parcel temperature from the LCL to the top of the atmosphere ..
-    ep[stop + 1:] = pressure[stop:]
-    et[stop + 1:] = temperature[stop:]
-    etd[stop + 1:] = dewpoint[stop:]
+    if stop != Z:
+        ep[stop + 1:] = pressure[stop:]
+        et[stop + 1:] = temperature[stop:]
+        etd[stop + 1:] = dewpoint[stop:]
 
-    moist_lapse_1d(pt[stop + 1:], pressure[stop:], lcl.pressure, lcl.temperature)
-
+        moist_lapse_1d(pt[stop + 1:], pressure[stop:], lcl.pressure, lcl.temperature)
 
 
 cdef T[:, :, :] parcel_profile_with_lcl_2d(
@@ -536,7 +529,7 @@ cdef T[:, :, :] parcel_profile_with_lcl_2d(
                     out[1, i, :],
                     out[2, i, :],
                     out[3, i, :],
-                    pressure[0, :], 
+                    pressure[0, :], # broadcast 1d pressure array
                     temperature[i, :], 
                     dewpoint[i, :],
                 )

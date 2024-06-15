@@ -34,10 +34,14 @@ class PVectorNd(NamedTuple, Generic[_T, float_]):
 
     def where(
         self,
-        condition: np.ndarray[_T, np.dtype[np.bool_]],
+        condition: np.ndarray[_T, np.dtype[np.bool_]]
+        | Callable[[Self], np.ndarray[_T, np.dtype[np.bool_]]],
         x_fill: ArrayLike = np.nan,
         y_fill: ArrayLike | None = None,
     ) -> Self:
+        if callable(condition):
+            condition = condition(self)
+
         if y_fill is None:
             y_fill = x_fill
         return self.__class__(
@@ -104,6 +108,10 @@ class PVectorNd(NamedTuple, Generic[_T, float_]):
     ) -> Self:
         x, y = func(*args, **kwargs)
         return cls(x, y)
+
+    def reshape(self, *shape: int) -> tuple[Pascal[NDArray[float_]], Kelvin[NDArray[float_]]]:
+        p, t = np.reshape([self.pressure, self.temperature], (2, *shape))
+        return p, t
 
 
 class Vector1d(PVectorNd[shape[N], float_]):

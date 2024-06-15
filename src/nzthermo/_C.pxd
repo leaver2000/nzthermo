@@ -24,6 +24,15 @@ cdef extern from "functional.cpp" namespace "libthermo" nogil:
         T* x, T* a, T* b, size_t size, bint log_x, bint increasing, bint bottom
     ) noexcept
 
+    size_t search_sorted[T](T* x, T value, size_t size, bint inverted) noexcept
+
+
+cdef inline size_t search_pressure(Float[:] pressure, Float value) noexcept nogil:
+    cdef size_t Z = pressure.shape[0]
+    if pressure[Z - 1] > value:
+        return Z
+    return search_sorted(&pressure[0], value, Z, True)
+
 
 cdef extern from "wind.cpp" namespace "libthermo" nogil:
     cdef cppclass WindComponents[T]:
