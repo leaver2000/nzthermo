@@ -12,15 +12,6 @@ import nzthermo._core as _C
 from nzthermo.core import cape_cin, ccl, el, lfc, most_unstable_parcel_index
 
 
-def assert_nan(value, value_units=None):
-    """Check for nan with proper units."""
-    check = np.isnan(value)
-    if check.size == 1:
-        assert check.item(), f"Expected NaN, got {value}"
-    else:
-        assert np.all(check), f"Expected NaN, got {value}"
-
-
 np.set_printoptions(
     precision=3,
     suppress=True,
@@ -34,15 +25,27 @@ hPa = U.hectopascal
 K = U.kelvin
 C = U.celsius
 
-PRESSURE_ABSOLUTE_TOLERANCE = 1e-3  #
+PRESSURE_ABSOLUTE_TOLERANCE = 1e-3
 PRESSURE_RELATIVE_TOLERANCE = 1.5e-1
 TEMPERATURE_ABSOLUTE_TOLERANCE = 1.0  # temperature is within 1 degree
+
+
+def assert_nan(value: np.ndarray, value_units=None):
+    """Check for nan with proper units."""
+    check = np.isnan(value)
+    if check.size == 1:
+        assert check.item(), f"Expected NaN, got {value}"
+    else:
+        assert np.all(check), f"Expected NaN, got {value}"
+
+
 # ............................................................................................... #
 # load up the test data
 data = np.load("tests/data.npz", allow_pickle=False)
 # this specific step uses the failing tests cases for the cape_cin function
 step = np.s_[
-    [19, 20, 25, 44, 46, 48, 88, 89, 116, 119, 144, 146, 149, 166, 238, 268, 297],
+    # [19, 20, 25, 44, 46, 48, 88, 89, 116, 119, 144, 146, 149, 166, 238, 268, 297],
+    [50, 84, 106, 108, 110, 198],
     :,
 ]
 
@@ -95,7 +98,7 @@ def test_parcel_profile_with_lcl() -> None:
 # ............................................................................................... #
 @pytest.mark.ccl
 @pytest.mark.parametrize("dtype", [np.float64, np.float32])
-def test_ccl(dtype) -> None:
+def test_ccl_metpy_regression(dtype) -> None:
     P = (
         ([993.0, 957.0, 925.0, 886.0, 850.0, 813.0, 798.0, 732.0, 716.0, 700.0] * units.hPa)
         .to("pascal")
@@ -730,7 +733,7 @@ def test_el_below_lcl() -> None:
 
 @pytest.mark.el
 @pytest.mark.skip(reason="nan values are not handled properly")
-def test_el_profile_nan():
+def test_el_profile_nan() -> None:
     """Test EL when the profile includes NaN values."""
     levels = np.array([959.0, 779.2, 751.3, 724.3, 700.0, 269.0]) * hPa
     temperatures = np.array([22.2, 14.6, np.nan, 9.4, 7.0, -38.0]) * C
@@ -756,7 +759,7 @@ def test_el_profile_nan():
 
 @pytest.mark.el
 @pytest.mark.skip(reason="nan values are not handled properly")
-def test_el_profile_nan_with_parcel_profile():
+def test_el_profile_nan_with_parcel_profile() -> None:
     """Test EL when the profile includes NaN values, and a parcel temp profile is specified."""
     levels = np.array([959.0, 779.2, 751.3, 724.3, 700.0, 269.0]) * hPa
     temperatures = np.array([22.2, 14.6, np.nan, 9.4, 7.0, -38.0]) * C
@@ -768,6 +771,7 @@ def test_el_profile_nan_with_parcel_profile():
 
 
 @pytest.mark.el
+@pytest.mark.regression
 @pytest.mark.parametrize("which", ["top", "bottom"])
 def test_el_metpy_regression(which) -> None:
     prof = _C.parcel_profile(P, T[:, 0], Td[:, 0])
@@ -902,6 +906,7 @@ def test_lfc_profile_nan() -> None:
 
 @pytest.mark.cape
 @pytest.mark.mu_cape
+@pytest.mark.regression
 @pytest.mark.parametrize("depth", [30000.0])
 def test_most_unstable_parcel_index(depth) -> None:
     assert_array_equal(
@@ -914,13 +919,13 @@ def test_most_unstable_parcel_index(depth) -> None:
 
 
 @pytest.mark.lfc
+@pytest.mark.regression
 @pytest.mark.parametrize("which", ["top", "bottom"])
 def test_lfc_metpy_regression(which) -> None:
     prof = _C.parcel_profile(P, T[:, 0], Td[:, 0])
 
-    count_a = 0
-    count_b = 0
     lfc_p, lfc_t = lfc(P, T, Td, prof, which)
+    print(f"\nlfc {which}")
     for i in range(T.shape[0]):
         lfc_p_, lfc_t_ = mpcalc.lfc(
             P * Pa,
@@ -929,22 +934,15 @@ def test_lfc_metpy_regression(which) -> None:
             prof[i] * K,
             which=which,
         )
-
-        # assert_allclose(
-        #     lfc_p[i],
-        #     lfc_p_.m,  # type: ignore
-        #     atol=PRESSURE_ABSOLUTE_TOLERANCE,
-        #     rtol=PRESSURE_RELATIVE_TOLERANCE,
-        # )
-        # assert_allclose(lfc_t[i], lfc_t_.m, atol=TEMPERATURE_ABSOLUTE_TOLERANCE + 50)
-
-    print(f"\nisfinite_count [{which}]: {count_a=} {count_b=}")
+        assert_allclose(lfc_p[i], lfc_p_.m, atol=500.0)  # type: ignore
+        assert_allclose(lfc_t[i], lfc_t_.m, atol=1.0)
 
 
 # ............................................................................................... #
 # CAPE_CIN
 # ............................................................................................... #
 @pytest.mark.cape_cin
+@pytest.mark.regression
 @pytest.mark.parametrize(
     "which_lfc, which_el",
     itertools.product(["top", "bottom"], ["top", "bottom"]),

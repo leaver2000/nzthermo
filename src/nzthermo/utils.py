@@ -19,7 +19,7 @@ from typing import (
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
-
+import abc
 from ._ufunc import delta_t, greater_or_close, less_or_close
 from .typing import Kelvin, N, NestedSequence, Pascal, SupportsDType, Z, shape
 
@@ -28,9 +28,26 @@ _P = ParamSpec("_P")
 float_ = TypeVar("float_", np.float_, np.floating[Any], covariant=True)
 
 
+class pressure_vector(abc.ABC):
+    @abc.abstractmethod
+    def is_below(
+        self, pressure: Pascal[NDArray[np.float_]], *, close: bool = False
+    ) -> NDArray[np.bool_]: ...
+    @abc.abstractmethod
+    def is_above(
+        self, pressure: Pascal[NDArray[np.float_]], *, close: bool = False
+    ) -> NDArray[np.bool_]: ...
+
+
 class PVectorNd(NamedTuple, Generic[_T, float_]):
     pressure: Pascal[np.ndarray[_T, np.dtype[float_]]]
     temperature: Kelvin[np.ndarray[_T, np.dtype[float_]]]
+
+    def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
+        if method == "__call__":
+            return ufunc(self.pressure)
+
+        return NotImplemented
 
     def where(
         self,
@@ -44,6 +61,7 @@ class PVectorNd(NamedTuple, Generic[_T, float_]):
 
         if y_fill is None:
             y_fill = x_fill
+
         return self.__class__(
             np.where(condition, self.pressure, x_fill),
             np.where(condition, self.temperature, y_fill),
@@ -57,7 +75,17 @@ class PVectorNd(NamedTuple, Generic[_T, float_]):
         if not close:
             return self.pressure > pressure
 
-        return less_or_close(self.pressure, pressure).astype(np.bool_)
+        return greater_or_close(self.pressure, pressure).astype(np.bool_)
+
+    def where_below(
+        self,
+        pressure: Pascal[NDArray[np.float_]] | PVectorNd,
+        x_fill: ArrayLike = np.nan,
+        y_fill: ArrayLike | None = None,
+        *,
+        close: bool = False,
+    ) -> Self:
+        return self.where(self.is_below(pressure, close=close), x_fill, y_fill)
 
     def is_above(
         self, pressure: Pascal[NDArray[np.float_]] | PVectorNd, *, close: bool = False
@@ -67,7 +95,17 @@ class PVectorNd(NamedTuple, Generic[_T, float_]):
         if not close:
             return self.pressure < pressure
 
-        return greater_or_close(self.pressure, pressure).astype(np.bool_)
+        return less_or_close(self.pressure, pressure).astype(np.bool_)
+
+    def where_above(
+        self,
+        pressure: Pascal[NDArray[np.float_]] | PVectorNd,
+        x_fill: ArrayLike = np.nan,
+        y_fill: ArrayLike | None = None,
+        *,
+        close: bool = False,
+    ) -> Self:
+        return self.where(self.is_above(pressure, close=close), x_fill, y_fill)
 
     def is_nan(self) -> NDArray[np.bool_]:
         return np.isnan(self.pressure)
