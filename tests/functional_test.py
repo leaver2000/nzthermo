@@ -66,7 +66,7 @@ def test_intersect_nz_increasing(x, a, b) -> None:
     dewpoint = np.array(b)  # (N, Z)
     # TODO: update this test with the correct upper intersect values, there was an off by
     # one error in the determination of the upper index based on the metpy implementation.
-    intersect = F.find_intersections(
+    intersect = F.intersect_nz(
         pressure_levels,
         temperature,
         dewpoint,
@@ -128,7 +128,7 @@ def test_intersect_nz_decreasing(x, a, b) -> None:
     dewpoint = np.array(b)  # (N, Z)
     # TODO: update this test with the correct upper intersect values, there was an off by
     # one error in the determination of the upper index based on the metpy implmentation.
-    intersect = F.find_intersections(
+    intersect = F.intersect_nz(
         pressure_levels, temperature, dewpoint, direction=direction, log_x=True
     )
 
@@ -160,7 +160,7 @@ def test_find_intersections(direction, expected):
     y1 = 3 * x**2
     y2 = 100 * x - 650
     # Note: Truth is what we will get with this sampling, not the mathematical intersection
-    x_int, y_int = F.find_intersections(x, y1, y2, direction=direction)
+    x_int, y_int = F.intersect_nz(x, y1, y2, direction=direction)
     assert_allclose(x_int, expected[0], rtol=1e-2)
     assert_allclose(y_int, expected[1], rtol=1e-2)
 
@@ -364,7 +364,7 @@ Y = [
 
 
 def test_insert_zero_crossings() -> None:
-    crossings = F.find_append_zero_crossings(np.array(X), np.array(Y))
+    crossings = F.zero_crossings(np.array(X), np.array(Y))
     for i in range(len(X)):
         x_, y_ = _find_append_zero_crossings(X[i] * Pa, Y[i] * K)
         x, y = crossings[0][i], crossings[1][i]

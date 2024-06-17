@@ -72,39 +72,36 @@ def downdraft_cape(
 
     """
     N, _ = temperature.shape
+    nx = np.arange(N)
+    # Tims suggestion was to allow for the parcel to potentially be conditionally based
+    mask = (pressure <= 70000.0) & (pressure >= 50000.0)
 
-    mid_layer_idx = ((pressure <= 7e4) & (pressure >= 5e4)).squeeze()
-    p_layer, t_layer, td_layer = (x[:, mid_layer_idx] for x in (pressure, temperature, dewpoint))
+    if broadcasted := pressure.shape == temperature.shape:
+        p_layer, t_layer, td_layer = np.where(
+            mask[newaxis, :, :], [pressure, temperature, dewpoint], NaN
+        )
+    else:
+        p_layer = np.where(mask, pressure, NaN)
+        t_layer, td_layer = np.where(mask[newaxis, :, :], [temperature, dewpoint], NaN)
 
     theta_e = equivalent_potential_temperature(p_layer, t_layer, td_layer)
-    nx, zx = np.arange(N), np.argmin(theta_e, axis=1)
-    # Tims suggestion was to allow for the parcel to potentially be conditionally based
-    p_top = p_layer[0, zx]  # (N,)
+
+    zx = np.nanargmin(theta_e, axis=1)
+
+    p_top = p_layer[nx, zx] if broadcasted else p_layer[0, zx]
     t_top = t_layer[nx, zx]  # (N,)
     td_top = td_layer[nx, zx]  # (N,)
     wb_top = wet_bulb_temperature(p_top, t_top, td_top)  # (N,)
 
-    # reshape our pressure into a 2d pressure grid and put the hard cap on everything above the
-    # hard cap
-    cap = -(np.searchsorted(np.squeeze(pressure)[::-1], np.min(p_top)) - 1)
-    pressure = pressure[0, :cap].repeat(N).reshape(-1, N).transpose()  # (N, Z -cap)
-    if not np.any(pressure):
-        return np.repeat(np.nan, N).astype(pressure.dtype)
-
     # our moist_lapse rate function has nan ignoring capabilities
-    pressure[pressure < p_top[:, newaxis]] = np.nan
-    temperature = temperature[:, :cap]
-    dewpoint = dewpoint[:, :cap]
-
+    pressure = np.where(pressure >= p_top[:, newaxis], pressure, NaN)
     e_vt = virtual_temperature(temperature, saturation_mixing_ratio(pressure, dewpoint))  # (N, Z)
     trace = core.moist_lapse(pressure, wb_top, p_top)  # (N, Z)
     p_vt = virtual_temperature(trace, saturation_mixing_ratio(pressure, trace))  # (N, Z)
 
-    delta = e_vt - p_vt
+    DCAPE = Rd * F.nantrapz(p_vt - e_vt, np.log(pressure), axis=1)
 
-    dcape = -(Rd * F.nantrapz(delta, np.log(pressure), axis=1))
-
-    return dcape
+    return DCAPE
 
 
 # -------------------------------------------------------------------------------------------------
@@ -206,13 +203,11 @@ def _el_lfc(
         log_x=True,
     ).where_above(LCL)
 
-    no_lfc = LFC.is_nan().all(axis=1, keepdims=True)
-
-    is_lcl = no_lfc & greater_or_close(
+    is_lcl = (no_lfc := LFC.is_nan().all(axis=1, keepdims=True)) & greater_or_close(
         # the mask only needs to be applied to either the temperature or parcel_temperature_profile
-        parcel_temperature_profile,
-        np.where(LCL.is_below(pressure, close=True), temperature, NaN),
-    ).astype(np.bool_).any(axis=1, keepdims=True)
+        np.where(LCL.is_below(pressure, close=True), parcel_temperature_profile, NaN),
+        temperature,
+    ).any(axis=1, keepdims=True)
 
     LFC = LFC.select(
         [~no_lfc, is_lcl],

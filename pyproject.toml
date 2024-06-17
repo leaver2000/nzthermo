@@ -33,6 +33,8 @@ testpaths = ["tests/"]
 markers = [
     "self: this is a flag to target a specifc test",
     "ccl: test functions for convective condensation level",
+    "moist_lapse",
+    "downdraft_cape",
     # "lcl: test functions for lifting condensation level",
     "lfc: test functions for level of free convection",
     "el: test functions for equilibrium level",

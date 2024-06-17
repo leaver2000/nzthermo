@@ -15,17 +15,44 @@ from typing import (
     TypeGuard,
     TypeVar,
     overload,
+    TypeAlias,
+    TYPE_CHECKING,
 )
 
 import numpy as np
-from numpy.typing import ArrayLike, NDArray
+from numpy.typing import NDArray
 import abc
 from ._ufunc import delta_t, greater_or_close, less_or_close
 from .typing import Kelvin, N, NestedSequence, Pascal, SupportsDType, Z, shape
+from .typing import SupportsArray
+
+try:
+    import pint
+except ImportError:
+    pint = None
+
 
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
 float_ = TypeVar("float_", np.float_, np.floating[Any], covariant=True)
+ArrayLike: TypeAlias = (
+    "SupportsArray[float_] | NestedSequence[SupportsArray[float_]] | NestedSequence[float] | float"
+)
+
+if TYPE_CHECKING:
+
+    def magnitude(x: ArrayLike[float_], unit: str) -> NDArray[float_]: ...
+
+elif pint is not None:
+
+    def magnitude(x, unit):
+        if isinstance(x, pint.Quantity):
+            return x.to(unit).magnitude
+        return np.asarray(x)
+else:
+
+    def magnitude(x, unit):
+        return np.asarray(x)
 
 
 class pressure_vector(abc.ABC):
@@ -53,8 +80,8 @@ class PVectorNd(NamedTuple, Generic[_T, float_]):
         self,
         condition: np.ndarray[_T, np.dtype[np.bool_]]
         | Callable[[Self], np.ndarray[_T, np.dtype[np.bool_]]],
-        x_fill: ArrayLike = np.nan,
-        y_fill: ArrayLike | None = None,
+        x_fill: ArrayLike[np.float_] = np.nan,
+        y_fill: ArrayLike[np.float_] | None = None,
     ) -> Self:
         if callable(condition):
             condition = condition(self)
@@ -80,8 +107,8 @@ class PVectorNd(NamedTuple, Generic[_T, float_]):
     def where_below(
         self,
         pressure: Pascal[NDArray[np.float_]] | PVectorNd,
-        x_fill: ArrayLike = np.nan,
-        y_fill: ArrayLike | None = None,
+        x_fill: ArrayLike[np.float_] = np.nan,
+        y_fill: ArrayLike[np.float_] | None = None,
         *,
         close: bool = False,
     ) -> Self:
@@ -100,8 +127,8 @@ class PVectorNd(NamedTuple, Generic[_T, float_]):
     def where_above(
         self,
         pressure: Pascal[NDArray[np.float_]] | PVectorNd,
-        x_fill: ArrayLike = np.nan,
-        y_fill: ArrayLike | None = None,
+        x_fill: ArrayLike[np.float_] = np.nan,
+        y_fill: ArrayLike[np.float_] | None = None,
         *,
         close: bool = False,
     ) -> Self:
@@ -115,8 +142,8 @@ class PVectorNd(NamedTuple, Generic[_T, float_]):
         condlist: Sequence[NDArray[np.bool_]],
         x_choice: Sequence[NDArray[float_]],
         y_choice: Sequence[NDArray[float_]],
-        x_default: ArrayLike = np.nan,
-        y_default: ArrayLike | None = None,
+        x_default: ArrayLike[np.float_] = np.nan,
+        y_default: ArrayLike[np.float_] | None = None,
     ) -> Self:
         if y_default is None:
             y_default = x_default
@@ -221,18 +248,18 @@ def broadcast_nz(
     ],
 ) -> Callable[
     Concatenate[
-        Pascal[NDArray[float_] | NestedSequence[float]],
-        Kelvin[NDArray[float_]] | NestedSequence[float],
-        Kelvin[NDArray[float_]] | NestedSequence[float],
+        Pascal[ArrayLike[np.float_]],
+        Kelvin[ArrayLike[np.float_]],
+        Kelvin[ArrayLike[np.float_]],
         _P,
     ],
     _T,
 ]:
     @functools.wraps(f)
     def wrapper(
-        pressure: NDArray[float_] | NestedSequence[float],
-        temperature: NDArray[float_] | NestedSequence[float],
-        dewpoint: NDArray[float_] | NestedSequence[float],
+        pressure: ArrayLike[np.float_],
+        temperature: ArrayLike[np.float_],
+        dewpoint: ArrayLike[np.float_],
         *args: _P.args,
         **kwargs: _P.kwargs,
     ) -> _T:
@@ -245,9 +272,11 @@ def broadcast_nz(
             return f(pressure, temperature, dewpoint, *args, **kwargs)  # type: ignore
 
         pressure, temperature, dewpoint = exactly_2d(
-            np.asarray(pressure), np.asarray(temperature), np.asarray(dewpoint)
+            magnitude(pressure, "pascal"),
+            magnitude(temperature, "kelvin"),
+            magnitude(dewpoint, "kelvin"),
         )
-        return f(pressure, temperature, dewpoint, *args, **kwargs)
+        return f(pressure, temperature, dewpoint, *args, **kwargs)  # type: ignore
 
     return wrapper
 

@@ -74,7 +74,7 @@ OPENMP_ENABLED = bool(OPENMP)
 # ............................................................................................... #
 # helpers
 # ............................................................................................... #
-cdef cvarray nzarray((size_t, size_t) shape, size_t size) noexcept:
+cdef cvarray nzarray((size_t, size_t) shape, size_t size):
     return cvarray(
         shape, 
         itemsize=size, 

@@ -108,8 +108,8 @@ class lcl {
     constexpr lcl<T>& operator=(const lcl<T>& other) noexcept = default;
     // destructor
     ~lcl() noexcept = default;
-    constexpr lcl(const T pressure, const T temperature) noexcept
-        : pressure(pressure), temperature(temperature){};
+    constexpr lcl(const T pressure, const T temperature) noexcept :
+        pressure(pressure), temperature(temperature){};
 
     constexpr lcl(
       const T pressure,
