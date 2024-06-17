@@ -66,12 +66,12 @@ constexpr T potential_temperature(const T pressure, const T temperature) noexcep
 template <floating T>
 constexpr T equivalent_potential_temperature(
   const T pressure, const T temperature, const T dewpoint
-) noexcept;  // theta_e
+) noexcept;
 
 template <floating T>
 constexpr T wet_bulb_potential_temperature(
   const T pressure, const T temperature, const T dewpoint
-) noexcept;  // theta_w
+) noexcept;
 
 /* ........................................{ ode    }........................................... */
 
@@ -98,16 +98,7 @@ class lcl {
     // constructor with the function arguments.
   public:
     T pressure, temperature;
-    // default constructor
     constexpr lcl() noexcept = default;
-    // copy constructor
-    constexpr lcl(const lcl<T>& other) noexcept = default;
-    // move constructor
-    constexpr lcl(lcl<T>&& other) noexcept = default;
-    // copy assignment operator
-    constexpr lcl<T>& operator=(const lcl<T>& other) noexcept = default;
-    // destructor
-    ~lcl() noexcept = default;
     constexpr lcl(const T pressure, const T temperature) noexcept :
         pressure(pressure), temperature(temperature){};
 

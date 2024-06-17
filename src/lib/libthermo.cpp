@@ -58,7 +58,15 @@ template <floating T>
 constexpr T potential_temperature(const T pressure, const T temperature) noexcept {
     return temperature / exner_function(pressure);
 }
-
+/**
+ * @brief theta_e
+ * 
+ * @tparam T 
+ * @param pressure 
+ * @param temperature 
+ * @param dewpoint 
+ * @return constexpr T 
+ */
 template <floating T>
 constexpr T equivalent_potential_temperature(
   const T pressure, const T temperature, const T dewpoint
@@ -71,7 +79,15 @@ constexpr T equivalent_potential_temperature(
 
     return th_l * exp(r * (1 + 0.448 * r) * (3036.0 / t_l - 1.78));
 }
-
+/**
+ * @brief theta_w
+ * 
+ * @tparam T 
+ * @param pressure 
+ * @param temperature 
+ * @param dewpoint 
+ * @return constexpr T 
+ */
 template <floating T>
 constexpr T wet_bulb_potential_temperature(
   const T pressure, const T temperature, const T dewpoint

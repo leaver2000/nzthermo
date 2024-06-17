@@ -71,6 +71,32 @@ ctypedef enum ProfileStrategy:
 
 OPENMP_ENABLED = bool(OPENMP)
 
+
+T0 = C.T0
+"""`(J/kg*K)` - freezing point in kelvin"""
+E0 = C.E0
+"""`(Pa)` - vapor pressure at T0"""
+Cp = C.Cp
+"""`(J/kg*K)` - specific heat of dry air"""
+Rd = C.Rd
+"""`(J/kg*K)` - gas constant for dry air"""
+Rv = C.Rv
+"""`(J/kg*K)` - gas constant for water vapor"""
+Lv = C.Lv
+"""`(J/kg)` - latent heat of vaporization"""
+P0 = C.P0
+"""`(Pa)` - standard pressure at sea level"""
+Mw = C.Mw
+"""`(g/mol)` - molecular weight of water"""
+Md = C.Md
+"""`(g/mol)` - molecular weight of dry air"""
+epsilon = C.epsilon
+"""`Mw / Md` - molecular weight ratio"""
+kappa = C.kappa
+"""`Rd / Cp`  - ratio of gas constants"""
+
+
+
 # ............................................................................................... #
 # helpers
 # ............................................................................................... #

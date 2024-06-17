@@ -36,14 +36,20 @@ cdef inline size_t search_pressure(Float[:] pressure, Float value) noexcept nogi
 
 
 cdef extern from "wind.cpp" namespace "libthermo" nogil:
-    cdef cppclass WindComponents[T]:
-        T u
-        T v
+    cdef cppclass wind_components[T]:
+        T u, v
+        wind_components() noexcept
+        wind_components(T d, T m) noexcept
+        wind_components(wind_vector[T] dm) noexcept
+
+    cdef cppclass wind_vector[T]:
+        T direction, magnitude
+        wind_vector() noexcept
+        wind_vector(T d, T s) noexcept
+        wind_vector(wind_components[T] uv)  noexcept
 
     T wind_direction[T](T u, T v) noexcept
-    T wind_direction[T](T u, T v, T from_) noexcept
     T wind_magnitude[T](T u, T v) noexcept
-    WindComponents[T] wind_components[T](T direction, T magnitude) noexcept
 
 
 cdef extern from "libthermo.cpp" namespace "libthermo" nogil:

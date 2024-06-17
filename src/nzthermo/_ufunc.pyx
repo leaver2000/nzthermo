@@ -70,19 +70,25 @@ cdef T wind_direction(T u, T v) noexcept nogil:
 cdef T wind_magnitude(T u, T v) noexcept nogil:
     return C.wind_magnitude(u, v)
 
+# TODO: the signature....
+# cdef (T, T) wind_components(T direction, T magnitude) noexcept nogil:...
+# 
+# Is unsupported by the ufunc signature. So the option are:
+# - maintain gil
+# - cast to double 
+# - write the template in C
+@cython.ufunc
+cdef (double, double) wind_components(T d, T m) noexcept nogil: 
+    cdef C.wind_components[T] uv = C.wind_components[T](C.wind_vector[T](d, m))
+    return <double>uv.u, <double>uv.v
+
 
 @cython.ufunc
-cdef (double, double) wind_components(T direction, T magnitude) noexcept nogil:
-    # TODO: the signature....
-    # cdef (T, T) wind_components(T direction, T magnitude) noexcept nogil:...
-    # 
-    # Is unsupported by the ufunc signature. So the option are:
-    # - maintain gil
-    # - cast to double 
-    # - write the template in C
-    cdef C.WindComponents[T] wnd = C.wind_components(direction, magnitude)
-    return <double>wnd.u, <double>wnd.v
-
+cdef (double, double) wind_vector(T u, T v) noexcept nogil:
+    cdef C.wind_vector[T] dm = C.wind_vector[T](C.wind_components[T](u, v))
+    return <double>dm.direction, <double>dm.magnitude
+    
+    
 
 # 1x1
 @cython.ufunc

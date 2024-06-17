@@ -12,12 +12,13 @@ from nzthermo._ufunc import (
     wet_bulb_potential_temperature,
     wet_bulb_temperature,
     wind_components,
+    wind_vector,
 )
 
 Pa = units.pascal
 K = units.kelvin
 dimensionless = units.dimensionless
-WIND_DIRECTIONS = np.array([0, 90, 180, 270, 360])
+WIND_DIRECTIONS = np.array([0, 90, 180, 270, 0])
 WIND_MAGNITUDES = np.array([10, 20, 30, 40, 50])
 
 
@@ -42,6 +43,9 @@ def test_wind_components() -> None:
             )
         ],
     )
+
+    u, v = wind_components(WIND_DIRECTIONS, WIND_MAGNITUDES)
+    assert_allclose([WIND_DIRECTIONS, WIND_MAGNITUDES], wind_vector(u, v), atol=1e-9)
 
 
 @pytest.mark.parametrize("dtype", [np.float64, np.float32])
