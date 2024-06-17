@@ -14,7 +14,7 @@ from nzthermo._ufunc import (  # noqa
     saturation_mixing_ratio,
     virtual_temperature,
 )
-from nzthermo.core import _FASTPATH, el_lfc  # noqa
+from nzthermo.core import FASTPATH, el_lfc  # noqa
 
 K = units.kelvin
 Pa = units.pascal
@@ -127,7 +127,7 @@ def test_intersect_nz_decreasing(x, a, b) -> None:
     temperature = np.array(a)  # (N, Z)
     dewpoint = np.array(b)  # (N, Z)
     # TODO: update this test with the correct upper intersect values, there was an off by
-    # one error in the determination of the upper index based on the metpy implmentation.
+    # one error in the determination of the upper index based on the metpy implementation.
     intersect = F.intersect_nz(
         pressure_levels, temperature, dewpoint, direction=direction, log_x=True
     )
@@ -402,7 +402,7 @@ def test_insert_zero_crossings_specifically_for_cape_cin() -> None:
         parcel_profile,
         "bottom",
         "top",
-        **_FASTPATH,
+        **FASTPATH,
     )
 
     lfc_p, el_p = np.reshape((lfc_p, el_p), (2, -1, 1))  # reshape for broadcasting

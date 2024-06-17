@@ -31,6 +31,11 @@ ENV NZTHERMO_BUILD_COVERAGE 1
 RUN pip install --no-cache-dir --no-deps --upgrade --target src/ . \
   && pytest tests
 
+# numpy 2.0.0 testing
+RUN pip install --no-cache-dir Pint==0.24 numpy==2.0.0 --upgrade \
+  && pytest tests
+
+
 USER 1001
 
 # .................................................................................................
@@ -47,5 +52,10 @@ COPY . .
 ENV NZTHERMO_BUILD_COVERAGE 1
 RUN pip install --no-cache-dir --no-deps --upgrade --target src/ . \
   && pytest tests
+
+# numpy 2.0.0 testing
+RUN pip install --no-cache-dir Pint==0.24 numpy==2.0.0 --upgrade \
+  && pytest tests
+
 
 USER 1001

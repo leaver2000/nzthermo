@@ -34,14 +34,14 @@ from .const import Rd
 from .typing import Kelvin, N, Pascal, Z, shape
 from .utils import Vector1d, broadcast_nz
 
-float_ = TypeVar("float_", np.float_, np.floating[Any], covariant=True)
+float_ = TypeVar("float_", bound=np.floating[Any], covariant=True)
 newaxis: Final[None] = np.newaxis
 NaN = np.nan
 z_axis: Final[tuple[slice, None]] = np.s_[:, newaxis]
 N_AXIS: Final[tuple[None, slice]] = np.s_[newaxis, :]
 
 
-_FASTPATH: dict[str, Any] = {"__fastpath": True}
+FASTPATH: dict[str, Any] = {"__fastpath": True}
 
 
 # -------------------------------------------------------------------------------------------------
@@ -153,7 +153,8 @@ def _el_lfc(
     temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
     dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
     /,
-    parcel_temperature_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]] | None = None,
+    parcel_temperature_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.floating[Any]]]]
+    | None = None,
     which_lfc: L["bottom", "top"] = "bottom",
     which_el: L["bottom", "top"] = "top",
     dewpoint_start: np.ndarray[shape[N], np.dtype[float_]] | None = None,
@@ -227,7 +228,8 @@ def el(
     temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
     dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
     /,
-    parcel_temperature_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]] | None = None,
+    parcel_temperature_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.floating[Any]]]]
+    | None = None,
     which: L["top", "bottom"] = "top",
 ) -> Vector1d[float_]:
     return _el_lfc(
@@ -262,7 +264,8 @@ def el_lfc(
     temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
     dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
     /,
-    parcel_temperature_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]] | None = None,
+    parcel_temperature_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.floating[Any]]]]
+    | None = None,
     which_lfc: L["bottom", "top"] = "bottom",
     which_el: L["bottom", "top"] = "top",
     dewpoint_start: np.ndarray[shape[N], np.dtype[float_]] | None = None,

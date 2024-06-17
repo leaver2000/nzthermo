@@ -13,7 +13,7 @@ from numpy.typing import NDArray
 from .typing import N, Z, shape
 from .utils import Vector2d, exactly_2d
 
-_T = TypeVar("_T", bound=np.float_)
+_T = TypeVar("_T", bound=np.floating[Any])
 
 
 @overload

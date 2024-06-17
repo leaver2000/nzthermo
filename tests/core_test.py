@@ -1,18 +1,24 @@
 # noqa
 import itertools
 import warnings
+from typing import Any
 
 import metpy.calc as mpcalc
 import numpy as np
 import pytest
 from metpy.units import units, units as U
-from typing import Any
 from numpy.testing import assert_allclose, assert_almost_equal, assert_array_equal
 
 import nzthermo._core as _C
 from nzthermo._core import moist_lapse
-from nzthermo.core import cape_cin, ccl, el, lfc, most_unstable_parcel_index, downdraft_cape
-
+from nzthermo.core import (
+    cape_cin,
+    ccl,
+    downdraft_cape,
+    el,
+    lfc,
+    most_unstable_parcel_index,
+)
 
 np.set_printoptions(
     precision=3,

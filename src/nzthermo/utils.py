@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import abc
 import functools
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Concatenate,
@@ -12,29 +14,41 @@ from typing import (
     ParamSpec,
     Self,
     Sequence,
+    TypeAlias,
     TypeGuard,
     TypeVar,
     overload,
-    TypeAlias,
-    TYPE_CHECKING,
 )
 
 import numpy as np
 from numpy.typing import NDArray
-import abc
+
 from ._ufunc import delta_t, greater_or_close, less_or_close
-from .typing import Kelvin, N, NestedSequence, Pascal, SupportsDType, Z, shape
-from .typing import SupportsArray
+from .typing import (
+    Kelvin,
+    N,
+    NestedSequence,
+    Pascal,
+    SupportsArray,
+    SupportsDType,
+    Z,
+    shape,
+)
 
 try:
     import pint
 except ImportError:
     pint = None
+except AttributeError:
+    raise ImportError(
+        "The environment has a version mismatch with pint and numpy. "
+        "Upgrade pint to the latest version."
+    )
 
 
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
-float_ = TypeVar("float_", np.float_, np.floating[Any], covariant=True)
+float_ = TypeVar("float_", bound=np.floating[Any], covariant=True)
 ArrayLike: TypeAlias = (
     "SupportsArray[float_] | NestedSequence[SupportsArray[float_]] | NestedSequence[float] | float"
 )
@@ -58,11 +72,11 @@ else:
 class pressure_vector(abc.ABC):
     @abc.abstractmethod
     def is_below(
-        self, pressure: Pascal[NDArray[np.float_]], *, close: bool = False
+        self, pressure: Pascal[NDArray[np.floating[Any]]], *, close: bool = False
     ) -> NDArray[np.bool_]: ...
     @abc.abstractmethod
     def is_above(
-        self, pressure: Pascal[NDArray[np.float_]], *, close: bool = False
+        self, pressure: Pascal[NDArray[np.floating[Any]]], *, close: bool = False
     ) -> NDArray[np.bool_]: ...
 
 
@@ -80,8 +94,8 @@ class PVectorNd(NamedTuple, Generic[_T, float_]):
         self,
         condition: np.ndarray[_T, np.dtype[np.bool_]]
         | Callable[[Self], np.ndarray[_T, np.dtype[np.bool_]]],
-        x_fill: ArrayLike[np.float_] = np.nan,
-        y_fill: ArrayLike[np.float_] | None = None,
+        x_fill: ArrayLike[np.floating[Any]] = np.nan,
+        y_fill: ArrayLike[np.floating[Any]] | None = None,
     ) -> Self:
         if callable(condition):
             condition = condition(self)
@@ -95,7 +109,7 @@ class PVectorNd(NamedTuple, Generic[_T, float_]):
         )
 
     def is_below(
-        self, pressure: Pascal[NDArray[np.float_]] | PVectorNd, *, close: bool = False
+        self, pressure: Pascal[NDArray[np.floating[Any]]] | PVectorNd, *, close: bool = False
     ) -> NDArray[np.bool_]:
         if isinstance(pressure, PVectorNd):
             pressure = pressure.pressure
@@ -106,16 +120,16 @@ class PVectorNd(NamedTuple, Generic[_T, float_]):
 
     def where_below(
         self,
-        pressure: Pascal[NDArray[np.float_]] | PVectorNd,
-        x_fill: ArrayLike[np.float_] = np.nan,
-        y_fill: ArrayLike[np.float_] | None = None,
+        pressure: Pascal[NDArray[np.floating[Any]]] | PVectorNd,
+        x_fill: ArrayLike[np.floating[Any]] = np.nan,
+        y_fill: ArrayLike[np.floating[Any]] | None = None,
         *,
         close: bool = False,
     ) -> Self:
         return self.where(self.is_below(pressure, close=close), x_fill, y_fill)
 
     def is_above(
-        self, pressure: Pascal[NDArray[np.float_]] | PVectorNd, *, close: bool = False
+        self, pressure: Pascal[NDArray[np.floating[Any]]] | PVectorNd, *, close: bool = False
     ) -> NDArray[np.bool_]:
         if isinstance(pressure, PVectorNd):
             pressure = pressure.pressure
@@ -126,9 +140,9 @@ class PVectorNd(NamedTuple, Generic[_T, float_]):
 
     def where_above(
         self,
-        pressure: Pascal[NDArray[np.float_]] | PVectorNd,
-        x_fill: ArrayLike[np.float_] = np.nan,
-        y_fill: ArrayLike[np.float_] | None = None,
+        pressure: Pascal[NDArray[np.floating[Any]]] | PVectorNd,
+        x_fill: ArrayLike[np.floating[Any]] = np.nan,
+        y_fill: ArrayLike[np.floating[Any]] | None = None,
         *,
         close: bool = False,
     ) -> Self:
@@ -142,8 +156,8 @@ class PVectorNd(NamedTuple, Generic[_T, float_]):
         condlist: Sequence[NDArray[np.bool_]],
         x_choice: Sequence[NDArray[float_]],
         y_choice: Sequence[NDArray[float_]],
-        x_default: ArrayLike[np.float_] = np.nan,
-        y_default: ArrayLike[np.float_] | None = None,
+        x_default: ArrayLike[np.floating[Any]] = np.nan,
+        y_default: ArrayLike[np.floating[Any]] | None = None,
     ) -> Self:
         if y_default is None:
             y_default = x_default
@@ -248,18 +262,18 @@ def broadcast_nz(
     ],
 ) -> Callable[
     Concatenate[
-        Pascal[ArrayLike[np.float_]],
-        Kelvin[ArrayLike[np.float_]],
-        Kelvin[ArrayLike[np.float_]],
+        Pascal[ArrayLike[np.floating[Any]]],
+        Kelvin[ArrayLike[np.floating[Any]]],
+        Kelvin[ArrayLike[np.floating[Any]]],
         _P,
     ],
     _T,
 ]:
     @functools.wraps(f)
     def wrapper(
-        pressure: ArrayLike[np.float_],
-        temperature: ArrayLike[np.float_],
-        dewpoint: ArrayLike[np.float_],
+        pressure: ArrayLike[np.floating[Any]],
+        temperature: ArrayLike[np.floating[Any]],
+        dewpoint: ArrayLike[np.floating[Any]],
         *args: _P.args,
         **kwargs: _P.kwargs,
     ) -> _T:

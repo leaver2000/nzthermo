@@ -18,43 +18,43 @@ _float = TypeVar("_float", np.float32, np.float64)
 OPENMP_ENABLED: bool
 
 @overload
-def moist_lapse[T: np.float_](
+def moist_lapse[T: np.floating[Any]](
     pressure: Pascal[np.ndarray[shape[N], np.dtype[T]]],
-    temperature: Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]],
-    reference_pressure: Pascal[np.ndarray[shape[N], np.dtype[np.float_]]],
+    temperature: Kelvin[np.ndarray[shape[N], np.dtype[np.floating[Any]]]],
+    reference_pressure: Pascal[np.ndarray[shape[N], np.dtype[np.floating[Any]]]],
     *,
     dtype: type[T | float] | L["float32", "float64"] | None = ...,
 ) -> Kelvin[np.ndarray[shape[N], np.dtype[T]]]: ...
 @overload
-def moist_lapse[T: np.float_](
+def moist_lapse[T: np.floating[Any]](
     pressure: Pascal[
         np.ndarray[shape[Z], np.dtype[T]]
         | np.ndarray[shape[L[1], Z], np.dtype[T]]
         | np.ndarray[shape[N, Z], np.dtype[T]]
     ],
-    temperature: Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]],
-    reference_pressure: Pascal[np.ndarray[N, np.dtype[np.float_]]] | None = ...,
+    temperature: Kelvin[np.ndarray[shape[N], np.dtype[np.floating[Any]]]],
+    reference_pressure: Pascal[np.ndarray[N, np.dtype[np.floating[Any]]]] | None = ...,
     *,
     dtype: type[T | float] | L["float32", "float64"] | None = ...,
 ) -> Kelvin[np.ndarray[shape[N, Z], np.dtype[T]]]: ...
 @overload
-def moist_lapse[T: np.float_](
+def moist_lapse[T: np.floating[Any]](
     pressure: Pascal[np.ndarray[Any, np.dtype[T]]],
-    temperature: Kelvin[np.ndarray[Any, np.dtype[np.float_]]],
-    reference_pressure: Pascal[np.ndarray[Any, np.dtype[np.float_]]] | None = ...,
+    temperature: Kelvin[np.ndarray[Any, np.dtype[np.floating[Any]]]],
+    reference_pressure: Pascal[np.ndarray[Any, np.dtype[np.floating[Any]]]] | None = ...,
     *,
     dtype: type[T | float] | L["float32", "float64"] | None = ...,
 ) -> Kelvin[np.ndarray[Any, np.dtype[T]]]: ...
-def parcel_profile[T: np.float_](
+def parcel_profile[T: np.floating[Any]](
     pressure: Pascal[np.ndarray[shape[Z], np.dtype[T]] | np.ndarray[shape[N, Z], np.dtype[T]]],
-    temperature: Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]],
-    dewpoint: Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]],
+    temperature: Kelvin[np.ndarray[shape[N], np.dtype[np.floating[Any]]]],
+    dewpoint: Kelvin[np.ndarray[shape[N], np.dtype[np.floating[Any]]]],
     /,
 ) -> Kelvin[np.ndarray[shape[N, Z], np.dtype[T]]]: ...
-def parcel_profile_with_lcl[T: np.float_](
+def parcel_profile_with_lcl[T: np.floating[Any]](
     pressure: Pascal[np.ndarray[shape[Z], np.dtype[T]] | np.ndarray[shape[N, Z], np.dtype[T]]],
-    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]],
-    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.floating[Any]]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.floating[Any]]]],
     /,
 ) -> tuple[
     Pascal[np.ndarray[shape[N, Z], np.dtype[T]]],
@@ -63,7 +63,7 @@ def parcel_profile_with_lcl[T: np.float_](
     Kelvin[np.ndarray[shape[N, Z], np.dtype[T]]],
 ]: ...
 @overload
-def interpolate_nz[T: np.float_](
+def interpolate_nz[T: np.floating[Any]](
     x: np.ndarray[shape[N], np.dtype[T]],
     xp: np.ndarray[shape[Z], np.dtype[T]],
     fp: np.ndarray[shape[N, Z], np.dtype[T]],
@@ -73,14 +73,14 @@ def interpolate_nz[T: np.float_](
     interp_nan: bool = ...,
 ) -> np.ndarray[shape[N], np.dtype[T]]: ...
 @overload
-def interpolate_nz[T: np.float_](
+def interpolate_nz[T: np.floating[Any]](
     x: np.ndarray[shape[N], np.dtype[T]],
     xp: np.ndarray[shape[Z], np.dtype[T]],
     *args: np.ndarray[shape[N, Z], np.dtype[T]],
     log_x: bool = ...,
     interp_nan: bool = ...,
 ) -> tuple[np.ndarray[shape[N], np.dtype[T]], ...]: ...
-def intersect[T: np.float_](
+def intersect[T: np.floating[Any]](
     x: np.ndarray[shape[N, Z], np.dtype[T]],
     a: np.ndarray[shape[N, Z], np.dtype[T]],
     b: np.ndarray[shape[N, Z], np.dtype[T]],
