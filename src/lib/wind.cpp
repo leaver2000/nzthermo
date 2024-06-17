@@ -2,33 +2,35 @@
 
 namespace libthermo {
 
-/* ........................................{ common }........................................... */
 template <floating T>
-constexpr T wind_direction(const T u, const T v, const bool from) noexcept {
-    T wdir = degrees(atan2(u, v));
-    if (from)
-        wdir = fmod(wdir - 180.0, 360.0);
-
-    if (wdir <= 0)
-        wdir = 360.0;
-    if (u == 0 && v == 0)
-        wdir = 0.0;
-
-    return wdir;
+constexpr T wind_direction(const T u, const T v) noexcept {
+    return fmod(degrees(atan2(u, v)) + 180.0, 360.0);
 }
+template <floating T>
+constexpr T wind_direction(const wind_components<T>& uv) noexcept {
+    return wind_direction(uv.u, uv.v);
+}
+
 template <floating T>
 constexpr T wind_magnitude(const T u, const T v) noexcept {
     return hypot(u, v);
 }
 
 template <floating T>
-constexpr WindComponents<T> wind_components(const T direction, const T magnitude) noexcept {
-    if (direction < 0 || direction > 360)
-        return {NAN, NAN};
-
-    const T u = magnitude * sin(radians(direction));
-    const T v = magnitude * cos(radians(direction));
-
-    return {-u, -v};
+constexpr T wind_magnitude(const wind_components<T>& uv) noexcept {
+    return hypot(uv.u, uv.v);
 }
+
+template <floating T>
+constexpr wind_vector<T>::wind_vector(const wind_components<T>& uv) noexcept :
+    direction(wind_direction(uv)), magnitude(wind_magnitude(uv)) {
+}
+template <floating T>
+constexpr wind_components<T>::wind_components(const wind_vector<T>& dm) noexcept {
+    const T d = radians(dm.direction);
+    const T m = -dm.magnitude;
+    u = m * sin(d);
+    v = m * cos(d);
+}
+
 }  // namespace libthermo

@@ -5,6 +5,17 @@ __all__ = [
     "__version__",
     # ._core
     "OPENMP_ENABLED",
+    "E0",
+    "P0",
+    "T0",
+    "Cp",
+    "Lv",
+    "Md",
+    "Mw",
+    "Rd",
+    "Rv",
+    "epsilon",
+    "kappa",
     "moist_lapse",
     "parcel_profile",
     "parcel_profile_with_lcl",
@@ -20,15 +31,16 @@ __all__ = [
     "saturation_vapor_pressure",
     "wet_bulb_temperature",
     "wet_bulb_potential_temperature",
-    "wind_direction",
-    "wind_components",
-    "wind_magnitude",
     "dewpoint_from_specific_humidity",
     "lfc",
     "parcel_profile",
     "mixing_ratio",
     "vapor_pressure",
     "virtual_temperature",
+    "wind_components",
+    "wind_direction",
+    "wind_magnitude",
+    "wind_vector",
     # .core
     "el",
     "cape_cin",
@@ -46,7 +58,23 @@ except ImportError:
     __version__ = "undefined"
 
 from . import functional
-from ._core import OPENMP_ENABLED, moist_lapse, parcel_profile, parcel_profile_with_lcl
+from ._core import (
+    E0,
+    OPENMP_ENABLED,
+    P0,
+    T0,
+    Cp,
+    Lv,
+    Md,
+    Mw,
+    Rd,
+    Rv,
+    epsilon,
+    kappa,
+    moist_lapse,
+    parcel_profile,
+    parcel_profile_with_lcl,
+)
 from ._ufunc import (
     delta_t,
     dewpoint,
@@ -65,6 +93,7 @@ from ._ufunc import (
     wind_components,
     wind_direction,
     wind_magnitude,
+    wind_vector,
 )
 from .core import (
     cape_cin,
