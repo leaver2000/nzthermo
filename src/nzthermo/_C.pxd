@@ -39,17 +39,17 @@ cdef extern from "wind.cpp" namespace "libthermo" nogil:
     cdef cppclass wind_components[T]:
         T u, v
         wind_components() noexcept
-        wind_components(T d, T m) noexcept
-        wind_components(wind_vector[T] dm) noexcept
+        wind_components(T, T) noexcept
+        wind_components(wind_vector[T]) noexcept
 
     cdef cppclass wind_vector[T]:
         T direction, magnitude
         wind_vector() noexcept
-        wind_vector(T d, T s) noexcept
-        wind_vector(wind_components[T] uv)  noexcept
+        wind_vector(T, T) noexcept
+        wind_vector(wind_components[T])  noexcept
 
-    T wind_direction[T](T u, T v) noexcept
-    T wind_magnitude[T](T u, T v) noexcept
+    T wind_direction[T](T, T) noexcept
+    T wind_magnitude[T](T, T) noexcept
 
 
 cdef extern from "libthermo.cpp" namespace "libthermo" nogil:

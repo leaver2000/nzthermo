@@ -13,8 +13,8 @@ verbose usage of type annotations. For example, the `parcel_profile` function is
 ```python
 def parcel_profile(
     pressure: Pascal[np.ndarray[shape[Z], np.dtype[T]] | np.ndarray[shape[N, Z], np.dtype[T]]],
-    temperature: Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]],
-    dewpoint: Kelvin[np.ndarray[shape[N], np.dtype[np.float_]]],
+    temperature: Kelvin[np.ndarray[shape[N], np.dtype[np.floating[Any]]]],
+    dewpoint: Kelvin[np.ndarray[shape[N], np.dtype[np.floating[Any]]]],
     /,
     *,
     step: float = ...,
@@ -47,6 +47,12 @@ python3.11 -m venv .venv
 source .venv/bin/activate
 pip install git+https://github.com/leaver2000/nzthermo@master
 ```
+
+### Notebooks
+
+A few notebooks have been included in a separate repository that can be found [here](https://github.com/leaver2000/nzthermo-notebooks).
+
+...
 
 ### Development
 
