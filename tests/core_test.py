@@ -1,6 +1,7 @@
 # noqa
 import itertools
 import warnings
+from typing import Any
 
 import metpy.calc as mpcalc
 import numpy as np
@@ -9,17 +10,15 @@ from metpy.units import units, units as U
 from numpy.testing import assert_allclose, assert_almost_equal, assert_array_equal
 
 import nzthermo._core as _C
-from nzthermo.core import cape_cin, ccl, el, lfc, most_unstable_parcel_index
-
-
-def assert_nan(value, value_units=None):
-    """Check for nan with proper units."""
-    check = np.isnan(value)
-    if check.size == 1:
-        assert check.item(), f"Expected NaN, got {value}"
-    else:
-        assert np.all(check), f"Expected NaN, got {value}"
-
+from nzthermo._core import moist_lapse
+from nzthermo.core import (
+    cape_cin,
+    ccl,
+    downdraft_cape,
+    el,
+    lfc,
+    most_unstable_parcel_index,
+)
 
 np.set_printoptions(
     precision=3,
@@ -34,24 +33,273 @@ hPa = U.hectopascal
 K = U.kelvin
 C = U.celsius
 
-PRESSURE_ABSOLUTE_TOLERANCE = 1e-3  #
+PRESSURE_ABSOLUTE_TOLERANCE = 1e-3
 PRESSURE_RELATIVE_TOLERANCE = 1.5e-1
 TEMPERATURE_ABSOLUTE_TOLERANCE = 1.0  # temperature is within 1 degree
-# ............................................................................................... #
+
+
+def assert_nan(value: np.ndarray, value_units=None):
+    """Check for nan with proper units."""
+    check = np.isnan(value)
+    if check.size == 1:
+        assert check.item(), f"Expected NaN, got {value}"
+    else:
+        assert np.all(check), f"Expected NaN, got {value}"
+
+
+# =============================================================================================== #
+# load test data
+# =============================================================================================== #
 # load up the test data
 data = np.load("tests/data.npz", allow_pickle=False)
-# this specific step uses the failing tests cases for the cape_cin function
-step = np.s_[
-    [19, 20, 25, 44, 46, 48, 88, 89, 116, 119, 144, 146, 149, 166, 238, 268, 297],
-    :,
-]
-
 step = np.s_[:]
-P, T, Td = data["P"], data["T"][step], data["Td"][step]
+P: np.ndarray = data["P"]
+T: np.ndarray = data["T"][step]
+Td: np.ndarray = data["Td"][step]
+
+
+def pressure_levels(sfc=1013.25, dtype: Any = np.float64):
+    pressure = [sfc, 1000, 975, 950, 925, 900, 875, 850, 825, 800, 775, 750]
+    pressure += [725, 700, 650, 600, 550, 500, 450, 400, 350, 300, 250, 200]
+    return np.array(pressure, dtype=dtype) * 100.0
+
+
+# =============================================================================================== #
+# nzthermo._core
+# =============================================================================================== #
+# ............................................................................................... #
+# nzthermo._core.moist_lapse
+# ............................................................................................... #
+# ELEMENT_WISE: (N,) x (N,) x (N,)
+@pytest.mark.moist_lapse
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_moist_lapse_element_wise(dtype):
+    # this mode requires that reference pressure is provided for each temperature value
+    dtype = np.dtype(dtype)
+    temperature = np.array([225.31, 254.0], dtype=dtype)  # (N,) :: surface temperature
+    pressure = np.array([912.12, 732.93], dtype=dtype) * 100.0
+    ref_pressure = np.array([1013.12, 1013.14], dtype=dtype) * 100.0
+    assert_allclose(
+        moist_lapse(pressure, temperature, ref_pressure).squeeze(),
+        [
+            mpcalc.moist_lapse(
+                pressure[i] * units.pascal,
+                temperature[i] * units.kelvin,
+                ref_pressure[i] * units.pascal,
+            ).m  # type: ignore
+            for i in range(len(temperature))
+        ],  # type: ignore
+        rtol=1e-4,
+    )
+
+
+# BROADCAST: (N,) x (Z,)
+@pytest.mark.moist_lapse
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_moist_lapse_broadcasting(dtype):
+    dtype = np.dtype(dtype)
+    pressure = P.astype(dtype)  # (Z,)
+    temperature = np.array([225.31, 254.0], dtype=dtype)  # (N,)
+
+    ml = moist_lapse(pressure.reshape(1, -1), temperature)
+    assert ml.dtype == np.dtype(dtype)
+    assert_allclose(
+        ml,
+        [
+            mpcalc.moist_lapse(pressure * units.pascal, temperature[i] * units.kelvin).m  # type: ignore
+            for i in range(len(temperature))
+        ],
+        rtol=1e-2,
+    )
+
+
+# MATRIX: (N,) x (N, Z)
+@pytest.mark.moist_lapse
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_moist_lapse(dtype):
+    dtype = np.dtype(dtype)
+
+    pressure = np.array(
+        [
+            pressure_levels(1013.12, dtype=dtype),
+            pressure_levels(1013.93, dtype=dtype),
+        ],
+        dtype=dtype,
+    )
+    temperature = np.array([225.31, 254.0], dtype=dtype)  # (N,)
+    ml = moist_lapse(pressure, temperature)
+    assert ml.dtype == np.dtype(dtype)
+
+    assert_allclose(
+        ml,
+        [
+            mpcalc.moist_lapse(pressure[i] * units.pascal, temperature[i] * units.kelvin).m  # type: ignore
+            for i in range(len(temperature))
+        ],
+        rtol=1e-4,
+    )
+
+    # .....{ working with nan values }.....
+    # broadcasting: (N,) x (N, Z,) :: axis = 1 :: with nans
+    # the nan value can actually be very useful in a situations where we want to ``mask`` out values in the vertical profile.
+    # consider a grid global grid where we only want to calculate the moist lapse rate conditionally below a certain pressure
+    # level. We can simply set the pressure values above that level to nan and the function will ignore them.
+    pressure = (
+        np.array(
+            [
+                [
+                    1013.12,
+                    1000,
+                    975,
+                    950,
+                    925,
+                    900,
+                    875,
+                    850,
+                    825,
+                    800,
+                    775,
+                    750,
+                    725,
+                    700,
+                    650,
+                    600,
+                    550,
+                    500,
+                    450,
+                    np.nan,
+                    np.nan,
+                    np.nan,
+                    np.nan,
+                    np.nan,
+                ],
+                [
+                    1013.93,
+                    1000,
+                    975,
+                    950,
+                    925,
+                    900,
+                    875,
+                    850,
+                    825,
+                    800,
+                    775,
+                    750,
+                    725,
+                    700,
+                    650,
+                    600,
+                    550,
+                    500,
+                    450,
+                    400,
+                    350,
+                    300,
+                    250,
+                    200,
+                ],
+            ],
+            dtype=float,
+        )
+        * 100.0
+    )
+
+    with_nans = moist_lapse(pressure, temperature)
+
+    for i in range(len(temperature)):
+        nans = np.isnan(pressure[i])
+        mp = mpcalc.moist_lapse(pressure[i, ~nans] * units.pascal, temperature[i] * units.kelvin).m  # type: ignore
+        assert_allclose(
+            with_nans[i][~nans],
+            mp,
+            rtol=1e-4,
+        )
+
+    pressure = (
+        np.array(
+            [
+                [
+                    np.nan,
+                    np.nan,
+                    975,
+                    950,
+                    925,
+                    900,
+                    875,
+                    850,
+                    825,
+                    800,
+                    775,
+                    750,
+                    725,
+                    700,
+                    650,
+                    600,
+                    550,
+                    500,
+                    450,
+                    400,
+                    350,
+                    300,
+                    250,
+                    200,
+                ],
+                [
+                    1013.93,
+                    1000,
+                    975,
+                    950,
+                    925,
+                    900,
+                    875,
+                    850,
+                    825,
+                    800,
+                    775,
+                    750,
+                    725,
+                    700,
+                    650,
+                    600,
+                    550,
+                    500,
+                    450,
+                    400,
+                    350,
+                    300,
+                    250,
+                    200,
+                ],
+            ],
+            dtype=dtype,
+        )
+        * 100.0
+    )
+    a, b = moist_lapse(pressure, temperature)
+
+    assert_allclose(
+        a[2:],
+        [
+            x.m
+            for x in mpcalc.moist_lapse(
+                pressure[0, 2:] * units.pascal, temperature[0] * units.kelvin
+            )
+        ],
+        rtol=1e-4,
+    )
+    assert_allclose(
+        b,
+        [
+            x.m
+            for x in mpcalc.moist_lapse(pressure[1] * units.pascal, temperature[1] * units.kelvin)
+        ],
+        rtol=1e-4,
+    )
 
 
 # ............................................................................................... #
-# parcel_profile
+# nzthermo._core.parcel_profile
 # ............................................................................................... #
 @pytest.mark.parcel_profile
 @pytest.mark.regression
@@ -66,9 +314,12 @@ def test_parcel_profile_metpy_regression() -> None:
         assert_allclose(prof[i], prof_.m, atol=TEMPERATURE_ABSOLUTE_TOLERANCE)
 
 
+# ............................................................................................... #
+# nzthermo._core.parcel_profile_with_lcl
+# ............................................................................................... #
 @pytest.mark.parcel_profile
 @pytest.mark.regression
-def test_parcel_profile_with_lcl() -> None:
+def test_parcel_profile_with_lcl_metpy_regression() -> None:
     ep, et, etd, ptp = _C.parcel_profile_with_lcl(P, T[:, :], Td[:, :])
     for i in range(ep.shape[0]):
         with warnings.catch_warnings():  # UserWarning
@@ -90,12 +341,40 @@ def test_parcel_profile_with_lcl() -> None:
             assert_allclose(ptp[i], pt_.m, rtol=1e-3)
 
 
+# =============================================================================================== #
+# nzthermo.core
+# =============================================================================================== #
 # ............................................................................................... #
-# CCL
+# nzthermo.core.downdraft_cape
+# ............................................................................................... #
+@pytest.mark.downdraft_cape
+def test_downdraft_cape_with_broadcasted_pressure() -> None:
+    assert_allclose(
+        downdraft_cape(np.broadcast_to(P, (T.shape[0], P.size)), T, Td),
+        downdraft_cape(P, T, Td),
+    )
+
+
+@pytest.mark.downdraft_cape
+@pytest.mark.regression
+@pytest.mark.parametrize("dtype", [np.float64, np.float32])
+def test_downdraft_cape_metpy_regression(dtype) -> None:
+    DCAPE = downdraft_cape(P.astype(dtype), T.astype(dtype), Td.astype(dtype))
+    for i in range(T.shape[1]):
+        DCAPE_ = mpcalc.downdraft_cape(
+            P * Pa,
+            T[i] * K,
+            Td[i] * K,
+        )[0].m
+        assert_allclose(DCAPE[i], DCAPE_, rtol=1e-2)
+
+
+# ............................................................................................... #
+# nzthermo.core.ccl
 # ............................................................................................... #
 @pytest.mark.ccl
 @pytest.mark.parametrize("dtype", [np.float64, np.float32])
-def test_ccl(dtype) -> None:
+def test_ccl_metpy_regression(dtype) -> None:
     P = (
         ([993.0, 957.0, 925.0, 886.0, 850.0, 813.0, 798.0, 732.0, 716.0, 700.0] * units.hPa)
         .to("pascal")
@@ -127,7 +406,7 @@ def test_ccl(dtype) -> None:
 
 
 # ............................................................................................... #
-# EL
+# nzthermo.core.el
 # ............................................................................................... #
 @pytest.mark.el
 def test_el() -> None:
@@ -181,9 +460,9 @@ def test_no_el() -> None:
     temperatures = np.array([22.2, 17.4, 14.6, 1.4, -17.6, -39.4, -52.5]) * C
     dewpoints = np.array([19.0, 14.3, -11.2, -16.7, -21.0, -43.3, -56.7]) * C
     el_pressure, el_temperature = el(
-        levels.to(Pa).m,
-        temperatures.to(K).m,
-        dewpoints.to(K).m,
+        levels,
+        temperatures,
+        dewpoints,
     )
     assert_nan(el_pressure, levels.units)
     assert_nan(el_temperature, temperatures.units)
@@ -256,9 +535,9 @@ def test_no_el_multi_crossing() -> None:
         -10.5,
     ] * C
     el_pressure, el_temperature = el(
-        levels.to(Pa).m,
-        temperatures.to(K).m,
-        dewpoints.to(K).m,
+        levels,
+        temperatures,
+        dewpoints,
     )
 
     assert_nan(el_pressure, levels.units)
@@ -272,16 +551,10 @@ def test_lfc_and_el_below_lcl() -> None:
     dewpoint = [264.5351, 261.13443, 259.0122, 252.30063, 248.58017, 242.66582] * K
     temperature = [273.09723, 268.40173, 263.56207, 260.257, 256.63538, 252.91345] * K
     pressure = [1017.16, 950, 900, 850, 800, 750] * units.hPa
-    el_pressure, el_temperature = el(
-        pressure.to(Pa).m,
-        temperature.m,
-        dewpoint.m,
-    )
-    lfc_pressure, lfc_temperature = lfc(
-        pressure.to(Pa).m,
-        temperature.m,
-        dewpoint.m,
-    )
+
+    el_pressure, el_temperature = el(pressure, temperature, dewpoint)
+    lfc_pressure, lfc_temperature = lfc(pressure, temperature, dewpoint)
+
     assert_nan(lfc_pressure, pressure.units)
     assert_nan(lfc_temperature, temperature.units)
 
@@ -400,11 +673,7 @@ def test_el_lfc_equals_lcl() -> None:
         -70.0,
         -70.0,
     ] * C
-    el_pressure, el_temperature = el(
-        levels.to(Pa).m,
-        temperatures.to(K).m,
-        dewpoints.to(K).m,
-    )
+    el_pressure, el_temperature = el(levels, temperatures, dewpoints)
 
     assert_almost_equal(el_pressure, 17573.273, 3)  # 175.7663 * hPa, 3)
     assert_almost_equal(el_temperature, 216.117, 3)  # -57.03994 * C, 3)
@@ -584,11 +853,7 @@ def test_no_el_parcel_colder() -> None:
         -30.6,
         -32.1,
     ] * C
-    el_pressure, el_temperature = el(
-        levels.to(Pa).m,
-        temperatures.to(K).m,
-        dewpoints.to(K).m,
-    )
+    el_pressure, el_temperature = el(levels, temperatures, dewpoints)
     assert_nan(el_pressure, levels.units)
     assert_nan(el_temperature, temperatures.units)
 
@@ -730,7 +995,7 @@ def test_el_below_lcl() -> None:
 
 @pytest.mark.el
 @pytest.mark.skip(reason="nan values are not handled properly")
-def test_el_profile_nan():
+def test_el_profile_nan() -> None:
     """Test EL when the profile includes NaN values."""
     levels = np.array([959.0, 779.2, 751.3, 724.3, 700.0, 269.0]) * hPa
     temperatures = np.array([22.2, 14.6, np.nan, 9.4, 7.0, -38.0]) * C
@@ -756,7 +1021,7 @@ def test_el_profile_nan():
 
 @pytest.mark.el
 @pytest.mark.skip(reason="nan values are not handled properly")
-def test_el_profile_nan_with_parcel_profile():
+def test_el_profile_nan_with_parcel_profile() -> None:
     """Test EL when the profile includes NaN values, and a parcel temp profile is specified."""
     levels = np.array([959.0, 779.2, 751.3, 724.3, 700.0, 269.0]) * hPa
     temperatures = np.array([22.2, 14.6, np.nan, 9.4, 7.0, -38.0]) * C
@@ -768,6 +1033,7 @@ def test_el_profile_nan_with_parcel_profile():
 
 
 @pytest.mark.el
+@pytest.mark.regression
 @pytest.mark.parametrize("which", ["top", "bottom"])
 def test_el_metpy_regression(which) -> None:
     prof = _C.parcel_profile(P, T[:, 0], Td[:, 0])
@@ -787,7 +1053,7 @@ def test_el_metpy_regression(which) -> None:
 
 
 # ............................................................................................... #
-# LFC
+# nzthermo.core.lfc
 # ............................................................................................... #
 @pytest.mark.lfc
 def test_lfc_basic() -> None:
@@ -902,6 +1168,7 @@ def test_lfc_profile_nan() -> None:
 
 @pytest.mark.cape
 @pytest.mark.mu_cape
+@pytest.mark.regression
 @pytest.mark.parametrize("depth", [30000.0])
 def test_most_unstable_parcel_index(depth) -> None:
     assert_array_equal(
@@ -914,13 +1181,13 @@ def test_most_unstable_parcel_index(depth) -> None:
 
 
 @pytest.mark.lfc
+@pytest.mark.regression
 @pytest.mark.parametrize("which", ["top", "bottom"])
 def test_lfc_metpy_regression(which) -> None:
     prof = _C.parcel_profile(P, T[:, 0], Td[:, 0])
 
-    count_a = 0
-    count_b = 0
     lfc_p, lfc_t = lfc(P, T, Td, prof, which)
+    print(f"\nlfc {which}")
     for i in range(T.shape[0]):
         lfc_p_, lfc_t_ = mpcalc.lfc(
             P * Pa,
@@ -929,22 +1196,15 @@ def test_lfc_metpy_regression(which) -> None:
             prof[i] * K,
             which=which,
         )
-
-        # assert_allclose(
-        #     lfc_p[i],
-        #     lfc_p_.m,  # type: ignore
-        #     atol=PRESSURE_ABSOLUTE_TOLERANCE,
-        #     rtol=PRESSURE_RELATIVE_TOLERANCE,
-        # )
-        # assert_allclose(lfc_t[i], lfc_t_.m, atol=TEMPERATURE_ABSOLUTE_TOLERANCE + 50)
-
-    print(f"\nisfinite_count [{which}]: {count_a=} {count_b=}")
+        assert_allclose(lfc_p[i], lfc_p_.m, atol=500.0)  # type: ignore
+        assert_allclose(lfc_t[i], lfc_t_.m, atol=1.0)
 
 
 # ............................................................................................... #
-# CAPE_CIN
+# nzthermo.core.cape_cin
 # ............................................................................................... #
 @pytest.mark.cape_cin
+@pytest.mark.regression
 @pytest.mark.parametrize(
     "which_lfc, which_el",
     itertools.product(["top", "bottom"], ["top", "bottom"]),

@@ -1,3 +1,4 @@
+# cython: boundscheck=False
 # pyright: reportGeneralTypeIssues=false
 
 ctypedef fused Float:

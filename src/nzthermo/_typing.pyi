@@ -21,7 +21,9 @@ _R = TypeVar("_R")
 _In = TypeVar("_In")
 _Out = TypeVar("_Out")
 _Dtype_t = TypeVar("_Dtype_t", bound=np.generic)
-_DualArrayLike = SupportsArray[_Dtype_t] | NestedSequence[SupportsArray[_Dtype_t]] | _T | NestedSequence[_T]
+_DualArrayLike = (
+    SupportsArray[_Dtype_t] | NestedSequence[SupportsArray[_Dtype_t]] | _T | NestedSequence[_T]
+)
 
 class _ufunc(np.ufunc, Generic[_P, _R, _In, _Out]):  # type: ignore[misc]
     @overload
@@ -52,11 +54,18 @@ class _ufunc1x1(_ufunc[_P, _R, L[2], L[1]]):
         out: None = ...,
         *,
         where: (
-            SupportsArray[np.bool_] | NestedSequence[SupportsArray[np.bool_]] | bool | NestedSequence[bool] | None
+            SupportsArray[np.bool_]
+            | NestedSequence[SupportsArray[np.bool_]]
+            | bool
+            | NestedSequence[bool]
+            | None
         ) = ...,
         casting: L["no", "equiv", "safe", "same_kind", "unsafe"] = ...,
         order: L[None, "K", "A", "C", "F"] = ...,
-        dtype: np.dtype[np.float_] | type[float] | L["float", "float32", "float64"] | None = ...,
+        dtype: np.dtype[np.floating[Any]]
+        | type[float]
+        | L["float", "float32", "float64"]
+        | None = ...,
         subok: bool = ...,
         signature: str | tuple[None | str, None | str] = ...,
         extobj: list[Any] = ...,
@@ -69,11 +78,18 @@ class _ufunc1x1(_ufunc[_P, _R, L[2], L[1]]):
         out: None | NDArray[Any] = ...,
         *,
         where: (
-            SupportsArray[np.bool_] | NestedSequence[SupportsArray[np.bool_]] | bool | NestedSequence[bool] | None
+            SupportsArray[np.bool_]
+            | NestedSequence[SupportsArray[np.bool_]]
+            | bool
+            | NestedSequence[bool]
+            | None
         ) = ...,
         casting: L["no", "equiv", "safe", "same_kind", "unsafe"] = ...,
         order: L[None, "K", "A", "C", "F"] = ...,
-        dtype: np.dtype[np.float_] | type[float] | L["float", "float32", "float64"] | None = ...,
+        dtype: np.dtype[np.floating[Any]]
+        | type[float]
+        | L["float", "float32", "float64"]
+        | None = ...,
         subok: bool = ...,
         signature: str | tuple[None | str, None | str] = ...,
         extobj: list[Any] = ...,
@@ -88,11 +104,18 @@ class _ufunc2x1(_ufunc[_P, _R, L[2], L[1]]):
         out: None = ...,
         *,
         where: (
-            SupportsArray[np.bool_] | NestedSequence[SupportsArray[np.bool_]] | bool | NestedSequence[bool] | None
+            SupportsArray[np.bool_]
+            | NestedSequence[SupportsArray[np.bool_]]
+            | bool
+            | NestedSequence[bool]
+            | None
         ) = ...,
         casting: L["no", "equiv", "safe", "same_kind", "unsafe"] = ...,
         order: L[None, "K", "A", "C", "F"] = ...,
-        dtype: np.dtype[np.float_] | type[float] | L["float", "float32", "float64"] | None = ...,
+        dtype: np.dtype[np.floating[Any]]
+        | type[float]
+        | L["float", "float32", "float64"]
+        | None = ...,
         subok: bool = ...,
         signature: str | tuple[None | str, None | str] = ...,
         extobj: list[Any] = ...,
@@ -105,11 +128,18 @@ class _ufunc2x1(_ufunc[_P, _R, L[2], L[1]]):
         out: None | NDArray[Any] | tuple[NDArray[Any]] = ...,
         *,
         where: (
-            SupportsArray[np.bool_] | NestedSequence[SupportsArray[np.bool_]] | bool | NestedSequence[bool] | None
+            SupportsArray[np.bool_]
+            | NestedSequence[SupportsArray[np.bool_]]
+            | bool
+            | NestedSequence[bool]
+            | None
         ) = ...,
         casting: L["no", "equiv", "safe", "same_kind", "unsafe"] = ...,
         order: L[None, "K", "A", "C", "F"] = ...,
-        dtype: np.dtype[np.float_] | type[float] | L["float", "float32", "float64"] | None = ...,
+        dtype: np.dtype[np.floating[Any]]
+        | type[float]
+        | L["float", "float32", "float64"]
+        | None = ...,
         subok: bool = ...,
         signature: str | tuple[None | str, None | str] = ...,
         extobj: list[Any] = ...,
@@ -125,19 +155,29 @@ class _ufunc2x1(_ufunc[_P, _R, L[2], L[1]]):
         self,
         array: ArrayLike,
         axis: SupportsIndex | Sequence[SupportsIndex] | None = ...,
-        dtype: np.dtype[np.float_] | type[float] | L["float", "float32", "float64"] | None = ...,
+        dtype: np.dtype[np.floating[Any]]
+        | type[float]
+        | L["float", "float32", "float64"]
+        | None = ...,
         out: None | NDArray[Any] = ...,
         keepdims: bool = ...,
         initial: Any = ...,
         where: (
-            SupportsArray[np.bool_] | NestedSequence[SupportsArray[np.bool_]] | bool | NestedSequence[bool] | None
+            SupportsArray[np.bool_]
+            | NestedSequence[SupportsArray[np.bool_]]
+            | bool
+            | NestedSequence[bool]
+            | None
         ) = ...,
     ) -> Any: ...
     def accumulate(
         self,
         array: ArrayLike,
         axis: SupportsIndex = ...,
-        dtype: np.dtype[np.float_] | type[np.float_] | L["float", "float32", "float64"] | None = ...,
+        dtype: np.dtype[np.floating[Any]]
+        | type[np.floating[Any]]
+        | L["float", "float32", "float64"]
+        | None = ...,
         out: None | NDArray[Any] = ...,
     ) -> NDArray[Any]: ...
     def reduceat(
@@ -145,7 +185,10 @@ class _ufunc2x1(_ufunc[_P, _R, L[2], L[1]]):
         array: ArrayLike,
         indices: _DualArrayLike[np.int_, int],
         axis: SupportsIndex = ...,
-        dtype: np.dtype[np.float_] | type[np.float_] | L["float", "float32", "float64"] | None = ...,
+        dtype: np.dtype[np.floating[Any]]
+        | type[np.floating[Any]]
+        | L["float", "float32", "float64"]
+        | None = ...,
         out: None | NDArray[Any] = ...,
     ) -> NDArray[Any]: ...
 
@@ -159,11 +202,18 @@ class _ufunc2x1(_ufunc[_P, _R, L[2], L[1]]):
         *,
         out: None = ...,
         where: (
-            SupportsArray[np.bool_] | NestedSequence[SupportsArray[np.bool_]] | bool | NestedSequence[bool] | None
+            SupportsArray[np.bool_]
+            | NestedSequence[SupportsArray[np.bool_]]
+            | bool
+            | NestedSequence[bool]
+            | None
         ) = ...,
         casting: L["no", "equiv", "safe", "same_kind", "unsafe"] = ...,
         order: L[None, "K", "A", "C", "F"] = ...,
-        dtype: np.dtype[np.float_] | type[np.float_] | L["float", "float32", "float64"] | None = ...,
+        dtype: np.dtype[np.floating[Any]]
+        | type[np.floating[Any]]
+        | L["float", "float32", "float64"]
+        | None = ...,
         subok: bool = ...,
         signature: str | tuple[None | str, None | str, None | str] = ...,
         extobj: list[Any] = ...,
@@ -171,17 +221,24 @@ class _ufunc2x1(_ufunc[_P, _R, L[2], L[1]]):
     @overload
     def outer(  # type: ignore[misc]
         self,
-        A: _DualArrayLike[np.float_, float],
-        B: _DualArrayLike[np.float_, float],
+        A: _DualArrayLike[np.floating[Any], float],
+        B: _DualArrayLike[np.floating[Any], float],
         /,
         *,
         out: None | NDArray[Any] | tuple[NDArray[Any]] = ...,
         where: (
-            SupportsArray[np.bool_] | NestedSequence[SupportsArray[np.bool_]] | bool | NestedSequence[bool] | None
+            SupportsArray[np.bool_]
+            | NestedSequence[SupportsArray[np.bool_]]
+            | bool
+            | NestedSequence[bool]
+            | None
         ) = ...,
         casting: L["no", "equiv", "safe", "same_kind", "unsafe"] = ...,
         order: L[None, "K", "A", "C", "F"] = ...,
-        dtype: np.dtype[np.float_] | type[np.float_] | L["float", "float32", "float64"] | None = ...,
+        dtype: np.dtype[np.floating[Any]]
+        | type[np.floating[Any]]
+        | L["float", "float32", "float64"]
+        | None = ...,
         subok: bool = ...,
         signature: str | tuple[None | str, None | str, None | str] = ...,
         extobj: list[Any] = ...,
@@ -196,11 +253,18 @@ class _ufunc2x2(_ufunc[_P, _R, L[2], L[2]]):  # type: ignore[misc]
         out: None = ...,
         *,
         where: (
-            SupportsArray[np.bool_] | NestedSequence[SupportsArray[np.bool_]] | bool | NestedSequence[bool] | None
+            SupportsArray[np.bool_]
+            | NestedSequence[SupportsArray[np.bool_]]
+            | bool
+            | NestedSequence[bool]
+            | None
         ) = ...,
         casting: L["no", "equiv", "safe", "same_kind", "unsafe"] = ...,
         order: L[None, "K", "A", "C", "F"] = ...,
-        dtype: np.dtype[np.float_] | type[float] | L["float", "float32", "float64"] | None = ...,
+        dtype: np.dtype[np.floating[Any]]
+        | type[float]
+        | L["float", "float32", "float64"]
+        | None = ...,
         subok: bool = ...,
         signature: str | tuple[None | str, None | str] = ...,
         extobj: list[Any] = ...,
@@ -215,11 +279,18 @@ class _ufunc2x2(_ufunc[_P, _R, L[2], L[2]]):  # type: ignore[misc]
         *,
         out: tuple[NDArray[Any], NDArray[Any]] = ...,
         where: (
-            SupportsArray[np.bool_] | NestedSequence[SupportsArray[np.bool_]] | bool | NestedSequence[bool] | None
+            SupportsArray[np.bool_]
+            | NestedSequence[SupportsArray[np.bool_]]
+            | bool
+            | NestedSequence[bool]
+            | None
         ) = ...,
         casting: L["no", "equiv", "safe", "same_kind", "unsafe"] = ...,
         order: L[None, "K", "A", "C", "F"] = ...,
-        dtype: np.dtype[np.float_] | type[float] | L["float", "float32", "float64"] | None = ...,
+        dtype: np.dtype[np.floating[Any]]
+        | type[float]
+        | L["float", "float32", "float64"]
+        | None = ...,
         subok: bool = ...,
         signature: str | tuple[None | str, None | str, None | str, None | str] = ...,
         extobj: list[Any] = ...,
@@ -236,11 +307,18 @@ class _ufunc3x1(_ufunc[_P, _R, L[3], L[1]]):
         out: None = ...,
         *,
         where: (
-            SupportsArray[np.bool_] | NestedSequence[SupportsArray[np.bool_]] | bool | NestedSequence[bool] | None
+            SupportsArray[np.bool_]
+            | NestedSequence[SupportsArray[np.bool_]]
+            | bool
+            | NestedSequence[bool]
+            | None
         ) = ...,
         casting: L["no", "equiv", "safe", "same_kind", "unsafe"] = ...,
         order: L[None, "K", "A", "C", "F"] = ...,
-        dtype: np.dtype[np.float_] | type[np.float_] | L["float", "float32", "float64"] | None = ...,
+        dtype: np.dtype[np.floating[Any]]
+        | type[np.floating[Any]]
+        | L["float", "float32", "float64"]
+        | None = ...,
         subok: bool = ...,
         signature: str | tuple[None | str, None | str, None | str] = ...,
         extobj: list[Any] = ...,
@@ -248,34 +326,47 @@ class _ufunc3x1(_ufunc[_P, _R, L[3], L[1]]):
     @overload
     def __call__(
         self,
-        __x1: _DualArrayLike[np.float_, float],
-        __x2: _DualArrayLike[np.float_, float],
-        __x3: _DualArrayLike[np.float_, float],
+        __x1: _DualArrayLike[np.floating[Any], float],
+        __x2: _DualArrayLike[np.floating[Any], float],
+        __x3: _DualArrayLike[np.floating[Any], float],
         /,
         out: None | NDArray[Any] | tuple[NDArray[Any]] = ...,
         *,
         where: (
-            SupportsArray[np.bool_] | NestedSequence[SupportsArray[np.bool_]] | bool | NestedSequence[bool] | None
+            SupportsArray[np.bool_]
+            | NestedSequence[SupportsArray[np.bool_]]
+            | bool
+            | NestedSequence[bool]
+            | None
         ) = ...,
         casting: L["no", "equiv", "safe", "same_kind", "unsafe"] = ...,
         order: L[None, "K", "A", "C", "F"] = ...,
-        dtype: np.dtype[np.float_] | type[float] | L["float", "float32", "float64"] | None = ...,
+        dtype: np.dtype[np.floating[Any]]
+        | type[float]
+        | L["float", "float32", "float64"]
+        | None = ...,
         subok: bool = ...,
         signature: str | tuple[None | str, None | str, None | str] = ...,
         extobj: list[Any] = ...,
-    ) -> NDArray[np.float_]: ...
+    ) -> NDArray[np.floating[Any]]: ...
     def at(
         self,
         a: NDArray[Any],
-        indices: SupportsArray[np.int_] | NestedSequence[SupportsArray[np.int_]] | int | NestedSequence[int],
+        indices: SupportsArray[np.int_]
+        | NestedSequence[SupportsArray[np.int_]]
+        | int
+        | NestedSequence[int],
         b: ArrayLike,
         /,
     ) -> None: ...
     def reduce(
         self,
-        array: NestedSequence[float] | NDArray[np.float_],
+        array: NestedSequence[float] | NDArray[np.floating[Any]],
         axis: SupportsIndex | Sequence[SupportsIndex] | None = ...,
-        dtype: np.dtype[np.float_] | type[np.float_] | L["float", "float32", "float64"] | None = ...,
+        dtype: np.dtype[np.floating[Any]]
+        | type[np.floating[Any]]
+        | L["float", "float32", "float64"]
+        | None = ...,
         out: None | NDArray[Any] = ...,
         keepdims: bool = ...,
         initial: Any = ...,
@@ -285,15 +376,24 @@ class _ufunc3x1(_ufunc[_P, _R, L[3], L[1]]):
         self,
         array: ArrayLike,
         axis: SupportsIndex = ...,
-        dtype: np.dtype[np.float_] | type[np.float_] | L["float", "float32", "float64"] | None = ...,
+        dtype: np.dtype[np.floating[Any]]
+        | type[np.floating[Any]]
+        | L["float", "float32", "float64"]
+        | None = ...,
         out: None | NDArray[Any] = ...,
     ) -> NDArray[Any]: ...
     def reduceat(
         self,
         array: ArrayLike,
-        indices: SupportsArray[np.int_] | NestedSequence[SupportsArray[np.int_]] | int | NestedSequence[int],
+        indices: SupportsArray[np.int_]
+        | NestedSequence[SupportsArray[np.int_]]
+        | int
+        | NestedSequence[int],
         axis: SupportsIndex = ...,
-        dtype: np.dtype[np.float_] | type[np.float_] | L["float", "float32", "float64"] | None = ...,
+        dtype: np.dtype[np.floating[Any]]
+        | type[np.floating[Any]]
+        | L["float", "float32", "float64"]
+        | None = ...,
         out: None | NDArray[Any] = ...,
     ) -> NDArray[Any]: ...
 
@@ -310,7 +410,10 @@ class _ufunc3x1(_ufunc[_P, _R, L[3], L[1]]):
         where: NestedSequence[bool] | NDArray[np.bool_] | None = ...,
         casting: L["no", "equiv", "safe", "same_kind", "unsafe"] = ...,
         order: L[None, "K", "A", "C", "F"] = ...,
-        dtype: np.dtype[np.float_] | type[float] | L["float", "float32", "float64"] | None = ...,
+        dtype: np.dtype[np.floating[Any]]
+        | type[float]
+        | L["float", "float32", "float64"]
+        | None = ...,
         subok: bool = ...,
         signature: str | tuple[None | str, None | str, None | str] = ...,
         extobj: list[Any] = ...,
@@ -318,20 +421,23 @@ class _ufunc3x1(_ufunc[_P, _R, L[3], L[1]]):
     @overload
     def outer(  # type: ignore[misc]
         self,
-        A: NestedSequence[float] | NDArray[np.float_],
-        B: NestedSequence[float] | NDArray[np.float_],
-        C: NestedSequence[float] | NDArray[np.float_],
+        A: NestedSequence[float] | NDArray[np.floating[Any]],
+        B: NestedSequence[float] | NDArray[np.floating[Any]],
+        C: NestedSequence[float] | NDArray[np.floating[Any]],
         /,
         *,
         out: NDArray[Any] | tuple[NDArray[Any]] | None = ...,
         where: NestedSequence[bool] | NDArray[np.bool_] | None = ...,
         casting: L["no", "equiv", "safe", "same_kind", "unsafe"] = ...,
         order: L[None, "K", "A", "C", "F"] = ...,
-        dtype: np.dtype[np.float_] | type[float] | L["float", "float32", "float64"] | None = ...,
+        dtype: np.dtype[np.floating[Any]]
+        | type[float]
+        | L["float", "float32", "float64"]
+        | None = ...,
         subok: bool = ...,
         signature: str | tuple[None | str, None | str, None | str] = ...,
         extobj: list[Any] = ...,
-    ) -> NDArray[np.float_]: ...
+    ) -> NDArray[np.floating[Any]]: ...
 
 class _ufunc3x2(_ufunc[_P, _R, L[3], L[2]]):
     @overload
@@ -344,11 +450,18 @@ class _ufunc3x2(_ufunc[_P, _R, L[3], L[2]]):
         out: None = ...,
         *,
         where: (
-            SupportsArray[np.bool_] | NestedSequence[SupportsArray[np.bool_]] | bool | NestedSequence[bool] | None
+            SupportsArray[np.bool_]
+            | NestedSequence[SupportsArray[np.bool_]]
+            | bool
+            | NestedSequence[bool]
+            | None
         ) = ...,
         casting: L["no", "equiv", "safe", "same_kind", "unsafe"] = ...,
         order: L[None, "K", "A", "C", "F"] = ...,
-        dtype: np.dtype[np.float_] | type[np.float_] | L["float", "float32", "float64"] | None = ...,
+        dtype: np.dtype[np.floating[Any]]
+        | type[np.floating[Any]]
+        | L["float", "float32", "float64"]
+        | None = ...,
         subok: bool = ...,
         signature: str | tuple[None | str, None | str, None | str] = ...,
         extobj: list[Any] = ...,
@@ -356,18 +469,25 @@ class _ufunc3x2(_ufunc[_P, _R, L[3], L[2]]):
     @overload
     def __call__(
         self,
-        __x1: _DualArrayLike[np.float_, float],
-        __x2: _DualArrayLike[np.float_, float],
-        __x3: _DualArrayLike[np.float_, float],
+        __x1: _DualArrayLike[np.floating[Any], float],
+        __x2: _DualArrayLike[np.floating[Any], float],
+        __x3: _DualArrayLike[np.floating[Any], float],
         /,
         out: None | NDArray[Any] | tuple[NDArray[Any]] = ...,
         *,
         where: (
-            SupportsArray[np.bool_] | NestedSequence[SupportsArray[np.bool_]] | bool | NestedSequence[bool] | None
+            SupportsArray[np.bool_]
+            | NestedSequence[SupportsArray[np.bool_]]
+            | bool
+            | NestedSequence[bool]
+            | None
         ) = ...,
         casting: L["no", "equiv", "safe", "same_kind", "unsafe"] = ...,
         order: L[None, "K", "A", "C", "F"] = ...,
-        dtype: np.dtype[np.float_] | type[float] | L["float", "float32", "float64"] | None = ...,
+        dtype: np.dtype[np.floating[Any]]
+        | type[float]
+        | L["float", "float32", "float64"]
+        | None = ...,
         subok: bool = ...,
         signature: str | tuple[None | str, None | str, None | str] = ...,
         extobj: list[Any] = ...,
@@ -375,15 +495,21 @@ class _ufunc3x2(_ufunc[_P, _R, L[3], L[2]]):
     def at(
         self,
         a: NDArray[Any],
-        indices: SupportsArray[np.int_] | NestedSequence[SupportsArray[np.int_]] | int | NestedSequence[int],
+        indices: SupportsArray[np.int_]
+        | NestedSequence[SupportsArray[np.int_]]
+        | int
+        | NestedSequence[int],
         b: ArrayLike,
         /,
     ) -> None: ...
     def reduce(
         self,
-        array: NestedSequence[float] | NDArray[np.float_],
+        array: NestedSequence[float] | NDArray[np.floating[Any]],
         axis: SupportsIndex | Sequence[SupportsIndex] | None = ...,
-        dtype: np.dtype[np.float_] | type[np.float_] | L["float", "float32", "float64"] | None = ...,
+        dtype: np.dtype[np.floating[Any]]
+        | type[np.floating[Any]]
+        | L["float", "float32", "float64"]
+        | None = ...,
         out: None | NDArray[Any] = ...,
         keepdims: bool = ...,
         initial: Any = ...,
@@ -393,15 +519,24 @@ class _ufunc3x2(_ufunc[_P, _R, L[3], L[2]]):
         self,
         array: ArrayLike,
         axis: SupportsIndex = ...,
-        dtype: np.dtype[np.float_] | type[np.float_] | L["float", "float32", "float64"] | None = ...,
+        dtype: np.dtype[np.floating[Any]]
+        | type[np.floating[Any]]
+        | L["float", "float32", "float64"]
+        | None = ...,
         out: None | NDArray[Any] = ...,
     ) -> tuple[NDArray[Any], NDArray[Any]]: ...
     def reduceat(
         self,
         array: ArrayLike,
-        indices: SupportsArray[np.int_] | NestedSequence[SupportsArray[np.int_]] | int | NestedSequence[int],
+        indices: SupportsArray[np.int_]
+        | NestedSequence[SupportsArray[np.int_]]
+        | int
+        | NestedSequence[int],
         axis: SupportsIndex = ...,
-        dtype: np.dtype[np.float_] | type[np.float_] | L["float", "float32", "float64"] | None = ...,
+        dtype: np.dtype[np.floating[Any]]
+        | type[np.floating[Any]]
+        | L["float", "float32", "float64"]
+        | None = ...,
         out: None | NDArray[Any] = ...,
     ) -> tuple[NDArray[Any], NDArray[Any]]: ...
 
@@ -418,7 +553,10 @@ class _ufunc3x2(_ufunc[_P, _R, L[3], L[2]]):
         where: NestedSequence[bool] | NDArray[np.bool_] | None = ...,
         casting: L["no", "equiv", "safe", "same_kind", "unsafe"] = ...,
         order: L[None, "K", "A", "C", "F"] = ...,
-        dtype: np.dtype[np.float_] | type[float] | L["float", "float32", "float64"] | None = ...,
+        dtype: np.dtype[np.floating[Any]]
+        | type[float]
+        | L["float", "float32", "float64"]
+        | None = ...,
         subok: bool = ...,
         signature: str | tuple[None | str, None | str, None | str] = ...,
         extobj: list[Any] = ...,
@@ -426,16 +564,19 @@ class _ufunc3x2(_ufunc[_P, _R, L[3], L[2]]):
     @overload
     def outer(  # type: ignore[misc]
         self,
-        A: NestedSequence[float] | NDArray[np.float_],
-        B: NestedSequence[float] | NDArray[np.float_],
-        C: NestedSequence[float] | NDArray[np.float_],
+        A: NestedSequence[float] | NDArray[np.floating[Any]],
+        B: NestedSequence[float] | NDArray[np.floating[Any]],
+        C: NestedSequence[float] | NDArray[np.floating[Any]],
         /,
         *,
         out: NDArray[Any] | tuple[NDArray[Any]] | None = ...,
         where: NestedSequence[bool] | NDArray[np.bool_] | None = ...,
         casting: L["no", "equiv", "safe", "same_kind", "unsafe"] = ...,
         order: L[None, "K", "A", "C", "F"] = ...,
-        dtype: np.dtype[np.float_] | type[float] | L["float", "float32", "float64"] | None = ...,
+        dtype: np.dtype[np.floating[Any]]
+        | type[float]
+        | L["float", "float32", "float64"]
+        | None = ...,
         subok: bool = ...,
         signature: str | tuple[None | str, None | str, None | str] = ...,
         extobj: list[Any] = ...,

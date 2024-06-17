@@ -16,14 +16,13 @@ from numpy.typing import NDArray
 
 from . import _core as core, functional as F
 from ._ufunc import (
-    between_or_close as _between_or_close,
+    between_or_close,
     dewpoint as _dewpoint,
     dry_lapse,
     equivalent_potential_temperature,
-    greater_or_close as _greater_or_close,
+    greater_or_close,
     lcl,
     lcl_pressure,
-    less_or_close as _less_or_close,
     mixing_ratio,
     saturation_mixing_ratio,
     saturation_vapor_pressure,
@@ -35,17 +34,14 @@ from .const import Rd
 from .typing import Kelvin, N, Pascal, Z, shape
 from .utils import Vector1d, broadcast_nz
 
-float_ = TypeVar("float_", np.float_, np.floating[Any], covariant=True)
+float_ = TypeVar("float_", bound=np.floating[Any], covariant=True)
 newaxis: Final[None] = np.newaxis
 NaN = np.nan
 z_axis: Final[tuple[slice, None]] = np.s_[:, newaxis]
 N_AXIS: Final[tuple[None, slice]] = np.s_[newaxis, :]
 
 
-_FASTPATH: dict[str, Any] = {"__fastpath": True}
-between_or_close = lambda x, a, b: _between_or_close(x, a, b).astype(np.bool_)
-greater_or_close = lambda x, y: _greater_or_close(x, y).astype(np.bool_)
-less_or_close = lambda x, y: _less_or_close(x, y).astype(np.bool_)
+FASTPATH: dict[str, Any] = {"__fastpath": True}
 
 
 # -------------------------------------------------------------------------------------------------
@@ -76,39 +72,36 @@ def downdraft_cape(
 
     """
     N, _ = temperature.shape
+    nx = np.arange(N)
+    # Tims suggestion was to allow for the parcel to potentially be conditionally based
+    mask = (pressure <= 70000.0) & (pressure >= 50000.0)
 
-    mid_layer_idx = ((pressure <= 7e4) & (pressure >= 5e4)).squeeze()
-    p_layer, t_layer, td_layer = (x[:, mid_layer_idx] for x in (pressure, temperature, dewpoint))
+    if broadcasted := pressure.shape == temperature.shape:
+        p_layer, t_layer, td_layer = np.where(
+            mask[newaxis, :, :], [pressure, temperature, dewpoint], NaN
+        )
+    else:
+        p_layer = np.where(mask, pressure, NaN)
+        t_layer, td_layer = np.where(mask[newaxis, :, :], [temperature, dewpoint], NaN)
 
     theta_e = equivalent_potential_temperature(p_layer, t_layer, td_layer)
-    nx, zx = np.arange(N), np.argmin(theta_e, axis=1)
-    # Tims suggestion was to allow for the parcel to potentially be conditionally based
-    p_top = p_layer[0, zx]  # (N,)
+
+    zx = np.nanargmin(theta_e, axis=1)
+
+    p_top = p_layer[nx, zx] if broadcasted else p_layer[0, zx]
     t_top = t_layer[nx, zx]  # (N,)
     td_top = td_layer[nx, zx]  # (N,)
     wb_top = wet_bulb_temperature(p_top, t_top, td_top)  # (N,)
 
-    # reshape our pressure into a 2d pressure grid and put the hard cap on everything above the
-    # hard cap
-    cap = -(np.searchsorted(np.squeeze(pressure)[::-1], np.min(p_top)) - 1)
-    pressure = pressure[0, :cap].repeat(N).reshape(-1, N).transpose()  # (N, Z -cap)
-    if not np.any(pressure):
-        return np.repeat(np.nan, N).astype(pressure.dtype)
-
     # our moist_lapse rate function has nan ignoring capabilities
-    pressure[pressure < p_top[:, newaxis]] = np.nan
-    temperature = temperature[:, :cap]
-    dewpoint = dewpoint[:, :cap]
-
+    pressure = np.where(pressure >= p_top[:, newaxis], pressure, NaN)
     e_vt = virtual_temperature(temperature, saturation_mixing_ratio(pressure, dewpoint))  # (N, Z)
     trace = core.moist_lapse(pressure, wb_top, p_top)  # (N, Z)
     p_vt = virtual_temperature(trace, saturation_mixing_ratio(pressure, trace))  # (N, Z)
 
-    delta = e_vt - p_vt
+    DCAPE = Rd * F.nantrapz(p_vt - e_vt, np.log(pressure), axis=1)
 
-    dcape = -(Rd * F.nantrapz(delta, np.log(pressure), axis=1))
-
-    return dcape
+    return DCAPE
 
 
 # -------------------------------------------------------------------------------------------------
@@ -160,7 +153,8 @@ def _el_lfc(
     temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
     dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
     /,
-    parcel_temperature_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]] | None = None,
+    parcel_temperature_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.floating[Any]]]]
+    | None = None,
     which_lfc: L["bottom", "top"] = "bottom",
     which_el: L["bottom", "top"] = "top",
     dewpoint_start: np.ndarray[shape[N], np.dtype[float_]] | None = None,
@@ -170,7 +164,7 @@ def _el_lfc(
             pressure, temperature, dewpoint
         )
 
-    N, Z = temperature.shape
+    N = temperature.shape[0]
     p0, t0 = pressure[:, 0], temperature[:, 0]
     if dewpoint_start is None:
         td0 = dewpoint[:, 0]  # (N,)
@@ -187,7 +181,6 @@ def _el_lfc(
 
     top_idx = np.arange(N), np.argmin(~np.isnan(pressure), axis=1) - 1
     # find the Equilibrium Level (EL)
-    # - If the top of the sounding parcel is warmer than the environment, there is no EL
     left_of_env = (parcel_temperature_profile[top_idx] <= temperature[top_idx])[:, newaxis]
     EL = F.intersect_nz(
         pressure,
@@ -195,31 +188,30 @@ def _el_lfc(
         temperature,
         "decreasing",
         log_x=True,
-    ).where(lambda el: el.is_above(LCL) & left_of_env)
+    ).where(
+        # If the top of the sounding parcel is warmer than the environment, there is no EL
+        lambda el: el.is_above(LCL) & left_of_env
+    )
 
     if pick == "EL":
         return EL.pick(which_el)
 
-    # the mask only needs to be applied to either the temperature or parcel_temperature_profile
-    temperature = np.where(LCL.is_above(pressure, close=True), temperature, NaN)
-
     LFC = F.intersect_nz(
         pressure,
-        parcel_temperature_profile,  # pyright: ignore
+        parcel_temperature_profile,
         temperature,
         "increasing",
         log_x=True,
-    )
+    ).where_above(LCL)
 
-    no_lfc = LFC.is_nan().all(axis=1, keepdims=True)
-
-    lfc_is_the_lfc = ~no_lfc & LFC.is_above(LCL)
-    lfc_is_the_lcl = no_lfc & _greater_or_close(parcel_temperature_profile, temperature).astype(
-        np.bool_
+    is_lcl = (no_lfc := LFC.is_nan().all(axis=1, keepdims=True)) & greater_or_close(
+        # the mask only needs to be applied to either the temperature or parcel_temperature_profile
+        np.where(LCL.is_below(pressure, close=True), parcel_temperature_profile, NaN),
+        temperature,
     ).any(axis=1, keepdims=True)
 
     LFC = LFC.select(
-        [lfc_is_the_lfc, lfc_is_the_lcl],
+        [~no_lfc, is_lcl],
         [LFC.pressure, LCL.pressure],
         [LFC.temperature, LCL.temperature],
     )
@@ -236,7 +228,8 @@ def el(
     temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
     dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
     /,
-    parcel_temperature_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]] | None = None,
+    parcel_temperature_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.floating[Any]]]]
+    | None = None,
     which: L["top", "bottom"] = "top",
 ) -> Vector1d[float_]:
     return _el_lfc(
@@ -271,7 +264,8 @@ def el_lfc(
     temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
     dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
     /,
-    parcel_temperature_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.float_]]] | None = None,
+    parcel_temperature_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.floating[Any]]]]
+    | None = None,
     which_lfc: L["bottom", "top"] = "bottom",
     which_el: L["bottom", "top"] = "top",
     dewpoint_start: np.ndarray[shape[N], np.dtype[float_]] | None = None,
@@ -306,7 +300,7 @@ def most_unstable_parcel_index(
     pressure = np.atleast_2d(pressure)
     p0 = pressure[:, 0] if bottom is None else np.asarray(bottom)  # .reshape(-1, 1)
     top = p0 - depth
-    (mask,) = np.nonzero(_between_or_close(pressure, top, p0).astype(np.bool_).squeeze())
+    (mask,) = np.nonzero(between_or_close(pressure, top, p0).astype(np.bool_).squeeze())
     t_layer = temperature[:, mask]
     td_layer = dewpoint[:, mask]
     p_layer = pressure[:, mask]
@@ -353,12 +347,12 @@ def cape_cin(
 
     X, Y = F.zero_crossings(pressure, parcel_profile - temperature)  # ((N, Z), ...)
 
-    mask = _between_or_close(X, el_p, lfc_p).astype(np.bool_)
+    mask = between_or_close(X, el_p, lfc_p).astype(np.bool_)
     x, y = np.where(mask[newaxis, ...], [X, Y], NaN)
     CAPE = Rd * F.nantrapz(y, np.log(x), axis=1)
     CAPE[CAPE < 0.0] = 0.0
 
-    mask = _greater_or_close(X, lfc_p).astype(np.bool_)
+    mask = greater_or_close(X, lfc_p).astype(np.bool_)
     x, y = np.where(mask[newaxis, ...], [X, Y], NaN)
     CIN = Rd * F.nantrapz(y, np.log(x), axis=1)
     CIN[CIN > 0.0] = 0.0
@@ -385,7 +379,7 @@ def most_unstable_parcel(
     top = p0 - depth
 
     n = np.arange(temperature.shape[0])
-    mask = _between_or_close(pressure, p0, top).astype(np.bool_)
+    mask = between_or_close(pressure, p0, top).astype(np.bool_)
     p = pressure[n, mask]
     t = temperature[n, mask]
     td = dewpoint[n, mask]
