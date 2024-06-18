@@ -14,14 +14,22 @@ that generates the stub file from the c++ header file.
 
 # pyright: reportGeneralTypeIssues=false
 
+# c imports
 cimport cython
 cimport numpy as np
-
+from libcpp.cmath cimport fabs, isnan
 cimport nzthermo._C as C
 from nzthermo._C cimport epsilon
 
+import numpy as np
+from typing import TypeVar
+
 np.import_array()
 np.import_ufunc()
+
+_S = TypeVar("_S")
+_T = TypeVar("_T")
+
 
 ctypedef fused T:
     float
@@ -32,30 +40,55 @@ ctypedef fused integer:
     long
 
 
-cdef T abs(T x) noexcept nogil:
-    return x if x > 0 else -x
-
 @cython.ufunc
 cdef bint less_or_close(T x, T y) noexcept nogil:
     return (
-        x == x and y == y # nan check
-        and (x < y or abs(x - y) <= (1.0e-05 * abs(y)))
+        not isnan(x) and not isnan(y)
+        and (x < y or fabs(x - y) <= (1.0e-05 * fabs(y)))
     )
 
 @cython.ufunc
 cdef bint greater_or_close(T x, T y) noexcept nogil:
     return (
-        x == x and y == y # nan check
-        and (x > y or abs(x - y) <= (1.0e-05 * abs(y)))
+        not isnan(x) and not isnan(y)
+        and (x > y or fabs(x - y) <= (1.0e-05 * fabs(y)))
     )
 
 @cython.ufunc
 cdef bint between_or_close(T x, T y0, T y1) noexcept nogil:
     return (
-        x == x and y0 == y0 and y1 == y1 # nan check
-        and (x > y0 or abs(x - y0) <= (1.0e-05 * abs(y0)))
-        and (x < y1 or abs(x - y1) <= (1.0e-05 * abs(y1)))
+        not isnan(x) and not isnan(y0) and not isnan(y1)
+        and (x > y0 or fabs(x - y0) <= (1.0e-05 * fabs(y0)))
+        and (x < y1 or fabs(x - y1) <= (1.0e-05 * fabs(y1)))
     )
+
+class pressure_vector(np.ndarray[_S, np.dtype[_T]]):
+    def __new__(cls, pressure):
+        return np.asarray(pressure).view(cls)
+
+    def is_above(self, bottom, close=True):
+        bottom = np.asarray(bottom)
+        if not close:
+            return np.asarray(self > bottom, np.bool_)
+
+        return np.asarray(less_or_close(self, bottom), np.bool_)
+
+    def is_below(self, top, close=True):
+        top = np.asarray(top)
+        if not close:
+            return np.asarray(self < top, np.bool_)
+
+        return np.asarray(greater_or_close(self, top), np.bool_)
+
+    def is_between(self, bottom, top, close=True):
+        bottom, top = np.asarray(bottom), np.asarray(top)
+        if not close:
+            return np.asarray((self > bottom) & (self < top), np.bool_)
+
+        return np.asarray(between_or_close(self, top, bottom), np.bool_)
+
+    def where(self, condition, fill=np.nan):
+        return np.where(condition, self, fill).view(pressure_vector)
 
 
 # ............................................................................................... #

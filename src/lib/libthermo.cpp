@@ -18,8 +18,10 @@ namespace libthermo {
 template <floating T>
 constexpr size_t index_pressure(const T levels[], const T value, const size_t size) noexcept {
     const size_t N = size - 1;
-    const T p0 = levels[0];
     const T p1 = levels[N];
+    if (isnan(p1))
+        return index_pressure(levels, value, N);
+    const T p0 = levels[0];
     const T step = ((p1 - p0) / N);
 
     size_t idx = (size_t)((value / step) - (p0 / step));

@@ -23,7 +23,13 @@ from typing import (
 import numpy as np
 from numpy.typing import NDArray
 
-from ._ufunc import delta_t, greater_or_close, less_or_close
+from ._ufunc import (
+    between_or_close,
+    delta_t,
+    greater_or_close,
+    less_or_close,
+    pressure_vector,
+)
 from .typing import (
     Kelvin,
     N,
@@ -142,6 +148,33 @@ class PVectorNd(NamedTuple, Generic[_S, _T]):
     ) -> Self:
         return self.where(self.is_above(pressure, close=close), x_fill, y_fill)
 
+    def is_between(
+        self,
+        bottom: Pascal[NDArray[np.floating[Any]]] | PVectorNd,
+        top: Pascal[NDArray[np.floating[Any]]] | PVectorNd,
+        *,
+        close: bool = False,
+    ):
+        if isinstance(bottom, PVectorNd):
+            bottom = bottom.pressure
+        if isinstance(top, PVectorNd):
+            top = top.pressure
+        if not close:
+            return (self.pressure > bottom) & (self.pressure < top)
+
+        return between_or_close(self.pressure, top, bottom).astype(np.bool_)
+
+    def where_between(
+        self,
+        bottom: Pascal[NDArray[np.floating[Any]]] | PVectorNd,
+        top: Pascal[NDArray[np.floating[Any]]] | PVectorNd,
+        x_fill: ArrayLike[np.floating[Any]] = np.nan,
+        y_fill: ArrayLike[np.floating[Any]] | None = None,
+        *,
+        close: bool = False,
+    ) -> Self:
+        return self.where(self.is_between(bottom, top, close=close), x_fill, y_fill)
+
     def is_nan(self) -> NDArray[np.bool_]:
         return np.isnan(self.pressure)
 
@@ -240,7 +273,7 @@ def exactly_2d(
 def broadcast_nz(
     f: Callable[
         Concatenate[
-            Pascal[np.ndarray[shape[N, Z], np.dtype[_T]]],
+            Pascal[pressure_vector[shape[N, Z], np.dtype[_T]]],
             Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
             Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
             _P,
@@ -272,7 +305,7 @@ def broadcast_nz(
             magnitude(temperature, "kelvin"),
             magnitude(dewpoint, "kelvin"),
         )
-        return f(pressure, temperature, dewpoint, *args, **kwargs)
+        return f(pressure_vector(pressure), temperature, dewpoint, *args, **kwargs)
 
     return wrapper
 

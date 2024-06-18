@@ -16,6 +16,17 @@ from .utils import Vector2d, exactly_2d
 _T = TypeVar("_T", bound=np.floating[Any])
 
 
+def nanwhere(
+    mask: np.ndarray[shape[N, Z], np.dtype[np.bool_]],
+    x: np.ndarray[shape[N, Z], np.dtype[_T]],
+    *args: np.ndarray[shape[N, Z], np.dtype[_T]],
+) -> tuple[np.ndarray[shape[N, Z], np.dtype[_T]], ...]:
+    if x.shape == args[0].shape:
+        return tuple(np.where(mask[np.newaxis, :, :], np.nan, [x, *args]))
+
+    return (np.where(mask, np.nan, x),) + tuple(np.where(mask[np.newaxis, :, :], np.nan, args))
+
+
 @overload
 def nanroll_2d(__x: NDArray[_T]) -> np.ndarray[shape[N, Z], np.dtype[_T]]: ...
 @overload

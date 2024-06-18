@@ -54,20 +54,26 @@ def moist_lapse[T: np.floating[Any]](
     pressure: Pascal[np.ndarray[Any, np.dtype[T]]],
     temperature: Kelvin[np.ndarray[Any, np.dtype[np.floating[Any]]]],
     reference_pressure: Pascal[np.ndarray[Any, np.dtype[np.floating[Any]]]] | None = ...,
+    /,
     *,
     dtype: type[T | float] | L["float32", "float64"] | None = ...,
+    where: np.ndarray[shape[N], np.dtype[np.bool_]] | None = ...,
 ) -> Kelvin[np.ndarray[Any, np.dtype[T]]]: ...
 def parcel_profile[T: np.floating[Any]](
     pressure: Pascal[np.ndarray[shape[Z], np.dtype[T]] | np.ndarray[shape[N, Z], np.dtype[T]]],
     temperature: Kelvin[np.ndarray[shape[N], np.dtype[np.floating[Any]]]],
     dewpoint: Kelvin[np.ndarray[shape[N], np.dtype[np.floating[Any]]]],
     /,
+    *,
+    where: np.ndarray[shape[N], np.dtype[np.bool_]] | None = ...,
 ) -> Kelvin[np.ndarray[shape[N, Z], np.dtype[T]]]: ...
 def parcel_profile_with_lcl[T: np.floating[Any]](
     pressure: Pascal[np.ndarray[shape[Z], np.dtype[T]] | np.ndarray[shape[N, Z], np.dtype[T]]],
     temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.floating[Any]]]],
     dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.floating[Any]]]],
     /,
+    *,
+    where: np.ndarray[shape[N], np.dtype[np.bool_]] | None = ...,
 ) -> tuple[
     Pascal[np.ndarray[shape[N, Z], np.dtype[T]]],
     Kelvin[np.ndarray[shape[N, Z], np.dtype[T]]],

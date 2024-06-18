@@ -225,11 +225,12 @@ cdef T[:, :] moist_lapse_2d(
 
 
 def moist_lapse(
-    np.ndarray pressure,
-    np.ndarray temperature,
+    np.ndarray pressure not None,
+    np.ndarray temperature not None,
     np.ndarray reference_pressure = None,
     *,
     object dtype = None,
+    np.ndarray where = None,
 ):
     """
     Calculate the moist adiabatic lapse rate.
@@ -298,6 +299,9 @@ def moist_lapse(
         BroadcastMode mode
         np.ndarray out
 
+    if where is not None:
+        raise NotImplementedError("where argument is not supported.")
+        
     if dtype is None:
         dtype = pressure.dtype
     else:
@@ -426,11 +430,11 @@ cdef T[:, :] parcel_profile_2d(
 
 
 def parcel_profile(
-    np.ndarray pressure,
-    np.ndarray temperature,
-    np.ndarray dewpoint,
+    np.ndarray pressure not None,
+    np.ndarray temperature not None,
+    np.ndarray dewpoint not None,
     *,
-    ProfileStrategy strategy = SURFACE_BASED,
+    np.ndarray where = None,
     double step = 1000.0,
     double eps = 0.1,
     size_t max_iters = 5,
@@ -441,33 +445,34 @@ def parcel_profile(
         np.ndarray out
 
     (pressure, temperature, dewpoint), mode = pressure_mode(pressure, temperature, dewpoint)
+    if where is not None:
+        raise NotImplementedError("where argument is not supported.")
+
 
     N, Z = temperature.shape[0], pressure.shape[1]
-
+    
     out = np.empty((N, Z), dtype=pressure.dtype)
-    if strategy == SURFACE_BASED:
-        if pressure.dtype == np.float64:
-            out[...] = parcel_profile_2d[double](
-                pressure.astype(np.float64),
-                temperature.astype(np.float64),
-                dewpoint.astype(np.float64),
-                mode,
-                step,
-                eps,
-                max_iters,
-            )
-        else:
-            out[...] = parcel_profile_2d[float](
-                pressure.astype(np.float32),
-                temperature.astype(np.float32),
-                dewpoint.astype(np.float32),
-                mode,
-                <float>step,
-                <float>eps,
-                max_iters,
-            )
+    if pressure.dtype == np.float64:
+        out[...] = parcel_profile_2d[double](
+            pressure.astype(np.float64),
+            temperature.astype(np.float64),
+            dewpoint.astype(np.float64),
+            mode,
+            step,
+            eps,
+            max_iters,
+        )
     else:
-        raise ValueError("Invalid strategy.")
+        out[...] = parcel_profile_2d[float](
+            pressure.astype(np.float32),
+            temperature.astype(np.float32),
+            dewpoint.astype(np.float32),
+            mode,
+            <float>step,
+            <float>eps,
+            max_iters,
+        )
+    
 
     return out
 
@@ -529,6 +534,9 @@ cdef void parcel_profile_with_lcl_1d(
         moist_lapse_1d(pt[stop + 1:], pressure[stop:], lcl.pressure, lcl.temperature)
 
 
+    
+
+
 cdef T[:, :, :] parcel_profile_with_lcl_2d(
     T[:, :] pressure,
     T[:, :] temperature,
@@ -536,12 +544,17 @@ cdef T[:, :, :] parcel_profile_with_lcl_2d(
     BroadcastMode mode,
 ) noexcept:
     cdef:
-        size_t N, Z, i
+        size_t N, Z, i, idx
         T[:, :, :] out
 
     N, Z = temperature.shape[0], pressure.shape[1] + 1
-    out = np.empty((4, N, Z), dtype=np.float64 if sizeof(double) == pressure.itemsize else np.float32)
-
+    out = np.full(
+        (4, N, Z), 
+        fill_value=NaN,
+        dtype=np.float64 if sizeof(double) == pressure.itemsize else np.float32
+    )
+    # cdef long[:] indcies = np.argmax(np.isnan(pressure), axis=1) 
+    # print(indcies)
     with nogil, parallel():
         if BROADCAST is mode:
             for i in prange(N, schedule='dynamic'):
@@ -556,15 +569,23 @@ cdef T[:, :, :] parcel_profile_with_lcl_2d(
                 )
         else: # MATRIX
             for i in prange(N, schedule='dynamic'):
+                
+                
+                
                 parcel_profile_with_lcl_1d(
                     out[0, i, :],
                     out[1, i, :],
                     out[2, i, :],
                     out[3, i, :],
-                    pressure[i, :], 
-                    temperature[i, :], 
+                    pressure[i, :],
+                    temperature[i, :],
                     dewpoint[i, :],
                 )
+                
+    print(
+        'nanvalues',
+        np.argmin(~np.isnan(pressure), axis=1).any()
+    )
  
     return out
 

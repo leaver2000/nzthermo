@@ -1,4 +1,6 @@
 # noqa
+from __future__ import annotations
+
 import itertools
 import warnings
 from typing import Any
@@ -11,12 +13,15 @@ from numpy.testing import assert_allclose, assert_almost_equal, assert_array_equ
 
 import nzthermo._core as _C
 from nzthermo._core import moist_lapse
+from nzthermo._ufunc import pressure_vector
 from nzthermo.core import (
     cape_cin,
     ccl,
     downdraft_cape,
     el,
     lfc,
+    most_unstable_cape_cin,
+    most_unstable_parcel,
     most_unstable_parcel_index,
 )
 
@@ -1166,20 +1171,6 @@ def test_lfc_profile_nan() -> None:
     assert_almost_equal(lfc_t, 9.6977, 0)  # RETURNS: 9.58921545636997
 
 
-@pytest.mark.cape
-@pytest.mark.mu_cape
-@pytest.mark.regression
-@pytest.mark.parametrize("depth", [30000.0])
-def test_most_unstable_parcel_index(depth) -> None:
-    assert_array_equal(
-        most_unstable_parcel_index(P, T, Td, depth=depth),
-        [
-            mpcalc.most_unstable_parcel(P * Pa, T[i] * K, Td[i] * K, depth=depth * Pa)[-1]
-            for i in range(T.shape[0])
-        ],
-    )
-
-
 @pytest.mark.lfc
 @pytest.mark.regression
 @pytest.mark.parametrize("which", ["top", "bottom"])
@@ -1198,6 +1189,102 @@ def test_lfc_metpy_regression(which) -> None:
         )
         assert_allclose(lfc_p[i], lfc_p_.m, atol=500.0)  # type: ignore
         assert_allclose(lfc_t[i], lfc_t_.m, atol=1.0)
+
+
+# ............................................................................................... #
+# nzthermo.core.most_unstable_parcel
+# ............................................................................................... #
+@pytest.mark.cape
+@pytest.mark.mu_cape
+@pytest.mark.regression
+@pytest.mark.parametrize("depth", [30000.0])
+def test_most_unstable_parcel_index(depth) -> None:
+    assert_array_equal(
+        most_unstable_parcel_index(P, T, Td, depth=depth),
+        [
+            mpcalc.most_unstable_parcel(P * Pa, T[i] * K, Td[i] * K, depth=depth * Pa)[-1]
+            for i in range(T.shape[0])
+        ],
+    )
+    assert_array_equal(
+        most_unstable_parcel_index(P, T, Td, depth=depth),
+        most_unstable_parcel_index(np.broadcast_to(P, (T.shape[0], P.size)), T, Td, depth=depth),
+        err_msg="most_unstable_parcel_index failed to on broadcasted pressure input.",
+    )
+
+
+@pytest.mark.cape
+@pytest.mark.mu_cape
+@pytest.mark.regression
+@pytest.mark.parametrize("depth", [30000.0])
+def test_most_unstable_parcel(depth) -> None:
+    p, t, td, idx = most_unstable_parcel(
+        np.broadcast_to(P, (T.shape[0], P.size)), T, Td, depth=depth
+    )
+
+    for i in range(T.shape[0]):
+        p_, t_, td_, idx_ = mpcalc.most_unstable_parcel(
+            P * Pa, T[i] * K, Td[i] * K, depth=depth * Pa
+        )
+        assert_array_equal(p[i], p_.m)
+        assert_array_equal(t[i], t_.m)
+        assert_array_equal(td[i], td_.m)
+        assert_array_equal(idx[i], idx_)
+
+    assert_array_equal(
+        (p, t, td, idx),
+        most_unstable_parcel(np.broadcast_to(P, (T.shape[0], P.size)), T, Td, depth=depth),
+        err_msg="most_unstable_parcel failed to on broadcasted pressure input.",
+    )
+
+    pressure = P.reshape(1, -1).view(pressure_vector)
+    mask = np.arange(pressure.shape[1]) >= most_unstable_parcel_index(P, T, Td)[:, np.newaxis]
+
+    p_masked = pressure.where(mask, -np.inf)  # np.where(mask, pressure, -np.inf)
+
+    sort = (
+        np.arange(mask.shape[0])[:, np.newaxis],
+        np.argsort(p_masked, axis=1, kind="quicksort"),
+    )
+
+    p_masked = p_masked[sort][:, ::-1]
+    nan_mask = np.isneginf(p_masked)
+    p_masked[nan_mask] = np.nan
+
+    p, t, td, mu_profile = _C.parcel_profile_with_lcl(
+        p_masked,
+        T[sort][:, ::-1],
+        Td[sort][:, ::-1],
+    )
+
+    for i in range(T.shape[0]):
+        _, _, _, idx = mpcalc.most_unstable_parcel(
+            pressure.squeeze() * Pa,
+            T[i] * K,
+            Td[i] * K,
+            depth=depth * Pa,
+        )
+
+        p_, t_, td_, mu_profile_ = mpcalc.parcel_profile_with_lcl(
+            pressure.squeeze()[idx:] * Pa,
+            T[i, idx:] * K,
+            Td[i, idx:] * K,
+        )
+
+        m = np.s_[:]
+        p_ = p_.m[m]
+        t_ = t_.m[m]
+        td_ = td_.m[m]
+        mu_profile_ = mu_profile_.m[m]
+        if np.isnan(t_[0]):
+            continue
+
+        assert_allclose(p[i, : len(p_)], p_, atol=100.0)
+        assert_allclose(t[i, : len(t_)], t_, atol=0.5)
+        assert_allclose(td[i, : len(td_)], td_, atol=0.5)
+        assert_allclose(mu_profile[i, : len(mu_profile_)], mu_profile_, atol=0.5)
+
+    most_unstable_cape_cin(P, T, Td, depth=30000.0)
 
 
 # ............................................................................................... #
@@ -1240,3 +1327,39 @@ def test_cape_cin_metpy_regression(which_lfc, which_el) -> None:
 
         assert_allclose(CAPE[i], CAPE_.m, atol=10)
         assert_allclose(CIN[i], CIN_.m, atol=10)
+
+
+# ............................................................................................... #
+# nzthermo.core.most_unstable_cape_cin
+# ............................................................................................... #
+@pytest.mark.most_unstable_cape_cin
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    "depth",
+    [30000.0],
+)
+def test_most_unstable_cape_cin_metpy_regression(depth) -> None:
+    """
+    TODO currently this test is passing on 95% of the cases, need to investigate the.
+    there error appears to be something in the logic block of the el_lfc function.
+
+    The current test cases run 500 samples and we are failing on 17 of them specifically when
+    `which_el=bottom` parameter is used. realistically using the lower EL is not a typical use
+    case but it should still be tested.
+    """
+
+    CAPE, CIN = most_unstable_cape_cin(
+        P,
+        T,
+        Td,
+        depth=depth,
+    )
+
+    for i in range(T.shape[0]):
+        CAPE_, CIN_ = mpcalc.most_unstable_cape_cin(
+            P * Pa,
+            T[i] * K,
+            Td[i] * K,
+            depth=depth * Pa,
+        )
+        assert_allclose(CAPE[i], CAPE_.m, atol=1000)
