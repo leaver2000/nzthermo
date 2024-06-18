@@ -179,22 +179,22 @@ def _el_lfc(
         temperature[:, 1:],
     )
 
-    top_idx = np.arange(N), np.argmin(~np.isnan(pressure), axis=1) - 1
-    # find the Equilibrium Level (EL)
-    left_of_env = (parcel_temperature_profile[top_idx] <= temperature[top_idx])[:, newaxis]
-    EL = F.intersect_nz(
-        pressure,
-        parcel_temperature_profile,
-        temperature,
-        "decreasing",
-        log_x=True,
-    ).where(
-        # If the top of the sounding parcel is warmer than the environment, there is no EL
-        lambda el: el.is_above(LCL) & left_of_env
-    )
+    if pick != "LFC":  # find the Equilibrium Level (EL)
+        top_idx = np.arange(N), np.argmin(~np.isnan(pressure), axis=1) - 1
+        left_of_env = (parcel_temperature_profile[top_idx] <= temperature[top_idx])[:, newaxis]
+        EL = F.intersect_nz(
+            pressure,
+            parcel_temperature_profile,
+            temperature,
+            "decreasing",
+            log_x=True,
+        ).where(
+            # If the top of the sounding parcel is warmer than the environment, there is no EL
+            lambda el: el.is_above(LCL) & left_of_env
+        )
 
-    if pick == "EL":
-        return EL.pick(which_el)
+        if pick == "EL":
+            return EL.pick(which_el)
 
     LFC = F.intersect_nz(
         pressure,

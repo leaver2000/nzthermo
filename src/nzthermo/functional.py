@@ -209,12 +209,3 @@ def zero_crossings(
     clip = max(np.argmax(np.isnan(x), axis=1))
 
     return Vector2d(x[:, :clip], y[:, :clip])
-
-
-def pressure_top(
-    n: int, pressure: np.ndarray[shape[N, Z], np.dtype[_T]]
-) -> tuple[
-    np.ndarray[shape[N], np.dtype[np.int_]],
-    np.ndarray[shape[Z], np.dtype[np.int_]],
-]:
-    return np.arange(n)[:, np.newaxis], np.nanargmin(~np.isnan(pressure), axis=1) - 1

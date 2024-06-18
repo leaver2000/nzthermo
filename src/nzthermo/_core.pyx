@@ -289,7 +289,7 @@ def moist_lapse(
         [1013.93, 1000, 975, 950, 925, 900, ...],
         [np.nan, np.nan, 975, 950, 925, 900, ...]
     ]) * 100.0 # (N, Z) :: pressure profile
-    >>> reference_pressure = pressure[np.arange(len(pressure)), np.argmin(np.isnan(pressure), axis=1)]
+    >>> reference_pressure = pressure[np.arange(pressure.shape[0]), np.argmin(np.isnan(pressure), axis=1)]
     >>> reference_pressure
     array([101312., 101393.,  97500.  ])
     """

@@ -178,15 +178,11 @@ class PVectorNd(NamedTuple, Generic[_T, float_]):
     @classmethod
     def from_func(
         cls,
-        func: Callable[
-            _P,
-            tuple[Pascal[NDArray[float_]], Kelvin[NDArray[float_]]],
-        ],
+        func: Callable[_P, tuple[Pascal[NDArray[float_]], Kelvin[NDArray[float_]]]],
         *args: _P.args,
         **kwargs: _P.kwargs,
     ) -> Self:
-        x, y = func(*args, **kwargs)
-        return cls(x, y)
+        return cls(*func(*args, **kwargs))
 
     def reshape(self, *shape: int) -> tuple[Pascal[NDArray[float_]], Kelvin[NDArray[float_]]]:
         p, t = np.reshape([self.pressure, self.temperature], (2, *shape))
@@ -262,35 +258,32 @@ def broadcast_nz(
     ],
 ) -> Callable[
     Concatenate[
-        Pascal[ArrayLike[np.floating[Any]]],
-        Kelvin[ArrayLike[np.floating[Any]]],
-        Kelvin[ArrayLike[np.floating[Any]]],
-        _P,
+        Pascal[ArrayLike[float_]], Kelvin[ArrayLike[float_]], Kelvin[ArrayLike[float_]], _P
     ],
     _T,
 ]:
     @functools.wraps(f)
     def wrapper(
-        pressure: ArrayLike[np.floating[Any]],
-        temperature: ArrayLike[np.floating[Any]],
-        dewpoint: ArrayLike[np.floating[Any]],
+        pressure: ArrayLike[float_],
+        temperature: ArrayLike[float_],
+        dewpoint: ArrayLike[float_],
         *args: _P.args,
         **kwargs: _P.kwargs,
     ) -> _T:
+        if kwargs.pop("__fastpath", False):
+            return f(pressure, temperature, dewpoint, *args, **kwargs)  # type: ignore
+
         # TODO
         # - add support for squeezing what would have been a 1d input
         # - add support for reshaping:
         #   (T, Z, Y, X) -> (N, Z)
         #   (Z, Y, X) -> (N, Z)'
-        if kwargs.pop("__fastpath", False):
-            return f(pressure, temperature, dewpoint, *args, **kwargs)  # type: ignore
-
         pressure, temperature, dewpoint = exactly_2d(
             magnitude(pressure, "pascal"),
             magnitude(temperature, "kelvin"),
             magnitude(dewpoint, "kelvin"),
         )
-        return f(pressure, temperature, dewpoint, *args, **kwargs)  # type: ignore
+        return f(pressure, temperature, dewpoint, *args, **kwargs)
 
     return wrapper
 
