@@ -375,7 +375,6 @@ cdef void parcel_profile_1d(
     T[:] pressure,  # (Z,)
     T temperature,
     T dewpoint,
-    
 ) noexcept nogil:
     cdef:
         size_t Z, i, stop
@@ -387,10 +386,9 @@ cdef void parcel_profile_1d(
     t0 = out[0] = temperature
 
     lcl = C.lcl[T](p0, t0, dewpoint)
-
     # [dry ascent] 
     # stop the dry ascent at the LCL
-    stop = C.search_pressure(pressure, lcl.pressure)
+    stop = lcl.index(&pressure[0], Z)
     for i in prange(0, stop, schedule='dynamic'): # parallelize the dry ascent
         out[i] = C.dry_lapse(pressure[i], p0, t0)
     
@@ -497,16 +495,13 @@ cdef void parcel_profile_with_lcl_1d(
 
     lcl = C.lcl[T](p0, t0, td0)
 
-
-
     # [dry ascent] .. parcel temperature from the surface up to the LCL ..
-    stop = C.search_pressure(pressure, lcl.pressure)
-    for i in prange(0, stop, schedule='dynamic'): # parallelize the dry ascent
-        pt[i] = C.dry_lapse(pressure[i], p0, t0)
-
+    stop = lcl.index(&pressure[0], Z)
     ep[:stop] = pressure[:stop]
     et[:stop] = temperature[:stop]
     etd[:stop] = dewpoint[:stop]
+    for i in prange(0, stop, schedule='dynamic'): # parallelize the dry ascent
+        pt[i] = C.dry_lapse(pressure[i], p0, t0)
 
     # [ lcl ]
     ep[stop] = lcl.pressure
@@ -525,12 +520,12 @@ cdef void parcel_profile_with_lcl_1d(
         dewpoint[stop]
     )
     pt[stop] = lcl.temperature
+
     # [ moist ascent ] .. parcel temperature from the LCL to the top of the atmosphere ..
     if stop != Z:
         ep[stop + 1:] = pressure[stop:]
         et[stop + 1:] = temperature[stop:]
         etd[stop + 1:] = dewpoint[stop:]
-
         moist_lapse_1d(pt[stop + 1:], pressure[stop:], lcl.pressure, lcl.temperature)
 
 

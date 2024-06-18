@@ -32,13 +32,11 @@ from ._ufunc import (
 )
 from .const import Rd
 from .typing import Kelvin, N, Pascal, Z, shape
-from .utils import Vector1d, broadcast_nz
+from .utils import Vector1d, broadcast_nz, Axis
 
-float_ = TypeVar("float_", bound=np.floating[Any], covariant=True)
+_T = TypeVar("_T", bound=np.floating[Any], covariant=True)
 newaxis: Final[None] = np.newaxis
 NaN = np.nan
-z_axis: Final[tuple[slice, None]] = np.s_[:, newaxis]
-N_AXIS: Final[tuple[None, slice]] = np.s_[newaxis, :]
 
 
 FASTPATH: dict[str, Any] = {"__fastpath": True}
@@ -49,10 +47,10 @@ FASTPATH: dict[str, Any] = {"__fastpath": True}
 # -------------------------------------------------------------------------------------------------
 @broadcast_nz
 def downdraft_cape(
-    pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
-) -> np.ndarray[shape[N], np.dtype[float_]]:
+    pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+) -> np.ndarray[shape[N], np.dtype[_T]]:
     """Calculate downward CAPE (DCAPE).
 
     Calculate the downward convective available potential energy (DCAPE) of a given upper air
@@ -109,9 +107,9 @@ def downdraft_cape(
 # -------------------------------------------------------------------------------------------------
 @broadcast_nz
 def ccl(
-    pressure: Pascal[NDArray[float_]],
-    temperature: Kelvin[NDArray[float_]],
-    dewpoint: Kelvin[NDArray[float_]],
+    pressure: Pascal[NDArray[_T]],
+    temperature: Kelvin[NDArray[_T]],
+    dewpoint: Kelvin[NDArray[_T]],
     /,
     height=None,
     mixed_layer_depth=None,
@@ -149,16 +147,16 @@ def ccl(
 # -------------------------------------------------------------------------------------------------
 def _el_lfc(
     pick: L["EL", "LFC", "BOTH"],
-    pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+    pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
     /,
     parcel_temperature_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.floating[Any]]]]
     | None = None,
     which_lfc: L["bottom", "top"] = "bottom",
     which_el: L["bottom", "top"] = "top",
-    dewpoint_start: np.ndarray[shape[N], np.dtype[float_]] | None = None,
-) -> tuple[Vector1d[float_], Vector1d[float_]] | Vector1d[float_]:
+    dewpoint_start: np.ndarray[shape[N], np.dtype[_T]] | None = None,
+) -> tuple[Vector1d[_T], Vector1d[_T]] | Vector1d[_T]:
     if parcel_temperature_profile is None:
         pressure, temperature, dewpoint, parcel_temperature_profile = core.parcel_profile_with_lcl(
             pressure, temperature, dewpoint
@@ -180,7 +178,7 @@ def _el_lfc(
     )
 
     if pick != "LFC":  # find the Equilibrium Level (EL)
-        top_idx = np.arange(N), np.argmin(~np.isnan(pressure), axis=1) - 1
+        top_idx = np.arange(N), np.argmin(~np.isnan(pressure), Axis.Z) - 1
         left_of_env = (parcel_temperature_profile[top_idx] <= temperature[top_idx])[:, newaxis]
         EL = F.intersect_nz(
             pressure,
@@ -204,11 +202,13 @@ def _el_lfc(
         log_x=True,
     ).where_above(LCL)
 
-    is_lcl = (no_lfc := LFC.is_nan().all(axis=1, keepdims=True)) & greater_or_close(
+    no_lfc = LFC.is_nan().all(Axis.Z, out=np.empty((N, 1), dtype=np.bool_), keepdims=True)
+
+    is_lcl = no_lfc & greater_or_close(
         # the mask only needs to be applied to either the temperature or parcel_temperature_profile
         np.where(LCL.is_below(pressure, close=True), parcel_temperature_profile, NaN),
         temperature,
-    ).any(axis=1, keepdims=True)
+    ).any(Axis.Z, out=np.empty((N, 1), dtype=np.bool_), keepdims=True)
 
     LFC = LFC.select(
         [~no_lfc, is_lcl],
@@ -224,14 +224,14 @@ def _el_lfc(
 
 @broadcast_nz
 def el(
-    pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+    pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
     /,
     parcel_temperature_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.floating[Any]]]]
     | None = None,
     which: L["top", "bottom"] = "top",
-) -> Vector1d[float_]:
+) -> Vector1d[_T]:
     return _el_lfc(
         "EL", pressure, temperature, dewpoint, parcel_temperature_profile, which_el=which
     )
@@ -239,14 +239,14 @@ def el(
 
 @broadcast_nz
 def lfc(
-    pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+    pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
     /,
     parcel_temperature_profile: np.ndarray | None = None,
     which: L["top", "bottom"] = "top",
-    dewpoint_start: np.ndarray[shape[N], np.dtype[float_]] | None = None,
-) -> Vector1d[float_]:
+    dewpoint_start: np.ndarray[shape[N], np.dtype[_T]] | None = None,
+) -> Vector1d[_T]:
     return _el_lfc(
         "LFC",
         pressure,
@@ -260,16 +260,16 @@ def lfc(
 
 @broadcast_nz
 def el_lfc(
-    pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+    pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
     /,
     parcel_temperature_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.floating[Any]]]]
     | None = None,
     which_lfc: L["bottom", "top"] = "bottom",
     which_el: L["bottom", "top"] = "top",
-    dewpoint_start: np.ndarray[shape[N], np.dtype[float_]] | None = None,
-) -> tuple[Vector1d[float_], Vector1d[float_]]:
+    dewpoint_start: np.ndarray[shape[N], np.dtype[_T]] | None = None,
+) -> tuple[Vector1d[_T], Vector1d[_T]]:
     return _el_lfc(
         "BOTH",
         pressure,
@@ -310,9 +310,9 @@ def most_unstable_parcel_index(
 
 @broadcast_nz
 def cape_cin(
-    pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+    pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
     /,
     parcel_profile: np.ndarray,
     which_lfc: L["bottom", "top"] = "bottom",
@@ -362,16 +362,16 @@ def cape_cin(
 
 @broadcast_nz
 def most_unstable_parcel(
-    pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+    pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
     /,
     depth: Pascal[float] = 30_000.0,
     bottom: Pascal[float] | None = None,
 ) -> tuple[
-    Pascal[np.ndarray[shape[N], np.dtype[float_]]],
-    Kelvin[np.ndarray[shape[N], np.dtype[float_]]],
-    Kelvin[np.ndarray[shape[N], np.dtype[float_]]],
+    Pascal[np.ndarray[shape[N], np.dtype[_T]]],
+    Kelvin[np.ndarray[shape[N], np.dtype[_T]]],
+    Kelvin[np.ndarray[shape[N], np.dtype[_T]]],
     np.ndarray[shape[N, Z], np.dtype[np.intp]],
 ]:
     depth = 100.0 if depth is None else depth

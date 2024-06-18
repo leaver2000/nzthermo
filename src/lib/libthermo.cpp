@@ -2,6 +2,39 @@
 
 namespace libthermo {
 
+// helper functions
+
+/**
+ * @brief given a pressure array of decreasing values, find the index of the pressure level that
+ * corresponds to the given value. This function is optimized for evenly distributed pressure
+ * and will typically find the index in O(1) time.
+ * 
+ * @tparam T 
+ * @param levels 
+ * @param value 
+ * @param size 
+ * @return constexpr size_t 
+ */
+template <floating T>
+constexpr size_t index_pressure(const T levels[], const T value, const size_t size) noexcept {
+    const size_t N = size - 1;
+    const T p0 = levels[0];
+    const T p1 = levels[N];
+    const T step = ((p1 - p0) / N);
+
+    size_t idx = (size_t)((value / step) - (p0 / step));
+
+    if (idx >= N)
+        return N;
+
+    while ((idx < N) && (value < levels[idx]))
+        idx++;
+
+    return idx;
+}
+
+// thermodynamic functions
+
 template <floating T>
 constexpr T mixing_ratio(const T partial_press, const T total_press) noexcept {
     return epsilon * partial_press / (total_press - partial_press);
@@ -141,19 +174,21 @@ constexpr T lcl_pressure(
 
 template <floating T>
 constexpr lcl<T>::lcl(
-  const T pressure, const T temperature, const T dewpoint, const T eps, const size_t max_iters
+  const T pressure_, const T temperature_, const T dewpoint_, const T eps, const size_t max_iters
 ) noexcept {
-    const T r = mixing_ratio(saturation_vapor_pressure(dewpoint), pressure);
-    const T lcl_p = fixed_point(find_lcl<T>, max_iters, eps, pressure, temperature, r);
-    const T lcl_t = libthermo::dewpoint(lcl_p, r);
-
-    this->pressure = lcl_p;
-    this->temperature = lcl_t;
+    const T r = mixing_ratio(saturation_vapor_pressure(dewpoint_), pressure_);
+    pressure = fixed_point(find_lcl<T>, max_iters, eps, pressure_, temperature_, r);
+    temperature = dewpoint(pressure, r);
 }
 
 template <floating T>
 constexpr T lcl<T>::wet_bulb_temperature(const T pressure, const T step) noexcept {
     return moist_lapse(this->pressure, pressure, this->temperature, step);
+}
+
+template <floating T>
+constexpr size_t lcl<T>::index(const T pressure[], size_t size) noexcept {
+    return index_pressure(pressure, this->pressure, size);
 }
 
 template <floating T>
