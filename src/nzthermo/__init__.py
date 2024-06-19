@@ -32,9 +32,7 @@ __all__ = [
     "wet_bulb_temperature",
     "wet_bulb_potential_temperature",
     "dewpoint_from_specific_humidity",
-    "lfc",
     "parcel_profile",
-    "mixing_ratio",
     "vapor_pressure",
     "virtual_temperature",
     "wind_components",
@@ -42,13 +40,16 @@ __all__ = [
     "wind_magnitude",
     "wind_vector",
     # .core
-    "el",
     "cape_cin",
     "ccl",
     "downdraft_cape",
+    "el",
+    "lfc",
+    "mixed_layer",
+    "mixing_ratio",
+    "most_unstable_cape_cin",
     "most_unstable_parcel",
     "most_unstable_parcel_index",
-    "most_unstable_cape_cin",
     # .utils
     "timeseries",
 ]
@@ -102,9 +103,10 @@ from .core import (
     downdraft_cape,
     el,
     lfc,
+    mixed_layer,
     mixing_ratio,
+    most_unstable_cape_cin,
     most_unstable_parcel,
     most_unstable_parcel_index,
-    most_unstable_cape_cin,
 )
 from .utils import timeseries

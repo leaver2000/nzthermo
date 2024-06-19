@@ -44,11 +44,16 @@ def nanroll_2d(
     return args
 
 
+from numpy.typing import ArrayLike
+
+
 def nantrapz(
     y: _ArrayLikeComplex_co | _ArrayLikeTD64_co | _ArrayLikeObject_co,
     x: _ArrayLikeComplex_co | _ArrayLikeTD64_co | _ArrayLikeObject_co | None = None,
     dx: float = 1.0,
     axis: SupportsIndex = -1,
+    *,
+    where: ArrayLike | None = None,
 ) -> NDArray[_T]:
     r"""
     This is a clone of the `numpy.trapz` function but with support for `nan` values.
@@ -91,8 +96,13 @@ def nantrapz(
     The try-except block was removed because it was not necessary, for the use case of this
     of this library.
     """
+    if where is not None:
+        y = np.where(where, y, np.nan)
+        if x is not None:
+            x = np.where(where, x, np.nan)
 
-    y = np.asanyarray(y)
+    else:
+        y = np.asanyarray(y)
     if x is None:
         d = dx
     else:

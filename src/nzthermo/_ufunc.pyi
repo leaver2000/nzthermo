@@ -64,7 +64,9 @@ def potential_temperature(
     pressure: Pascal[float], temperature: Kelvin[float]
 ) -> Theta[Kelvin[float]]: ...
 @_ufunc2x1
-def saturation_mixing_ratio(pressure: Pascal[float], temperature: Kelvin[float]) -> float: ...
+def saturation_mixing_ratio(
+    pressure: Pascal[float], temperature: Kelvin[float]
+) -> Dimensionless[float]: ...
 @_ufunc2x1
 def virtual_temperature(
     temperature: Kelvin[float], vapor_pressure: Pascal[float]

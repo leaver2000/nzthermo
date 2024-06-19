@@ -13,16 +13,16 @@ that generates the stub file from the c++ header file.
 # cython: cdivision=True
 
 # pyright: reportGeneralTypeIssues=false
+from typing import TypeVar
 
-# c imports
+import numpy as np
+
 cimport cython
 cimport numpy as np
 from libcpp.cmath cimport fabs, isnan
-cimport nzthermo._C as C
-from nzthermo._C cimport epsilon
 
-import numpy as np
-from typing import TypeVar
+cimport nzthermo._C as C
+from nzthermo._C cimport Md, Mw
 
 np.import_array()
 np.import_ufunc()
@@ -193,7 +193,7 @@ cdef T wobus(T temperature) noexcept nogil:
 # 2x1
 @cython.ufunc
 cdef T mixing_ratio(T partial_pressure, T total_pressure) noexcept nogil:
-    return epsilon * partial_pressure / (total_pressure - partial_pressure)
+    return Mw / Md * partial_pressure / (total_pressure - partial_pressure)
 
 
 @cython.ufunc # theta
@@ -205,7 +205,7 @@ cdef T potential_temperature(T pressure, T temperature) noexcept nogil:
 cdef T dewpoint_from_specific_humidity(T pressure, T specific_humidity) noexcept nogil:
     cdef T Q = specific_humidity or 1e-9
     cdef T r = Q / (1 - Q)
-    return C.dewpoint(pressure * r / (epsilon + r))
+    return C.dewpoint(pressure * r / (Mw / Md  + r))
 
 
 @cython.ufunc
