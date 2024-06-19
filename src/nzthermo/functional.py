@@ -16,6 +16,17 @@ from .utils import Vector2d, exactly_2d
 _T = TypeVar("_T", bound=np.floating[Any])
 
 
+def nanwhere(
+    mask: np.ndarray[shape[N, Z], np.dtype[np.bool_]],
+    x: np.ndarray[shape[N, Z], np.dtype[_T]],
+    *args: np.ndarray[shape[N, Z], np.dtype[_T]],
+) -> tuple[np.ndarray[shape[N, Z], np.dtype[_T]], ...]:
+    if x.shape == args[0].shape:
+        return tuple(np.where(mask[np.newaxis, :, :], np.nan, [x, *args]))
+
+    return (np.where(mask, np.nan, x),) + tuple(np.where(mask[np.newaxis, :, :], np.nan, args))
+
+
 @overload
 def nanroll_2d(__x: NDArray[_T]) -> np.ndarray[shape[N, Z], np.dtype[_T]]: ...
 @overload
@@ -33,11 +44,16 @@ def nanroll_2d(
     return args
 
 
+from numpy.typing import ArrayLike
+
+
 def nantrapz(
     y: _ArrayLikeComplex_co | _ArrayLikeTD64_co | _ArrayLikeObject_co,
     x: _ArrayLikeComplex_co | _ArrayLikeTD64_co | _ArrayLikeObject_co | None = None,
     dx: float = 1.0,
     axis: SupportsIndex = -1,
+    *,
+    where: ArrayLike | None = None,
 ) -> NDArray[_T]:
     r"""
     This is a clone of the `numpy.trapz` function but with support for `nan` values.
@@ -80,8 +96,13 @@ def nantrapz(
     The try-except block was removed because it was not necessary, for the use case of this
     of this library.
     """
+    if where is not None:
+        y = np.where(where, y, np.nan)
+        if x is not None:
+            x = np.where(where, x, np.nan)
 
-    y = np.asanyarray(y)
+    else:
+        y = np.asanyarray(y)
     if x is None:
         d = dx
     else:
@@ -209,12 +230,3 @@ def zero_crossings(
     clip = max(np.argmax(np.isnan(x), axis=1))
 
     return Vector2d(x[:, :clip], y[:, :clip])
-
-
-def pressure_top(
-    n: int, pressure: np.ndarray[shape[N, Z], np.dtype[_T]]
-) -> tuple[
-    np.ndarray[shape[N], np.dtype[np.int_]],
-    np.ndarray[shape[Z], np.dtype[np.int_]],
-]:
-    return np.arange(n)[:, np.newaxis], np.nanargmin(~np.isnan(pressure), axis=1) - 1

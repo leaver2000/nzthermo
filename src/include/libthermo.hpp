@@ -28,13 +28,12 @@ static constexpr double Md = 28.96546;  // `(g/mol)` - molecular weight of dry a
 static constexpr double epsilon = Mw / Md;  // `Mw / Md` - molecular weight ratio
 static constexpr double kappa = Rd / Cp;  // `Rd / Cp`  - ratio of gas constants
 
-/* ........................................{ struct }........................................... */
+/* ........................................{ helper }........................................... */
+
 template <floating T>
-struct Parcel {
-    T pressure;
-    T temperature;
-    T dewpoint;
-};
+constexpr size_t index_pressure(const T x[], const T value, const size_t size) noexcept;
+
+/* ........................................{ struct }........................................... */
 
 template <floating T>
 constexpr T mixing_ratio(const T partial_press, const T total_press) noexcept;
@@ -111,6 +110,7 @@ class lcl {
     ) noexcept;
 
     constexpr T wet_bulb_temperature(const T pressure, const T step = DEFAULT_STEP) noexcept;
+    constexpr size_t index(const T pressure[], const size_t size) noexcept;
 };
 
 template <floating T>

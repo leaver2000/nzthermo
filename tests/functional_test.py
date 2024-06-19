@@ -400,8 +400,8 @@ def test_insert_zero_crossings_specifically_for_cape_cin() -> None:
         temperature,
         dewpoint,
         parcel_profile,
-        "bottom",
-        "top",
+        which_lfc="bottom",
+        which_el="top",
         **FASTPATH,
     )
 

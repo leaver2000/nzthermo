@@ -1,16 +1,6 @@
 # cython: boundscheck=False
 # pyright: reportGeneralTypeIssues=false
 
-ctypedef fused Float:
-    float
-    double
-
-
-cdef extern from "<utility>" namespace "std" nogil:
-    cdef cppclass pair[T, U]:
-        T pressure    "first"
-        U temperature "second"
-
 
 cdef extern from "functional.cpp" namespace "libthermo" nogil:
     cdef cppclass point[T]:
@@ -28,14 +18,10 @@ cdef extern from "functional.cpp" namespace "libthermo" nogil:
     size_t search_sorted[T](T* x, T value, size_t size, bint inverted) noexcept
 
 
-cdef inline size_t search_pressure(Float[:] pressure, Float value) noexcept nogil:
-    cdef size_t Z = pressure.shape[0]
-    if pressure[Z - 1] > value:
-        return Z
-    return search_sorted(&pressure[0], value, Z, True)
-
-
 cdef extern from "wind.cpp" namespace "libthermo" nogil:
+    T wind_direction[T](T, T) noexcept
+    T wind_magnitude[T](T, T) noexcept
+
     cdef cppclass wind_components[T]:
         T u, v
         wind_components() noexcept
@@ -47,9 +33,6 @@ cdef extern from "wind.cpp" namespace "libthermo" nogil:
         wind_vector() noexcept
         wind_vector(T, T) noexcept
         wind_vector(wind_components[T])  noexcept
-
-    T wind_direction[T](T, T) noexcept
-    T wind_magnitude[T](T, T) noexcept
 
 
 cdef extern from "libthermo.cpp" namespace "libthermo" nogil:
@@ -71,6 +54,7 @@ cdef extern from "libthermo.cpp" namespace "libthermo" nogil:
         lcl() noexcept
         lcl(T pressure, T temperature) noexcept
         lcl(T pressure, T temperature, T dewpoint) noexcept
+        size_t index(T* levels, size_t size) noexcept
 
     # 1x1
     T saturation_vapor_pressure[T](T temperature) noexcept

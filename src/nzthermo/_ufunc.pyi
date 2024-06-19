@@ -1,10 +1,29 @@
-from typing import Annotated, ParamSpec, TypeVar
+from typing import Annotated, Any, ParamSpec, TypeVar
+
+import numpy as np
+from numpy.typing import ArrayLike
 
 from ._typing import _ufunc1x1, _ufunc2x1, _ufunc2x2, _ufunc3x1, _ufunc3x2
 from .typing import Dimensionless, Kelvin, Pascal
 
 _P = ParamSpec("_P")
+_S = TypeVar("_S")
 _T = TypeVar("_T")
+_DType_T_co = TypeVar("_DType_T_co", bound=np.dtype[Any])
+
+class pressure_vector(np.ndarray[_S, _DType_T_co]):
+    def is_above(
+        self, bottom: ArrayLike, close: bool = ...
+    ) -> np.ndarray[_S, np.dtype[np.bool_]]: ...
+    def is_below(
+        self, top: ArrayLike, close: bool = ...
+    ) -> np.ndarray[_S, np.dtype[np.bool_]]: ...
+    def is_between(
+        self, bottom: ArrayLike, top: ArrayLike, close: bool = ...
+    ) -> np.ndarray[_S, np.dtype[np.bool_]]: ...
+    def where(
+        self, condition: np.ndarray[_S, np.dtype[np.bool_]], fill: ArrayLike = ...
+    ) -> pressure_vector[_S, _DType_T_co]: ...
 
 @_ufunc2x1
 def less_or_close(x: float, y: float) -> bool: ...
@@ -45,7 +64,9 @@ def potential_temperature(
     pressure: Pascal[float], temperature: Kelvin[float]
 ) -> Theta[Kelvin[float]]: ...
 @_ufunc2x1
-def saturation_mixing_ratio(pressure: Pascal[float], temperature: Kelvin[float]) -> float: ...
+def saturation_mixing_ratio(
+    pressure: Pascal[float], temperature: Kelvin[float]
+) -> Dimensionless[float]: ...
 @_ufunc2x1
 def virtual_temperature(
     temperature: Kelvin[float], vapor_pressure: Pascal[float]

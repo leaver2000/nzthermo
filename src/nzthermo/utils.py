@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import abc
+import enum
 import functools
 from typing import (
     TYPE_CHECKING,
@@ -23,7 +23,13 @@ from typing import (
 import numpy as np
 from numpy.typing import NDArray
 
-from ._ufunc import delta_t, greater_or_close, less_or_close
+from ._ufunc import (
+    between_or_close,
+    delta_t,
+    greater_or_close,
+    less_or_close,
+    pressure_vector,
+)
 from .typing import (
     Kelvin,
     N,
@@ -46,22 +52,22 @@ except AttributeError:
     )
 
 
-_T = TypeVar("_T")
+_S = TypeVar("_S")
 _P = ParamSpec("_P")
-float_ = TypeVar("float_", bound=np.floating[Any], covariant=True)
+_T = TypeVar("_T", bound=np.floating[Any], covariant=True)
 ArrayLike: TypeAlias = (
-    "SupportsArray[float_] | NestedSequence[SupportsArray[float_]] | NestedSequence[float] | float"
+    "SupportsArray[_T] | NestedSequence[SupportsArray[_T]] | NestedSequence[float] | float"
 )
 
 if TYPE_CHECKING:
 
-    def magnitude(x: ArrayLike[float_], unit: str) -> NDArray[float_]: ...
+    def magnitude(x: ArrayLike[_T], unit: str) -> NDArray[_T]: ...
 
 elif pint is not None:
 
     def magnitude(x, unit):
         if isinstance(x, pint.Quantity):
-            return x.to(unit).magnitude
+            x = x.to(unit).magnitude
         return np.asarray(x)
 else:
 
@@ -69,20 +75,14 @@ else:
         return np.asarray(x)
 
 
-class pressure_vector(abc.ABC):
-    @abc.abstractmethod
-    def is_below(
-        self, pressure: Pascal[NDArray[np.floating[Any]]], *, close: bool = False
-    ) -> NDArray[np.bool_]: ...
-    @abc.abstractmethod
-    def is_above(
-        self, pressure: Pascal[NDArray[np.floating[Any]]], *, close: bool = False
-    ) -> NDArray[np.bool_]: ...
+class Axis(enum.IntEnum):
+    N = 0
+    Z = 1
 
 
-class PVectorNd(NamedTuple, Generic[_T, float_]):
-    pressure: Pascal[np.ndarray[_T, np.dtype[float_]]]
-    temperature: Kelvin[np.ndarray[_T, np.dtype[float_]]]
+class PVectorNd(NamedTuple, Generic[_S, _T]):
+    pressure: Pascal[np.ndarray[_S, np.dtype[_T]]]
+    temperature: Kelvin[np.ndarray[_S, np.dtype[_T]]]
 
     def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
         if method == "__call__":
@@ -92,8 +92,8 @@ class PVectorNd(NamedTuple, Generic[_T, float_]):
 
     def where(
         self,
-        condition: np.ndarray[_T, np.dtype[np.bool_]]
-        | Callable[[Self], np.ndarray[_T, np.dtype[np.bool_]]],
+        condition: np.ndarray[_S, np.dtype[np.bool_]]
+        | Callable[[Self], np.ndarray[_S, np.dtype[np.bool_]]],
         x_fill: ArrayLike[np.floating[Any]] = np.nan,
         y_fill: ArrayLike[np.floating[Any]] | None = None,
     ) -> Self:
@@ -109,7 +109,7 @@ class PVectorNd(NamedTuple, Generic[_T, float_]):
         )
 
     def is_below(
-        self, pressure: Pascal[NDArray[np.floating[Any]]] | PVectorNd, *, close: bool = False
+        self, pressure: Pascal[NDArray[np.floating[Any]]] | Self, *, close: bool = False
     ) -> NDArray[np.bool_]:
         if isinstance(pressure, PVectorNd):
             pressure = pressure.pressure
@@ -120,7 +120,7 @@ class PVectorNd(NamedTuple, Generic[_T, float_]):
 
     def where_below(
         self,
-        pressure: Pascal[NDArray[np.floating[Any]]] | PVectorNd,
+        pressure: Pascal[NDArray[np.floating[Any]]] | Self,
         x_fill: ArrayLike[np.floating[Any]] = np.nan,
         y_fill: ArrayLike[np.floating[Any]] | None = None,
         *,
@@ -148,14 +148,41 @@ class PVectorNd(NamedTuple, Generic[_T, float_]):
     ) -> Self:
         return self.where(self.is_above(pressure, close=close), x_fill, y_fill)
 
+    def is_between(
+        self,
+        bottom: Pascal[NDArray[np.floating[Any]]] | PVectorNd,
+        top: Pascal[NDArray[np.floating[Any]]] | PVectorNd,
+        *,
+        close: bool = False,
+    ):
+        if isinstance(bottom, PVectorNd):
+            bottom = bottom.pressure
+        if isinstance(top, PVectorNd):
+            top = top.pressure
+        if not close:
+            return (self.pressure > bottom) & (self.pressure < top)
+
+        return between_or_close(self.pressure, top, bottom).astype(np.bool_)
+
+    def where_between(
+        self,
+        bottom: Pascal[NDArray[np.floating[Any]]] | PVectorNd,
+        top: Pascal[NDArray[np.floating[Any]]] | PVectorNd,
+        x_fill: ArrayLike[np.floating[Any]] = np.nan,
+        y_fill: ArrayLike[np.floating[Any]] | None = None,
+        *,
+        close: bool = False,
+    ) -> Self:
+        return self.where(self.is_between(bottom, top, close=close), x_fill, y_fill)
+
     def is_nan(self) -> NDArray[np.bool_]:
         return np.isnan(self.pressure)
 
     def select(
         self,
         condlist: Sequence[NDArray[np.bool_]],
-        x_choice: Sequence[NDArray[float_]],
-        y_choice: Sequence[NDArray[float_]],
+        x_choice: Sequence[NDArray[_T]],
+        y_choice: Sequence[NDArray[_T]],
         x_default: ArrayLike[np.floating[Any]] = np.nan,
         y_default: ArrayLike[np.floating[Any]] | None = None,
     ) -> Self:
@@ -178,29 +205,25 @@ class PVectorNd(NamedTuple, Generic[_T, float_]):
     @classmethod
     def from_func(
         cls,
-        func: Callable[
-            _P,
-            tuple[Pascal[NDArray[float_]], Kelvin[NDArray[float_]]],
-        ],
+        func: Callable[_P, tuple[Pascal[NDArray[_T]], Kelvin[NDArray[_T]]]],
         *args: _P.args,
         **kwargs: _P.kwargs,
     ) -> Self:
-        x, y = func(*args, **kwargs)
-        return cls(x, y)
+        return cls(*func(*args, **kwargs))
 
-    def reshape(self, *shape: int) -> tuple[Pascal[NDArray[float_]], Kelvin[NDArray[float_]]]:
+    def reshape(self, *shape: int) -> tuple[Pascal[NDArray[_T]], Kelvin[NDArray[_T]]]:
         p, t = np.reshape([self.pressure, self.temperature], (2, *shape))
         return p, t
 
 
-class Vector1d(PVectorNd[shape[N], float_]):
-    def unsqueeze(self) -> Vector2d[float_]:
+class Vector1d(PVectorNd[shape[N], _T]):
+    def unsqueeze(self) -> Vector2d[_T]:
         s = np.s_[:, np.newaxis]
         return Vector2d(self.pressure[s], self.temperature[s])
 
 
-class Vector2d(PVectorNd[shape[N, Z], float_]):
-    def pick(self, which: L["bottom", "top"]) -> Vector1d[float_]:
+class Vector2d(PVectorNd[shape[N, Z], _T]):
+    def pick(self, which: L["bottom", "top"]) -> Vector1d[_T]:
         p, t = self.pressure, self.temperature
         nx = np.arange(p.shape[0])
         if which == "bottom":
@@ -210,10 +233,10 @@ class Vector2d(PVectorNd[shape[N, Z], float_]):
         elif which == "top":
             return Vector1d(p[nx, 0], t[nx, 0])  # the first value is the uppermost value
 
-    def bottom(self) -> Vector1d[float_]:
+    def bottom(self) -> Vector1d[_T]:
         return self.pick("bottom")
 
-    def top(self) -> Vector1d[float_]:
+    def top(self) -> Vector1d[_T]:
         return self.pick("top")
 
     def sort(self) -> Self:
@@ -223,17 +246,14 @@ class Vector2d(PVectorNd[shape[N, Z], float_]):
 
 
 @overload
-def exactly_2d(x: NDArray[float_], /) -> np.ndarray[shape[N, Z], np.dtype[float_]]: ...
+def exactly_2d(x: NDArray[_T], /) -> np.ndarray[shape[N, Z], np.dtype[_T]]: ...
 @overload
 def exactly_2d(
-    *args: NDArray[float_],
-) -> tuple[np.ndarray[shape[N, Z], np.dtype[float_]], ...]: ...
+    *args: NDArray[_T],
+) -> tuple[np.ndarray[shape[N, Z], np.dtype[_T]], ...]: ...
 def exactly_2d(
-    *args: NDArray[float_],
-) -> (
-    np.ndarray[shape[N, Z], np.dtype[float_]]
-    | tuple[np.ndarray[shape[N, Z], np.dtype[float_]], ...]
-):
+    *args: NDArray[_T],
+) -> np.ndarray[shape[N, Z], np.dtype[_T]] | tuple[np.ndarray[shape[N, Z], np.dtype[_T]], ...]:
     values = []
     for x in args:
         if x.ndim == 0:
@@ -253,44 +273,39 @@ def exactly_2d(
 def broadcast_nz(
     f: Callable[
         Concatenate[
-            Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
-            Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
-            Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+            Pascal[pressure_vector[shape[N, Z], np.dtype[_T]]],
+            Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+            Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
             _P,
         ],
-        _T,
+        _S,
     ],
 ) -> Callable[
-    Concatenate[
-        Pascal[ArrayLike[np.floating[Any]]],
-        Kelvin[ArrayLike[np.floating[Any]]],
-        Kelvin[ArrayLike[np.floating[Any]]],
-        _P,
-    ],
-    _T,
+    Concatenate[Pascal[ArrayLike[_T]], Kelvin[ArrayLike[_T]], Kelvin[ArrayLike[_T]], _P],
+    _S,
 ]:
     @functools.wraps(f)
     def wrapper(
-        pressure: ArrayLike[np.floating[Any]],
-        temperature: ArrayLike[np.floating[Any]],
-        dewpoint: ArrayLike[np.floating[Any]],
+        pressure: ArrayLike[_T],
+        temperature: ArrayLike[_T],
+        dewpoint: ArrayLike[_T],
         *args: _P.args,
         **kwargs: _P.kwargs,
-    ) -> _T:
+    ) -> _S:
+        if kwargs.pop("__fastpath", False):
+            return f(pressure, temperature, dewpoint, *args, **kwargs)  # type: ignore
+
         # TODO
         # - add support for squeezing what would have been a 1d input
         # - add support for reshaping:
         #   (T, Z, Y, X) -> (N, Z)
         #   (Z, Y, X) -> (N, Z)'
-        if kwargs.pop("__fastpath", False):
-            return f(pressure, temperature, dewpoint, *args, **kwargs)  # type: ignore
-
         pressure, temperature, dewpoint = exactly_2d(
             magnitude(pressure, "pascal"),
             magnitude(temperature, "kelvin"),
             magnitude(dewpoint, "kelvin"),
         )
-        return f(pressure, temperature, dewpoint, *args, **kwargs)  # type: ignore
+        return f(pressure_vector(pressure), temperature, dewpoint, *args, **kwargs)
 
     return wrapper
 
@@ -305,39 +320,39 @@ unix = np.int64
 julian = np.float64
 datetime64 = np.datetime64
 
+_T1 = TypeVar("_T1", datetime64, calendar, julian, unix)
+_T2 = TypeVar("_T2", datetime64, calendar, julian, unix)
 
-_DT1 = TypeVar("_DT1", datetime64, calendar, julian, unix)
-_DT2 = TypeVar("_DT2", datetime64, calendar, julian, unix)
-DType_DT1 = np.dtype[_DT1] | type[_DT1] | SupportsDType[_DT1]
+DType_T = np.dtype[_T1] | type[_T1] | SupportsDType[_T1]
 
 
 @overload
-def isdtype(x: NDArray[Any], /, dtype: DType_DT1[_DT1]) -> TypeGuard[NDArray[_DT1]]: ...
+def isdtype(x: NDArray[Any], /, dtype: DType_T[_T1]) -> TypeGuard[NDArray[_T1]]: ...
 @overload
-def isdtype(x: np.dtype[_DT1], /, dtype: DType_DT1[_DT1]) -> TypeGuard[np.dtype[_DT1]]: ...
+def isdtype(x: np.dtype[_T1], /, dtype: DType_T[_T1]) -> TypeGuard[np.dtype[_T1]]: ...
 @overload
-def isdtype(x: type[_DT1], /, dtype: DType_DT1[_DT1]) -> TypeGuard[np.dtype[_DT1]]: ...
+def isdtype(x: type[_T1], /, dtype: DType_T[_T1]) -> TypeGuard[np.dtype[_T1]]: ...
 def isdtype(
-    x: NDArray[Any] | np.dtype[_DT1] | type[_DT1], /, dtype: DType_DT1[_DT1]
-) -> TypeGuard[NDArray[_DT1]] | TypeGuard[np.dtype[_DT1]]:
+    x: NDArray[Any] | np.dtype[_T1] | type[_T1], /, dtype: DType_T[_T1]
+) -> TypeGuard[NDArray[_T1]] | TypeGuard[np.dtype[_T1]]:
     if isinstance(x, np.dtype):
-        x_dtype = x
+        arg = x
     elif isinstance(x, type):
-        x_dtype = np.dtype(x)
+        arg = np.dtype(x)
     else:
-        x_dtype = x.dtype
+        arg = x.dtype
 
     if dtype is calendar:
         return (
-            np.issubdtype(x_dtype, calendar)
-            and x_dtype.names is not None
+            np.issubdtype(arg, calendar)
+            and arg.names is not None
             and (
                 {"year", "month", "day", "hour", "minute", "second", "microsecond"}.issubset(
-                    x_dtype.names
+                    arg.names
                 )
             )
         )
-    return np.issubdtype(x_dtype, dtype)
+    return np.issubdtype(arg, dtype)
 
 
 def leap_year(x: NDArray[datetime64 | calendar | julian | unix]) -> NDArray[np.bool_]:
@@ -346,9 +361,7 @@ def leap_year(x: NDArray[datetime64 | calendar | julian | unix]) -> NDArray[np.b
     return (year % 4 == 0) & ((year % 100 != 0) | (year % 400 == 0))
 
 
-def leap_day(
-    x: NDArray[datetime64 | calendar | julian | unix],
-) -> NDArray[np.bool_]:
+def leap_day(x: NDArray[datetime64 | calendar | julian | unix]) -> NDArray[np.bool_]:
     x = to_date(x)
     year, month, day = x["year"], x["month"], x["day"]
     return leap_year(year) & (month == 2) & (day == 29)
@@ -365,9 +378,8 @@ def to_date(
     elif isdtype(x, unix) or isdtype(x, julian):
         x = to_datetime64(x)
 
-    out = np.recarray(
-        x.shape, dtype=np.dtype([("year", np.int32), ("month", np.int32), ("day", np.int32)])
-    )
+    dtype = np.dtype([("year", np.int32), ("month", np.int32), ("day", np.int32)])
+    out = np.recarray(x.shape, dtype)
 
     Y, M, D = (x.astype(f"datetime64[{s}]") for s in "YMD")
 
@@ -386,20 +398,18 @@ def to_calendar(
     elif isdtype(x, unix) or isdtype(x, julian):
         x = to_datetime64(x)
 
-    out = np.recarray(
-        x.shape,
-        dtype=np.dtype(
-            [
-                ("year", np.int32),
-                ("month", np.int32),
-                ("day", np.int32),
-                ("hour", np.int32),
-                ("minute", np.int32),
-                ("second", np.int32),
-                ("microsecond", np.int32),
-            ]
-        ),
+    dtype = np.dtype(
+        [
+            ("year", np.int32),
+            ("month", np.int32),
+            ("day", np.int32),
+            ("hour", np.int32),
+            ("minute", np.int32),
+            ("second", np.int32),
+            ("microsecond", np.int32),
+        ]
     )
+    out = np.recarray(x.shape, dtype=dtype)
 
     Y, M, D, h, m, s = (x.astype(f"datetime64[{s}]") for s in "YMDhms")
 
@@ -498,7 +508,8 @@ def to_julian_day(x: NDArray[datetime64 | calendar | julian | unix]) -> NDArray[
         + D
         - 32075
     )
-    hms = (h * 3600 + m * 60 + (s + (ms / 1_000_000))) / 86400
+
+    hms = (h * 3600 + m * 60 + (s + (ms / 1e6))) / 86400
     return ymd + hms - 0.5
 
 
@@ -515,15 +526,15 @@ _function_map: Mapping[
 
 
 def cast_to(
-    x: NDArray[datetime64 | calendar | julian | unix], dtype: type[_DT2] | str
-) -> NDArray[_DT2]:
+    x: NDArray[datetime64 | calendar | julian | unix], dtype: type[_T2] | str
+) -> NDArray[_T2]:
     if isinstance(dtype, str):
         return _function_map[_string_map[dtype]](x)
 
     return _function_map[dtype](x)
 
 
-class timeseries(np.ndarray[Any, np.dtype[_DT1]]):
+class timeseries(np.ndarray[Any, np.dtype[_T1]]):
     @overload
     def __new__(
         cls,
@@ -546,12 +557,12 @@ class timeseries(np.ndarray[Any, np.dtype[_DT1]]):
     def __new__(
         cls,
         data: Any,
-        dtype: np.dtype[_DT1] = ...,
-    ) -> timeseries[_DT1]: ...
+        dtype: np.dtype[_T1] = ...,
+    ) -> timeseries[_T1]: ...
     def __new__(
         cls,
         data: Any,
-        dtype: np.dtype[_DT1]
+        dtype: np.dtype[_T1]
         | L[
             "datetime64",
             "datetime64[Y]",
@@ -578,9 +589,9 @@ class timeseries(np.ndarray[Any, np.dtype[_DT1]]):
     @overload
     def to(self, dtype: L["julian"]) -> timeseries[julian]: ...
     @overload
-    def to(self, dtype: type[_DT2]) -> timeseries[_DT2]: ...
+    def to(self, dtype: type[_T2]) -> timeseries[_T2]: ...
     def to(
-        self, dtype: type[_DT2] | L["unix", "datetime64", "calendar", "julian"]
+        self, dtype: type[_T2] | L["unix", "datetime64", "calendar", "julian"]
     ) -> timeseries[Any]:
         return cast_to(self, dtype).view(timeseries)
 

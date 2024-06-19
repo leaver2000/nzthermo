@@ -12,11 +12,11 @@ from __future__ import annotations
 from typing import Any, Final, Literal as L, TypeVar
 
 import numpy as np
-from numpy.typing import NDArray
+from numpy.typing import ArrayLike, NDArray
 
-from . import _core as core, functional as F
+from . import functional as F
+from ._core import moist_lapse, parcel_profile_with_lcl
 from ._ufunc import (
-    between_or_close,
     dewpoint as _dewpoint,
     dry_lapse,
     equivalent_potential_temperature,
@@ -24,6 +24,7 @@ from ._ufunc import (
     lcl,
     lcl_pressure,
     mixing_ratio,
+    pressure_vector,
     saturation_mixing_ratio,
     saturation_vapor_pressure,
     vapor_pressure,
@@ -32,16 +33,34 @@ from ._ufunc import (
 )
 from .const import Rd
 from .typing import Kelvin, N, Pascal, Z, shape
-from .utils import Vector1d, broadcast_nz
+from .utils import Axis, Vector1d, broadcast_nz
 
-float_ = TypeVar("float_", bound=np.floating[Any], covariant=True)
+_S = TypeVar("_S", bound=shape)
+_T = TypeVar("_T", bound=np.floating[Any], covariant=True)
 newaxis: Final[None] = np.newaxis
+surface: Final[tuple[slice, slice]] = np.s_[:, :1]
+aloft: Final[tuple[slice, slice]] = np.s_[:, 1:]
 NaN = np.nan
-z_axis: Final[tuple[slice, None]] = np.s_[:, newaxis]
-N_AXIS: Final[tuple[None, slice]] = np.s_[newaxis, :]
 
 
 FASTPATH: dict[str, Any] = {"__fastpath": True}
+
+
+def parcel_mixing_ratio(
+    pressure: Pascal[pressure_vector[_S, np.dtype[_T]]],
+    temperature: Kelvin[np.ndarray[_S, np.dtype[_T]]],
+    dewpoint: Kelvin[np.ndarray[_S, np.dtype[_T]]],
+    /,
+    *,
+    where: np.ndarray[_S, np.dtype[np.bool_]] | None = None,
+) -> np.ndarray[_S, np.dtype[_T]]:
+    if where is None:
+        where = pressure.is_below(
+            lcl_pressure(pressure[surface], temperature[surface], dewpoint[surface])
+        )
+    r = saturation_mixing_ratio(pressure, dewpoint, out=np.empty_like(temperature), where=where)
+    r = saturation_mixing_ratio(pressure, temperature, out=r, where=~where)
+    return r
 
 
 # -------------------------------------------------------------------------------------------------
@@ -49,10 +68,12 @@ FASTPATH: dict[str, Any] = {"__fastpath": True}
 # -------------------------------------------------------------------------------------------------
 @broadcast_nz
 def downdraft_cape(
-    pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
-) -> np.ndarray[shape[N], np.dtype[float_]]:
+    pressure: Pascal[pressure_vector[shape[N, Z], np.dtype[_T]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    /,
+    where: np.ndarray[shape[N, Z], np.dtype[np.bool_]] | None = None,
+) -> np.ndarray[shape[N], np.dtype[_T]]:
     """Calculate downward CAPE (DCAPE).
 
     Calculate the downward convective available potential energy (DCAPE) of a given upper air
@@ -74,29 +95,29 @@ def downdraft_cape(
     N, _ = temperature.shape
     nx = np.arange(N)
     # Tims suggestion was to allow for the parcel to potentially be conditionally based
-    mask = (pressure <= 70000.0) & (pressure >= 50000.0)
+    if where is None:
+        where = (pressure <= 70000.0) & (pressure >= 50000.0)
 
-    if broadcasted := pressure.shape == temperature.shape:
-        p_layer, t_layer, td_layer = np.where(
-            mask[newaxis, :, :], [pressure, temperature, dewpoint], NaN
-        )
-    else:
-        p_layer = np.where(mask, pressure, NaN)
-        t_layer, td_layer = np.where(mask[newaxis, :, :], [temperature, dewpoint], NaN)
+    theta_e = equivalent_potential_temperature(
+        pressure,
+        temperature,
+        dewpoint,
+        # masking values with inf will alow us to call argmin without worrying about nan
+        where=where,
+        out=np.full_like(temperature, np.inf),
+    )
+    zx = theta_e.argmin(axis=1)
 
-    theta_e = equivalent_potential_temperature(p_layer, t_layer, td_layer)
-
-    zx = np.nanargmin(theta_e, axis=1)
-
-    p_top = p_layer[nx, zx] if broadcasted else p_layer[0, zx]
-    t_top = t_layer[nx, zx]  # (N,)
-    td_top = td_layer[nx, zx]  # (N,)
+    p_top = pressure[nx, zx] if pressure.shape == temperature.shape else pressure[0, zx]
+    t_top = temperature[nx, zx]  # (N,)
+    td_top = dewpoint[nx, zx]  # (N,)
     wb_top = wet_bulb_temperature(p_top, t_top, td_top)  # (N,)
 
     # our moist_lapse rate function has nan ignoring capabilities
-    pressure = np.where(pressure >= p_top[:, newaxis], pressure, NaN)
+    # pressure = pressure.where(pressure >= p_top[:, newaxis], NaN)
+    pressure = pressure.where(pressure.is_below(p_top[:, newaxis], close=True), NaN)
     e_vt = virtual_temperature(temperature, saturation_mixing_ratio(pressure, dewpoint))  # (N, Z)
-    trace = core.moist_lapse(pressure, wb_top, p_top)  # (N, Z)
+    trace = moist_lapse(pressure, wb_top, p_top)  # (N, Z)
     p_vt = virtual_temperature(trace, saturation_mixing_ratio(pressure, trace))  # (N, Z)
 
     DCAPE = Rd * F.nantrapz(p_vt - e_vt, np.log(pressure), axis=1)
@@ -109,10 +130,11 @@ def downdraft_cape(
 # -------------------------------------------------------------------------------------------------
 @broadcast_nz
 def ccl(
-    pressure: Pascal[NDArray[float_]],
-    temperature: Kelvin[NDArray[float_]],
-    dewpoint: Kelvin[NDArray[float_]],
+    pressure: Pascal[NDArray[_T]],
+    temperature: Kelvin[NDArray[_T]],
+    dewpoint: Kelvin[NDArray[_T]],
     /,
+    *,
     height=None,
     mixed_layer_depth=None,
     which: L["bottom", "top"] = "bottom",
@@ -127,11 +149,8 @@ def ccl(
     saturation mixing ratio line (through the surface dewpoint) and the environmental temperature.
     """
 
-    p0 = pressure[:, 0]  # (N,)
-    td0 = dewpoint[:, 0]  # (N,)
-
     if mixed_layer_depth is None:
-        r = mixing_ratio(saturation_vapor_pressure(td0[:, newaxis]), p0[:, newaxis])
+        r = mixing_ratio(saturation_vapor_pressure(dewpoint[surface]), pressure[surface])
     else:
         raise NotImplementedError
     if height is not None:
@@ -141,7 +160,7 @@ def ccl(
 
     p, t = F.intersect_nz(pressure, rt_profile, temperature, "increasing", log_x=True).pick(which)
 
-    return p, t, dry_lapse(p0, t, p)
+    return p, t, dry_lapse(pressure[:, 0], t, p)
 
 
 # -------------------------------------------------------------------------------------------------
@@ -149,18 +168,17 @@ def ccl(
 # -------------------------------------------------------------------------------------------------
 def _el_lfc(
     pick: L["EL", "LFC", "BOTH"],
-    pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+    pressure: Pascal[pressure_vector[shape[N, Z], np.dtype[_T]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
     /,
-    parcel_temperature_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.floating[Any]]]]
-    | None = None,
+    parcel_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.floating[Any]]]] | None = None,
     which_lfc: L["bottom", "top"] = "bottom",
     which_el: L["bottom", "top"] = "top",
-    dewpoint_start: np.ndarray[shape[N], np.dtype[float_]] | None = None,
-) -> tuple[Vector1d[float_], Vector1d[float_]] | Vector1d[float_]:
-    if parcel_temperature_profile is None:
-        pressure, temperature, dewpoint, parcel_temperature_profile = core.parcel_profile_with_lcl(
+    dewpoint_start: np.ndarray[shape[N], np.dtype[_T]] | None = None,
+) -> tuple[Vector1d[_T], Vector1d[_T]] | Vector1d[_T]:
+    if parcel_profile is None:
+        pressure, temperature, dewpoint, parcel_profile = parcel_profile_with_lcl(
             pressure, temperature, dewpoint
         )
 
@@ -173,42 +191,44 @@ def _el_lfc(
 
     LCL = Vector1d.from_func(lcl, p0, t0, td0).unsqueeze()
 
-    pressure, parcel_temperature_profile, temperature = (
-        pressure[:, 1:],
-        parcel_temperature_profile[:, 1:],
-        temperature[:, 1:],
+    pressure, parcel_profile, temperature = (
+        pressure[aloft],
+        parcel_profile[aloft],
+        temperature[aloft],
     )
 
-    top_idx = np.arange(N), np.argmin(~np.isnan(pressure), axis=1) - 1
-    # find the Equilibrium Level (EL)
-    left_of_env = (parcel_temperature_profile[top_idx] <= temperature[top_idx])[:, newaxis]
-    EL = F.intersect_nz(
-        pressure,
-        parcel_temperature_profile,
-        temperature,
-        "decreasing",
-        log_x=True,
-    ).where(
-        # If the top of the sounding parcel is warmer than the environment, there is no EL
-        lambda el: el.is_above(LCL) & left_of_env
-    )
+    if pick != "LFC":  # find the Equilibrium Level (EL)
+        top_idx = np.arange(N), np.argmin(~np.isnan(pressure), Axis.Z) - 1
+        left_of_env = (parcel_profile[top_idx] <= temperature[top_idx])[:, newaxis]
+        EL = F.intersect_nz(
+            pressure,
+            parcel_profile,
+            temperature,
+            "decreasing",
+            log_x=True,
+        ).where(
+            # If the top of the sounding parcel is warmer than the environment, there is no EL
+            lambda el: el.is_above(LCL) & left_of_env
+        )
 
-    if pick == "EL":
-        return EL.pick(which_el)
+        if pick == "EL":
+            return EL.pick(which_el)
 
     LFC = F.intersect_nz(
         pressure,
-        parcel_temperature_profile,
+        parcel_profile,
         temperature,
         "increasing",
         log_x=True,
     ).where_above(LCL)
 
-    is_lcl = (no_lfc := LFC.is_nan().all(axis=1, keepdims=True)) & greater_or_close(
+    no_lfc = LFC.is_nan().all(Axis.Z, out=np.empty((N, 1), dtype=np.bool_), keepdims=True)
+
+    is_lcl = no_lfc & greater_or_close(
         # the mask only needs to be applied to either the temperature or parcel_temperature_profile
-        np.where(LCL.is_below(pressure, close=True), parcel_temperature_profile, NaN),
+        np.where(LCL.is_below(pressure, close=True), parcel_profile, NaN),
         temperature,
-    ).any(axis=1, keepdims=True)
+    ).any(Axis.Z, out=np.empty((N, 1), dtype=np.bool_), keepdims=True)
 
     LFC = LFC.select(
         [~no_lfc, is_lcl],
@@ -224,35 +244,34 @@ def _el_lfc(
 
 @broadcast_nz
 def el(
-    pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+    pressure: Pascal[pressure_vector[shape[N, Z], np.dtype[_T]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
     /,
-    parcel_temperature_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.floating[Any]]]]
-    | None = None,
+    parcel_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.floating[Any]]]] | None = None,
+    *,
     which: L["top", "bottom"] = "top",
-) -> Vector1d[float_]:
-    return _el_lfc(
-        "EL", pressure, temperature, dewpoint, parcel_temperature_profile, which_el=which
-    )
+) -> Vector1d[_T]:
+    return _el_lfc("EL", pressure, temperature, dewpoint, parcel_profile, which_el=which)
 
 
 @broadcast_nz
 def lfc(
-    pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+    pressure: Pascal[pressure_vector[shape[N, Z], np.dtype[_T]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
     /,
-    parcel_temperature_profile: np.ndarray | None = None,
+    parcel_profile: np.ndarray | None = None,
+    *,
     which: L["top", "bottom"] = "top",
-    dewpoint_start: np.ndarray[shape[N], np.dtype[float_]] | None = None,
-) -> Vector1d[float_]:
+    dewpoint_start: np.ndarray[shape[N], np.dtype[_T]] | None = None,
+) -> Vector1d[_T]:
     return _el_lfc(
         "LFC",
         pressure,
         temperature,
         dewpoint,
-        parcel_temperature_profile,
+        parcel_profile,
         which_lfc=which,
         dewpoint_start=dewpoint_start,
     )
@@ -260,22 +279,22 @@ def lfc(
 
 @broadcast_nz
 def el_lfc(
-    pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+    pressure: Pascal[pressure_vector[shape[N, Z], np.dtype[_T]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
     /,
-    parcel_temperature_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.floating[Any]]]]
-    | None = None,
+    parcel_profile: Kelvin[np.ndarray[shape[N, Z], np.dtype[np.floating[Any]]]] | None = None,
+    *,
     which_lfc: L["bottom", "top"] = "bottom",
     which_el: L["bottom", "top"] = "top",
-    dewpoint_start: np.ndarray[shape[N], np.dtype[float_]] | None = None,
-) -> tuple[Vector1d[float_], Vector1d[float_]]:
+    dewpoint_start: np.ndarray[shape[N], np.dtype[_T]] | None = None,
+) -> tuple[Vector1d[_T], Vector1d[_T]]:
     return _el_lfc(
         "BOTH",
         pressure,
         temperature,
         dewpoint,
-        parcel_temperature_profile,
+        parcel_profile,
         which_lfc=which_lfc,
         which_el=which_el,
         dewpoint_start=dewpoint_start,
@@ -283,55 +302,125 @@ def el_lfc(
 
 
 # -------------------------------------------------------------------------------------------------
-# cape_cin
+# nzthermo.core.most_unstable_parcel
 # -------------------------------------------------------------------------------------------------
+@broadcast_nz
 def most_unstable_parcel_index(
-    pressure,
-    temperature,
-    dewpoint,
+    pressure: Pascal[pressure_vector[shape[N, Z], np.dtype[_T]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
     /,
     depth: float = 30000.0,
     height: float | None = None,
     bottom: float | None = None,
-):
+) -> np.ndarray[shape[N], np.dtype[np.intp]]:
     if height is not None:
         raise NotImplementedError("height argument is not implemented")
 
-    pressure = np.atleast_2d(pressure)
-    p0 = pressure[:, 0] if bottom is None else np.asarray(bottom)  # .reshape(-1, 1)
-    top = p0 - depth
-    (mask,) = np.nonzero(between_or_close(pressure, top, p0).astype(np.bool_).squeeze())
-    t_layer = temperature[:, mask]
-    td_layer = dewpoint[:, mask]
-    p_layer = pressure[:, mask]
-    theta_e = equivalent_potential_temperature(p_layer, t_layer, td_layer)
+    pbot = (pressure[surface] if bottom is None else np.asarray(bottom)).reshape(-1, 1)
+    ptop = pbot - depth
+
+    theta_e = equivalent_potential_temperature(
+        pressure,
+        temperature,
+        dewpoint,
+        where=pressure.is_between(pbot, ptop),
+        out=np.full(temperature.shape, -np.inf, dtype=temperature.dtype),
+    )
+
     return np.argmax(theta_e, axis=1)
 
 
 @broadcast_nz
+def most_unstable_parcel(
+    pressure: Pascal[pressure_vector[shape[N, Z], np.dtype[_T]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    /,
+    *,
+    depth: Pascal[float] = 30000.0,
+    bottom: Pascal[float] | None = None,
+) -> tuple[
+    Pascal[np.ndarray[shape[N], np.dtype[_T]]],
+    Kelvin[np.ndarray[shape[N], np.dtype[_T]]],
+    Kelvin[np.ndarray[shape[N], np.dtype[_T]]],
+    np.ndarray[shape[N, Z], np.dtype[np.intp]],
+]:
+    idx = most_unstable_parcel_index(
+        pressure, temperature, dewpoint, depth=depth, bottom=bottom, **FASTPATH
+    )
+
+    return (
+        pressure[np.arange(pressure.shape[0]), idx],
+        temperature[np.arange(temperature.shape[0]), idx],
+        dewpoint[np.arange(dewpoint.shape[0]), idx],
+        idx,
+    )
+
+
+# -------------------------------------------------------------------------------------------------
+# nzthermo.core.mixed_layer
+# -------------------------------------------------------------------------------------------------
+@broadcast_nz
+def mixed_layer(
+    pressure: Pascal[pressure_vector[shape[N, Z], np.dtype[_T]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    /,
+    *,
+    depth: float | NDArray[np.floating[Any]] = 10000.0,
+    height: ArrayLike | None = None,
+    bottom: ArrayLike | None = None,
+    interpolate=False,
+) -> tuple[
+    np.ndarray[shape[N], np.dtype[_T]],
+    Kelvin[np.ndarray[shape[N], np.dtype[_T]]],
+]:
+    if height is not None:
+        raise NotImplementedError("height argument is not implemented")
+    if interpolate:
+        raise NotImplementedError("interpolate argument is not implemented")
+
+    bottom = (pressure[surface] if bottom is None else np.asarray(bottom)).reshape(-1, 1)
+    top = bottom - depth
+
+    where = pressure.is_between(bottom, top)
+
+    depth = np.asarray(
+        # use asarray otherwise the depth is cast to pressure_vector which doesn't
+        # make sense for the temperature and dewpoint outputs
+        np.max(pressure, initial=-np.inf, axis=1, where=where)
+        - np.min(pressure, initial=np.inf, axis=1, where=where)
+    )
+
+    T, Td = F.nantrapz([temperature, dewpoint], pressure, axis=-1, where=where) / -depth
+
+    return T, Td
+
+
+# -------------------------------------------------------------------------------------------------
+# cape_cin
+# -------------------------------------------------------------------------------------------------
+@broadcast_nz
 def cape_cin(
-    pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+    pressure: Pascal[pressure_vector[shape[N, Z], np.dtype[_T]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
     /,
     parcel_profile: np.ndarray,
+    *,
     which_lfc: L["bottom", "top"] = "bottom",
     which_el: L["bottom", "top"] = "top",
 ) -> tuple[np.ndarray, np.ndarray]:
-    lcl_p = lcl_pressure(pressure[:, 0], temperature[:, 0], dewpoint[:, 0])  # ✔️
-
     # The mixing ratio of the parcel comes from the dewpoint below the LCL, is saturated
     # based on the temperature above the LCL
-    parcel_mixing_ratio = np.where(
-        pressure > lcl_p[:, newaxis],  # below_lcl
-        saturation_mixing_ratio(pressure, dewpoint),
-        saturation_mixing_ratio(pressure, temperature),
+
+    parcel_profile = virtual_temperature(
+        parcel_profile, parcel_mixing_ratio(pressure, temperature, dewpoint)
     )
-    # Convert the temperature/parcel profile to virtual temperature
     temperature = virtual_temperature(temperature, saturation_mixing_ratio(pressure, dewpoint))
-    parcel_profile = virtual_temperature(parcel_profile, parcel_mixing_ratio)
     # Calculate the EL limit of integration
-    (el_p, _), (lfc_p, _) = _el_lfc(
+    (EL, _), (LFC, _) = _el_lfc(
         "BOTH",
         pressure,
         temperature,
@@ -340,51 +429,46 @@ def cape_cin(
         which_lfc,
         which_el,
     )
+    EL, LFC = np.reshape((EL, LFC), (2, -1, 1))  # reshape for broadcasting
 
-    el_p[np.isnan(el_p)] = np.nanmin(pressure, axis=1)
+    tzx = F.zero_crossings(pressure, parcel_profile - temperature)  # temperature zero crossings
 
-    lfc_p, el_p = np.reshape((lfc_p, el_p), (2, -1, 1))  # reshape for broadcasting
-
-    X, Y = F.zero_crossings(pressure, parcel_profile - temperature)  # ((N, Z), ...)
-
-    mask = between_or_close(X, el_p, lfc_p).astype(np.bool_)
-    x, y = np.where(mask[newaxis, ...], [X, Y], NaN)
-    CAPE = Rd * F.nantrapz(y, np.log(x), axis=1)
+    p, t = tzx.where_between(LFC, EL, close=True)
+    CAPE = Rd * F.nantrapz(t, np.log(p), axis=1)
     CAPE[CAPE < 0.0] = 0.0
 
-    mask = greater_or_close(X, lfc_p).astype(np.bool_)
-    x, y = np.where(mask[newaxis, ...], [X, Y], NaN)
-    CIN = Rd * F.nantrapz(y, np.log(x), axis=1)
+    p, t = tzx.where_below(LFC, close=True)
+    CIN = Rd * F.nantrapz(t, np.log(p), axis=1)
     CIN[CIN > 0.0] = 0.0
 
     return CAPE, CIN
 
 
 @broadcast_nz
-def most_unstable_parcel(
-    pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
-    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[float_]]],
+def most_unstable_cape_cin(
+    pressure: Pascal[pressure_vector[shape[N, Z], np.dtype[_T]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
     /,
-    depth: Pascal[float] = 30_000.0,
+    *,
+    depth: Pascal[float] = 30000.0,
     bottom: Pascal[float] | None = None,
-) -> tuple[
-    Pascal[np.ndarray[shape[N], np.dtype[float_]]],
-    Kelvin[np.ndarray[shape[N], np.dtype[float_]]],
-    Kelvin[np.ndarray[shape[N], np.dtype[float_]]],
-    np.ndarray[shape[N, Z], np.dtype[np.intp]],
-]:
-    depth = 100.0 if depth is None else depth
-    p0 = (pressure[:, 0] if bottom is None else np.asarray(bottom)).reshape(-1, 1)
-    top = p0 - depth
+) -> tuple[np.ndarray, np.ndarray]:
+    idx = most_unstable_parcel_index(
+        pressure,
+        temperature,
+        dewpoint,
+        depth,
+        bottom,
+        **FASTPATH,
+    )
+    mask = np.arange(pressure.shape[1]) >= idx[:, newaxis]
 
-    n = np.arange(temperature.shape[0])
-    mask = between_or_close(pressure, p0, top).astype(np.bool_)
-    p = pressure[n, mask]
-    t = temperature[n, mask]
-    td = dewpoint[n, mask]
+    p, t, td, mu_profile = parcel_profile_with_lcl(
+        pressure,
+        temperature,
+        dewpoint,
+        where=mask,
+    )
 
-    # theta_e = equivalent_potential_temperature(p, t, td)
-    # idx = np.argmax(theta_e, axis=1)
-
-    # return p[n, idx], t[n, idx], td[n, idx], np.array([n, idx])
+    return cape_cin(p.view(pressure_vector), t, td, parcel_profile=mu_profile, **FASTPATH)

@@ -13,15 +13,23 @@ that generates the stub file from the c++ header file.
 # cython: cdivision=True
 
 # pyright: reportGeneralTypeIssues=false
+from typing import TypeVar
+
+import numpy as np
 
 cimport cython
 cimport numpy as np
+from libcpp.cmath cimport fabs, isnan
 
 cimport nzthermo._C as C
-from nzthermo._C cimport epsilon
+from nzthermo._C cimport Md, Mw
 
 np.import_array()
 np.import_ufunc()
+
+_S = TypeVar("_S")
+_T = TypeVar("_T")
+
 
 ctypedef fused T:
     float
@@ -32,30 +40,55 @@ ctypedef fused integer:
     long
 
 
-cdef T abs(T x) noexcept nogil:
-    return x if x > 0 else -x
-
 @cython.ufunc
 cdef bint less_or_close(T x, T y) noexcept nogil:
     return (
-        x == x and y == y # nan check
-        and (x < y or abs(x - y) <= (1.0e-05 * abs(y)))
+        not isnan(x) and not isnan(y)
+        and (x < y or fabs(x - y) <= (1.0e-05 * fabs(y)))
     )
 
 @cython.ufunc
 cdef bint greater_or_close(T x, T y) noexcept nogil:
     return (
-        x == x and y == y # nan check
-        and (x > y or abs(x - y) <= (1.0e-05 * abs(y)))
+        not isnan(x) and not isnan(y)
+        and (x > y or fabs(x - y) <= (1.0e-05 * fabs(y)))
     )
 
 @cython.ufunc
 cdef bint between_or_close(T x, T y0, T y1) noexcept nogil:
     return (
-        x == x and y0 == y0 and y1 == y1 # nan check
-        and (x > y0 or abs(x - y0) <= (1.0e-05 * abs(y0)))
-        and (x < y1 or abs(x - y1) <= (1.0e-05 * abs(y1)))
+        not isnan(x) and not isnan(y0) and not isnan(y1)
+        and (x > y0 or fabs(x - y0) <= (1.0e-05 * fabs(y0)))
+        and (x < y1 or fabs(x - y1) <= (1.0e-05 * fabs(y1)))
     )
+
+class pressure_vector(np.ndarray[_S, np.dtype[_T]]):
+    def __new__(cls, pressure):
+        return np.asarray(pressure).view(cls)
+
+    def is_above(self, bottom, close=True):
+        bottom = np.asarray(bottom)
+        if not close:
+            return np.asarray(self > bottom, np.bool_)
+
+        return np.asarray(less_or_close(self, bottom), np.bool_)
+
+    def is_below(self, top, close=True):
+        top = np.asarray(top)
+        if not close:
+            return np.asarray(self < top, np.bool_)
+
+        return np.asarray(greater_or_close(self, top), np.bool_)
+
+    def is_between(self, bottom, top, close=True):
+        bottom, top = np.asarray(bottom), np.asarray(top)
+        if not close:
+            return np.asarray((self > bottom) & (self < top), np.bool_)
+
+        return np.asarray(between_or_close(self, top, bottom), np.bool_)
+
+    def where(self, condition, fill=np.nan):
+        return np.where(condition, self, fill).view(pressure_vector)
 
 
 # ............................................................................................... #
@@ -160,7 +193,7 @@ cdef T wobus(T temperature) noexcept nogil:
 # 2x1
 @cython.ufunc
 cdef T mixing_ratio(T partial_pressure, T total_pressure) noexcept nogil:
-    return epsilon * partial_pressure / (total_pressure - partial_pressure)
+    return Mw / Md * partial_pressure / (total_pressure - partial_pressure)
 
 
 @cython.ufunc # theta
@@ -172,7 +205,7 @@ cdef T potential_temperature(T pressure, T temperature) noexcept nogil:
 cdef T dewpoint_from_specific_humidity(T pressure, T specific_humidity) noexcept nogil:
     cdef T Q = specific_humidity or 1e-9
     cdef T r = Q / (1 - Q)
-    return C.dewpoint(pressure * r / (epsilon + r))
+    return C.dewpoint(pressure * r / (Mw / Md  + r))
 
 
 @cython.ufunc
@@ -198,6 +231,89 @@ cdef T dry_lapse(T pressure, T temperature, T reference_pressure) noexcept nogil
 
 @cython.ufunc # theta_e
 cdef T equivalent_potential_temperature(T pressure, T temperature, T dewpoint) noexcept nogil:
+    """
+    Parameters
+    ----------
+    x : array_like
+        pressure (Pa) values.
+    x1 : array_like
+        temperature (K) values.
+    x2 : array_like
+        dewpoint (K) values.
+    out : ndarray, None, or tuple of ndarray and None, optional
+        A location into which the result is stored. If provided, it must have
+        a shape that the inputs broadcast to. If not provided or None,
+        a freshly-allocated array is returned. A tuple (possible only as a
+        keyword argument) must have length equal to the number of outputs.
+    where : array_like, optional
+        This condition is broadcast over the input. At locations where the
+        condition is True, the `out` array will be set to the ufunc result.
+        Elsewhere, the `out` array will retain its original value.
+        Note that if an uninitialized `out` array is created via the default
+        ``out=None``, locations within it where the condition is False will
+        remain uninitialized.
+    **kwargs
+        For other keyword-only arguments, see the
+        :ref:`ufunc docs <ufuncs.kwargs>`.
+    
+    Returns
+    -------
+    theta_e : ndarray
+        Equivalent potential temperature (K).
+
+    Examples
+    -------
+    >>> import numpy as np
+    >>> import nzthermo as nzt
+    >>> data = np.load("tests/data.npz", allow_pickle=False)
+    >>> pressure = data['P']
+    >>> temperature = data['T']
+    >>> dewpoint = data['Td']
+    >>> assert pressure.ndim == 1 and pressure.shape != temperature.shape
+    >>> mask = (pressure <= 70000.0) & (pressure >= 50000.0)
+    >>> theta_e = nzt.equivalent_potential_temperature(
+    ...     pressure,
+    ...     temperature,
+    ...     dewpoint,
+    ...     where=mask, # masking values with inf will alow us to call argmin without worrying about nan
+    ...     out=np.full_like(temperature, np.inf),
+    ... )
+    >>> theta_e.shape
+    (540, 40)
+    >>> theta_e.argmin(axis=1)
+    array([13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 15, 21, 21, 21, 21, 21, 21,
+           20, 13, 18, 14, 14, 14, 14, 20, 20, 14, 14, 16, 18, 13, 13, 13, 13,
+           13, 13, 13, 13, 13, 13, 21, 21, 17, 15, 21, 18, 21, 13, 13, 13, 18,
+           13, 14, 13, 16, 13, 19, 18, 18, 20, 13, 13, 15, 14, 13, 13, 13, 13,
+           13, 14, 21, 18, 21, 21, 13, 21, 20, 21, 14, 13, 19, 20, 13, 16, 13,
+           18, 16, 18, 21, 20, 13, 13, 14, 16, 16, 14, 13, 13, 13, 19, 21, 21,
+           21, 21, 20, 17, 20, 21, 21, 13, 13, 20, 13, 14, 18, 13, 13, 13, 13,
+           14, 13, 13, 13, 13, 13, 13, 13, 13, 14, 15, 19, 18, 18, 20, 19, 19,
+           13, 20, 21, 13, 14, 20, 18, 18, 16, 13, 13, 13, 16, 13, 13, 13, 13,
+           13, 13, 14, 13, 13, 15, 15, 15, 15, 13, 13, 16, 16, 20, 18, 15, 21,
+           21, 13, 16, 16, 14, 13, 13, 13, 13, 13, 13, 13, 14, 13, 14, 15, 13,
+           13, 13, 14, 21, 21, 21, 16, 14, 15, 13, 17, 18, 13, 20, 18, 18, 20,
+           14, 18, 14, 13, 13, 13, 19, 18, 14, 14, 13, 15, 15, 18, 21, 20, 19,
+           21, 20, 21, 21, 14, 14, 18, 20, 15, 18, 13, 16, 14, 16, 14, 16, 18,
+           13, 13, 20, 13, 18, 18, 18, 16, 17, 19, 19, 18, 20, 21, 20, 18, 21,
+           17, 17, 19, 18, 16, 18, 13, 13, 14, 13, 16, 16, 16, 16, 18, 16, 14,
+           14, 16, 18, 18, 19, 18, 17, 18, 20, 21, 21, 20, 20, 21, 15, 19, 17,
+           18, 18, 13, 15, 16, 13, 13, 16, 15, 13, 13, 14, 13, 13, 18, 18, 16,
+           19, 19, 16, 16, 19, 19, 18, 20, 19, 21, 20, 18, 20, 18, 18, 13, 15,
+           15, 17, 18, 16, 13, 13, 13, 13, 14, 13, 13, 16, 16, 18, 18, 16, 16,
+           17, 18, 20, 19, 16, 19, 13, 14, 14, 18, 17, 16, 15, 18, 18, 13, 13,
+           13, 14, 13, 13, 13, 14, 13, 16, 16, 19, 17, 14, 14, 15, 16, 17, 18,
+           15, 13, 14, 13, 15, 13, 13, 18, 13, 13, 14, 14, 15, 14, 13, 13, 13,
+           13, 13, 13, 14, 16, 19, 15, 18, 15, 13, 15, 15, 16, 16, 13, 13, 19,
+           17, 13, 13, 13, 13, 13, 13, 15, 19, 13, 13, 13, 13, 13, 13, 13, 13,
+           13, 15, 16, 16, 13, 13, 18, 16, 16, 15, 14, 13, 14, 13, 15, 17, 16,
+           13, 13, 13, 16, 15, 18, 13, 13, 13, 13, 13, 13, 13, 13, 14, 16, 17,
+           13, 17, 17, 16, 16, 14, 13, 13, 15, 16, 16, 15, 15, 17, 18, 13, 15,
+           15, 14, 14, 13, 13, 13, 13, 13, 13, 15, 14, 15, 16, 14, 17, 17, 16,
+           16, 13, 13, 14, 20, 17, 17, 14, 16, 16, 13, 13, 17, 16, 15, 14, 13,
+           13, 13, 13, 13, 13, 13, 14, 20, 18, 18, 15, 17, 13, 14, 13, 13, 13,
+           14, 13, 13, 13, 15, 20, 18, 13, 14, 19, 13, 16, 13])
+    """
     return C.equivalent_potential_temperature(pressure, temperature, dewpoint)
 
 
