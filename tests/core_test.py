@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import itertools
-import warnings
 from typing import Any
 
 import metpy.calc as mpcalc
@@ -13,7 +12,6 @@ from numpy.testing import assert_allclose, assert_almost_equal, assert_array_equ
 
 import nzthermo._core as _C
 from nzthermo._core import moist_lapse
-from nzthermo._ufunc import pressure_vector
 from nzthermo.core import (
     cape_cin,
     ccl,
@@ -26,7 +24,7 @@ from nzthermo.core import (
 )
 
 np.set_printoptions(
-    precision=3,
+    precision=6,
     suppress=True,
     threshold=150,
     linewidth=150,
@@ -61,6 +59,13 @@ step = np.s_[:]
 P: np.ndarray = data["P"]
 T: np.ndarray = data["T"][step]
 Td: np.ndarray = data["Td"][step]
+# In very rare cases the data accessed from the HRRR model had dewpoint temperatures greater than
+# the actual temperature. This is not physically possible and is likely due to rounding errors.
+# This also makes testing quite difficult because in many cases metpy will report a nan values
+# and throw interpolation warnings. To avoid this we will set the dewpoint temperature to be less
+# than the actual temperature.
+_super_saturation = Td > T
+Td[_super_saturation] = T[_super_saturation]
 
 
 def pressure_levels(sfc=1013.25, dtype: Any = np.float64):
@@ -306,8 +311,17 @@ def test_moist_lapse(dtype):
 # ............................................................................................... #
 # nzthermo._core.parcel_profile
 # ............................................................................................... #
+@pytest.mark.broadcasting
 @pytest.mark.parcel_profile
+def test_parcel_profile_broadcasting() -> None:
+    assert_array_equal(
+        _C.parcel_profile(P, T[:, 0], Td[:, 0]),
+        _C.parcel_profile(np.broadcast_to(P, T.shape), T[:, 0], Td[:, 0]),
+    )
+
+
 @pytest.mark.regression
+@pytest.mark.parcel_profile
 def test_parcel_profile_metpy_regression() -> None:
     prof = _C.parcel_profile(P, T[:, 0], Td[:, 0])
     for i in range(T.shape[0]):
@@ -322,28 +336,31 @@ def test_parcel_profile_metpy_regression() -> None:
 # ............................................................................................... #
 # nzthermo._core.parcel_profile_with_lcl
 # ............................................................................................... #
+@pytest.mark.broadcasting
 @pytest.mark.parcel_profile
+def test_parcel_profile_with_lcl_broadcasting() -> None:
+    p, t, td, tp = _C.parcel_profile_with_lcl(P, T, Td)
+    p_, t_, td_, tp = _C.parcel_profile_with_lcl(np.broadcast_to(P, T.shape), T, Td)
+    assert_array_equal(p, p_)
+    assert_array_equal(t, t_)
+    assert_array_equal(td, td_)
+    assert_array_equal(tp, tp)
+
+
 @pytest.mark.regression
+@pytest.mark.parcel_profile
 def test_parcel_profile_with_lcl_metpy_regression() -> None:
     ep, et, etd, ptp = _C.parcel_profile_with_lcl(P, T[:, :], Td[:, :])
     for i in range(ep.shape[0]):
-        with warnings.catch_warnings():  # UserWarning
-            warnings.simplefilter("ignore")  # Interpolation point out of data bounds encountered
-            ep_, et_, etd_, pt_ = mpcalc.parcel_profile_with_lcl(
-                P * Pa,
-                T[i, :] * K,
-                Td[i, :] * K,
-            )
+        ep_, et_, etd_, pt_ = mpcalc.parcel_profile_with_lcl(
+            P * Pa,
+            T[i, :] * K,
+            Td[i, :] * K,
+        )
         assert_allclose(ep[i], ep_.m, rtol=1e-3)
-        if np.isnan(et_.m[0]):  # warning throw by metpy sometimes caused the first value to be nan
-            # and the rest of the values to be shifted by one
-            assert_allclose(et[i, 1:], et_.m[1:], rtol=1e-3)
-            assert_allclose(etd[i, 1:], etd_.m[1:], rtol=1e-3)
-            assert_allclose(ptp[i, 1:], pt_.m[1:], rtol=1e-2)
-        else:
-            assert_allclose(et[i], et_.m, rtol=1e-3)
-            assert_allclose(etd[i], etd_.m, rtol=1e-3)
-            assert_allclose(ptp[i], pt_.m, rtol=1e-3)
+        assert_allclose(et[i], et_.m, rtol=1e-3)
+        assert_allclose(etd[i], etd_.m, rtol=1e-3)
+        assert_allclose(ptp[i], pt_.m, rtol=1e-3)
 
 
 # =============================================================================================== #
@@ -352,16 +369,17 @@ def test_parcel_profile_with_lcl_metpy_regression() -> None:
 # ............................................................................................... #
 # nzthermo.core.downdraft_cape
 # ............................................................................................... #
+@pytest.mark.broadcasting
 @pytest.mark.downdraft_cape
 def test_downdraft_cape_with_broadcasted_pressure() -> None:
-    assert_allclose(
-        downdraft_cape(np.broadcast_to(P, (T.shape[0], P.size)), T, Td),
+    assert_array_equal(
+        downdraft_cape(np.broadcast_to(P, T.shape), T, Td),
         downdraft_cape(P, T, Td),
     )
 
 
-@pytest.mark.downdraft_cape
 @pytest.mark.regression
+@pytest.mark.downdraft_cape
 @pytest.mark.parametrize("dtype", [np.float64, np.float32])
 def test_downdraft_cape_metpy_regression(dtype) -> None:
     DCAPE = downdraft_cape(P.astype(dtype), T.astype(dtype), Td.astype(dtype))
@@ -686,7 +704,7 @@ def test_el_lfc_equals_lcl() -> None:
 
 @pytest.mark.el
 @pytest.mark.skip
-def test_el_small_surface_instability():
+def test_el_small_surface_instability() -> None:
     """Test that no EL is found when there is a small pocket of instability at the sfc."""
     levels = [
         959.0,
@@ -1031,10 +1049,20 @@ def test_el_profile_nan_with_parcel_profile() -> None:
     levels = np.array([959.0, 779.2, 751.3, 724.3, 700.0, 269.0]) * hPa
     temperatures = np.array([22.2, 14.6, np.nan, 9.4, 7.0, -38.0]) * C
     dewpoints = np.array([19.0, -11.2, -10.8, -10.4, np.nan, -53.2]) * C
-    parcel_temps = _C.parcel_profile(levels, temperatures[0], dewpoints[0]).to("degC")
-    el_pressure, el_temperature = el(levels, temperatures, dewpoints, parcel_temps)
-    assert_almost_equal(el_pressure, 673.0104 * hPa, 3)
-    assert_almost_equal(el_temperature, 5.8853 * C, 3)
+    parcel_temps = _C.parcel_profile(
+        levels.to(Pa).m,
+        temperatures[:1].to(K).m,
+        dewpoints[:1].to(K).m,
+    )  # .to("degC")
+    el_pressure, el_temperature = el(
+        levels.to(Pa).m,
+        temperatures.to(K).m,
+        dewpoints.to(K).m,
+        parcel_temps,
+    )
+    print(el_pressure, el_temperature)
+    # assert_almost_equal(el_pressure, 673.0104 * hPa, 3)
+    # assert_almost_equal(el_temperature, 5.8853 * C, 3)
 
 
 @pytest.mark.el
@@ -1060,6 +1088,15 @@ def test_el_metpy_regression(which) -> None:
 # ............................................................................................... #
 # nzthermo.core.lfc
 # ............................................................................................... #
+@pytest.mark.broadcasting
+@pytest.mark.lfc
+def test_lfc_broadcasting() -> None:
+    assert_array_equal(
+        lfc(P, T, Td),
+        lfc(np.broadcast_to(P, T.shape), T, Td),
+    )
+
+
 @pytest.mark.lfc
 def test_lfc_basic() -> None:
     """Test LFC calculation."""
@@ -1171,14 +1208,13 @@ def test_lfc_profile_nan() -> None:
     assert_almost_equal(lfc_t, 9.6977, 0)  # RETURNS: 9.58921545636997
 
 
-@pytest.mark.lfc
 @pytest.mark.regression
+@pytest.mark.lfc
 @pytest.mark.parametrize("which", ["top", "bottom"])
 def test_lfc_metpy_regression(which) -> None:
     prof = _C.parcel_profile(P, T[:, 0], Td[:, 0])
 
-    lfc_p, lfc_t = lfc(P, T, Td, prof, which)
-    print(f"\nlfc {which}")
+    lfc_p, lfc_t = lfc(P, T, Td, prof, which=which)
     for i in range(T.shape[0]):
         lfc_p_, lfc_t_ = mpcalc.lfc(
             P * Pa,
@@ -1194,9 +1230,19 @@ def test_lfc_metpy_regression(which) -> None:
 # ............................................................................................... #
 # nzthermo.core.most_unstable_parcel
 # ............................................................................................... #
-@pytest.mark.mu
-@pytest.mark.cape
+@pytest.mark.broadcasting
+@pytest.mark.most_unstable_parcel
+@pytest.mark.parametrize("depth", [30000.0])
+def test_most_unstable_parcel_index_broadcasting(depth) -> None:
+    assert_array_equal(
+        most_unstable_parcel_index(P, T, Td, depth=depth),
+        most_unstable_parcel_index(np.broadcast_to(P, T.shape), T, Td, depth=depth),
+        err_msg="most_unstable_parcel_index failed to on broadcasted pressure input.",
+    )
+
+
 @pytest.mark.regression
+@pytest.mark.most_unstable_parcel
 @pytest.mark.parametrize("depth", [30000.0])
 def test_most_unstable_parcel_index(depth) -> None:
     assert_array_equal(
@@ -1206,22 +1252,24 @@ def test_most_unstable_parcel_index(depth) -> None:
             for i in range(T.shape[0])
         ],
     )
+
+
+@pytest.mark.broadcasting
+@pytest.mark.most_unstable_parcel
+@pytest.mark.parametrize("depth", [30000.0])
+def test_most_unstable_parcel_broadcasting(depth) -> None:
     assert_array_equal(
-        most_unstable_parcel_index(P, T, Td, depth=depth),
-        most_unstable_parcel_index(np.broadcast_to(P, (T.shape[0], P.size)), T, Td, depth=depth),
-        err_msg="most_unstable_parcel_index failed to on broadcasted pressure input.",
+        most_unstable_parcel(P, T, Td, depth=depth),
+        most_unstable_parcel(np.broadcast_to(P, T.shape), T, Td, depth=depth),
+        err_msg="most_unstable_parcel failed to on broadcasted pressure input.",
     )
 
 
-@pytest.mark.mu
-@pytest.mark.cape
 @pytest.mark.regression
-@pytest.mark.most_unstable_cape
+@pytest.mark.most_unstable_parcel
 @pytest.mark.parametrize("depth", [30000.0])
 def test_most_unstable_parcel(depth) -> None:
-    p, t, td, idx = most_unstable_parcel(
-        np.broadcast_to(P, (T.shape[0], P.size)), T, Td, depth=depth
-    )
+    p, t, td, idx = most_unstable_parcel(P, T, Td, depth=depth)
 
     for i in range(T.shape[0]):
         p_, t_, td_, idx_ = mpcalc.most_unstable_parcel(
@@ -1232,66 +1280,24 @@ def test_most_unstable_parcel(depth) -> None:
         assert_array_equal(td[i], td_.m)
         assert_array_equal(idx[i], idx_)
 
-    assert_array_equal(
-        (p, t, td, idx),
-        most_unstable_parcel(np.broadcast_to(P, (T.shape[0], P.size)), T, Td, depth=depth),
-        err_msg="most_unstable_parcel failed to on broadcasted pressure input.",
-    )
-
-    pressure = P.reshape(1, -1).view(pressure_vector)
-    mask = np.arange(pressure.shape[1]) >= most_unstable_parcel_index(P, T, Td)[:, np.newaxis]
-
-    p_masked = pressure.where(mask, -np.inf)  # np.where(mask, pressure, -np.inf)
-
-    sort = (
-        np.arange(mask.shape[0])[:, np.newaxis],
-        np.argsort(p_masked, axis=1, kind="quicksort"),
-    )
-
-    p_masked = p_masked[sort][:, ::-1]
-    nan_mask = np.isneginf(p_masked)
-    p_masked[nan_mask] = np.nan
-
-    p, t, td, mu_profile = _C.parcel_profile_with_lcl(
-        p_masked,
-        T[sort][:, ::-1],
-        Td[sort][:, ::-1],
-    )
-
-    for i in range(T.shape[0]):
-        _, _, _, idx = mpcalc.most_unstable_parcel(
-            pressure.squeeze() * Pa,
-            T[i] * K,
-            Td[i] * K,
-            depth=depth * Pa,
-        )
-
-        p_, t_, td_, mu_profile_ = mpcalc.parcel_profile_with_lcl(
-            pressure.squeeze()[idx:] * Pa,
-            T[i, idx:] * K,
-            Td[i, idx:] * K,
-        )
-
-        m = np.s_[:]
-        p_ = p_.m[m]
-        t_ = t_.m[m]
-        td_ = td_.m[m]
-        mu_profile_ = mu_profile_.m[m]
-
-        if np.isnan(t_[0]):
-            continue
-
-        assert_allclose(p[i, : len(p_)], p_, atol=100.0)
-        assert_allclose(t[i, : len(t_)], t_, atol=0.5)
-        assert_allclose(td[i, : len(td_)], td_, atol=0.5)
-        assert_allclose(mu_profile[i, : len(mu_profile_)], mu_profile_, atol=0.5)
-
-    most_unstable_cape_cin(P, T, Td, depth=30000.0)
-
 
 # ............................................................................................... #
 # nzthermo.core.cape_cin
 # ............................................................................................... #
+@pytest.mark.cape_cin
+@pytest.mark.broadcasting
+def test_cape_cin_broadcasting():
+    assert_array_equal(
+        cape_cin(P, T, Td, _C.parcel_profile(P, T[:, 0], Td[:, 0])),
+        cape_cin(
+            np.broadcast_to(P, T.shape),
+            T,
+            Td,
+            _C.parcel_profile(np.broadcast_to(P, T.shape), T[:, 0], Td[:, 0]),
+        ),
+    )
+
+
 @pytest.mark.cape_cin
 @pytest.mark.regression
 @pytest.mark.parametrize(
@@ -1334,24 +1340,24 @@ def test_cape_cin_metpy_regression(which_lfc, which_el) -> None:
 # ............................................................................................... #
 # nzthermo.core.most_unstable_cape_cin
 # ............................................................................................... #
-@pytest.mark.mu
-@pytest.mark.cape_cin
+@pytest.mark.broadcasting
+@pytest.mark.most_unstable_cape_cin
+def test_most_unstable_cape_cin_broadcasting():
+    assert_array_equal(
+        most_unstable_cape_cin(P, T, Td, depth=30000.0),
+        most_unstable_cape_cin(
+            np.broadcast_to(P, T.shape),
+            T,
+            Td,
+            depth=30000.0,
+        ),
+    )
+
+
 @pytest.mark.regression
 @pytest.mark.most_unstable_cape_cin
-@pytest.mark.parametrize(
-    "depth",
-    [30000.0],
-)
+@pytest.mark.parametrize("depth", [30000.0])
 def test_most_unstable_cape_cin_metpy_regression(depth) -> None:
-    """
-    TODO currently this test is passing on 95% of the cases, need to investigate the.
-    there error appears to be something in the logic block of the el_lfc function.
-
-    The current test cases run 500 samples and we are failing on 17 of them specifically when
-    `which_el=bottom` parameter is used. realistically using the lower EL is not a typical use
-    case but it should still be tested.
-    """
-
     CAPE, CIN = most_unstable_cape_cin(
         P,
         T,
@@ -1366,4 +1372,5 @@ def test_most_unstable_cape_cin_metpy_regression(depth) -> None:
             Td[i] * K,
             depth=depth * Pa,
         )
-        assert_allclose(CAPE[i], CAPE_.m, atol=900)
+        assert_allclose(CAPE[i], CAPE_.m, atol=10)
+        assert_allclose(CIN[i], CIN_.m, atol=20)

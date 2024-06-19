@@ -189,7 +189,7 @@ constexpr T lcl<T>::wet_bulb_temperature(const T pressure, const T step) noexcep
 }
 
 template <floating T>
-constexpr size_t lcl<T>::index(const T pressure[], size_t size) noexcept {
+constexpr size_t lcl<T>::index(const T pressure[], const size_t size) noexcept {
     return index_pressure(pressure, this->pressure, size);
 }
 

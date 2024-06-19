@@ -48,6 +48,7 @@ __all__ = [
     "downdraft_cape",
     "most_unstable_parcel",
     "most_unstable_parcel_index",
+    "most_unstable_cape_cin",
     # .utils
     "timeseries",
 ]
@@ -104,5 +105,6 @@ from .core import (
     mixing_ratio,
     most_unstable_parcel,
     most_unstable_parcel_index,
+    most_unstable_cape_cin,
 )
 from .utils import timeseries

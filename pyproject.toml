@@ -49,6 +49,7 @@ markers = [
     "mu_cape",
     "parcel_profile",
     "regression",
+    "broadcasting",
 ]
 
 pythonpath = ["src"]

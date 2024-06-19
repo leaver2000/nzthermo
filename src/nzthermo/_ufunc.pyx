@@ -231,6 +231,89 @@ cdef T dry_lapse(T pressure, T temperature, T reference_pressure) noexcept nogil
 
 @cython.ufunc # theta_e
 cdef T equivalent_potential_temperature(T pressure, T temperature, T dewpoint) noexcept nogil:
+    """
+    Parameters
+    ----------
+    x : array_like
+        pressure (Pa) values.
+    x1 : array_like
+        temperature (K) values.
+    x2 : array_like
+        dewpoint (K) values.
+    out : ndarray, None, or tuple of ndarray and None, optional
+        A location into which the result is stored. If provided, it must have
+        a shape that the inputs broadcast to. If not provided or None,
+        a freshly-allocated array is returned. A tuple (possible only as a
+        keyword argument) must have length equal to the number of outputs.
+    where : array_like, optional
+        This condition is broadcast over the input. At locations where the
+        condition is True, the `out` array will be set to the ufunc result.
+        Elsewhere, the `out` array will retain its original value.
+        Note that if an uninitialized `out` array is created via the default
+        ``out=None``, locations within it where the condition is False will
+        remain uninitialized.
+    **kwargs
+        For other keyword-only arguments, see the
+        :ref:`ufunc docs <ufuncs.kwargs>`.
+    
+    Returns
+    -------
+    theta_e : ndarray
+        Equivalent potential temperature (K).
+
+    Examples
+    -------
+    >>> import numpy as np
+    >>> import nzthermo as nzt
+    >>> data = np.load("tests/data.npz", allow_pickle=False)
+    >>> pressure = data['P']
+    >>> temperature = data['T']
+    >>> dewpoint = data['Td']
+    >>> assert pressure.ndim == 1 and pressure.shape != temperature.shape
+    >>> mask = (pressure <= 70000.0) & (pressure >= 50000.0)
+    >>> theta_e = nzt.equivalent_potential_temperature(
+    ...     pressure,
+    ...     temperature,
+    ...     dewpoint,
+    ...     where=mask, # masking values with inf will alow us to call argmin without worrying about nan
+    ...     out=np.full_like(temperature, np.inf),
+    ... )
+    >>> theta_e.shape
+    (540, 40)
+    >>> theta_e.argmin(axis=1)
+    array([13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 15, 21, 21, 21, 21, 21, 21,
+           20, 13, 18, 14, 14, 14, 14, 20, 20, 14, 14, 16, 18, 13, 13, 13, 13,
+           13, 13, 13, 13, 13, 13, 21, 21, 17, 15, 21, 18, 21, 13, 13, 13, 18,
+           13, 14, 13, 16, 13, 19, 18, 18, 20, 13, 13, 15, 14, 13, 13, 13, 13,
+           13, 14, 21, 18, 21, 21, 13, 21, 20, 21, 14, 13, 19, 20, 13, 16, 13,
+           18, 16, 18, 21, 20, 13, 13, 14, 16, 16, 14, 13, 13, 13, 19, 21, 21,
+           21, 21, 20, 17, 20, 21, 21, 13, 13, 20, 13, 14, 18, 13, 13, 13, 13,
+           14, 13, 13, 13, 13, 13, 13, 13, 13, 14, 15, 19, 18, 18, 20, 19, 19,
+           13, 20, 21, 13, 14, 20, 18, 18, 16, 13, 13, 13, 16, 13, 13, 13, 13,
+           13, 13, 14, 13, 13, 15, 15, 15, 15, 13, 13, 16, 16, 20, 18, 15, 21,
+           21, 13, 16, 16, 14, 13, 13, 13, 13, 13, 13, 13, 14, 13, 14, 15, 13,
+           13, 13, 14, 21, 21, 21, 16, 14, 15, 13, 17, 18, 13, 20, 18, 18, 20,
+           14, 18, 14, 13, 13, 13, 19, 18, 14, 14, 13, 15, 15, 18, 21, 20, 19,
+           21, 20, 21, 21, 14, 14, 18, 20, 15, 18, 13, 16, 14, 16, 14, 16, 18,
+           13, 13, 20, 13, 18, 18, 18, 16, 17, 19, 19, 18, 20, 21, 20, 18, 21,
+           17, 17, 19, 18, 16, 18, 13, 13, 14, 13, 16, 16, 16, 16, 18, 16, 14,
+           14, 16, 18, 18, 19, 18, 17, 18, 20, 21, 21, 20, 20, 21, 15, 19, 17,
+           18, 18, 13, 15, 16, 13, 13, 16, 15, 13, 13, 14, 13, 13, 18, 18, 16,
+           19, 19, 16, 16, 19, 19, 18, 20, 19, 21, 20, 18, 20, 18, 18, 13, 15,
+           15, 17, 18, 16, 13, 13, 13, 13, 14, 13, 13, 16, 16, 18, 18, 16, 16,
+           17, 18, 20, 19, 16, 19, 13, 14, 14, 18, 17, 16, 15, 18, 18, 13, 13,
+           13, 14, 13, 13, 13, 14, 13, 16, 16, 19, 17, 14, 14, 15, 16, 17, 18,
+           15, 13, 14, 13, 15, 13, 13, 18, 13, 13, 14, 14, 15, 14, 13, 13, 13,
+           13, 13, 13, 14, 16, 19, 15, 18, 15, 13, 15, 15, 16, 16, 13, 13, 19,
+           17, 13, 13, 13, 13, 13, 13, 15, 19, 13, 13, 13, 13, 13, 13, 13, 13,
+           13, 15, 16, 16, 13, 13, 18, 16, 16, 15, 14, 13, 14, 13, 15, 17, 16,
+           13, 13, 13, 16, 15, 18, 13, 13, 13, 13, 13, 13, 13, 13, 14, 16, 17,
+           13, 17, 17, 16, 16, 14, 13, 13, 15, 16, 16, 15, 15, 17, 18, 13, 15,
+           15, 14, 14, 13, 13, 13, 13, 13, 13, 15, 14, 15, 16, 14, 17, 17, 16,
+           16, 13, 13, 14, 20, 17, 17, 14, 16, 16, 13, 13, 17, 16, 15, 14, 13,
+           13, 13, 13, 13, 13, 13, 14, 20, 18, 18, 15, 17, 13, 14, 13, 13, 13,
+           14, 13, 13, 13, 15, 20, 18, 13, 14, 19, 13, 16, 13])
+    """
     return C.equivalent_potential_temperature(pressure, temperature, dewpoint)
 
 
