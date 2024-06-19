@@ -154,7 +154,7 @@ cdef T[:] dispatch(
         T[:] out
 
     N, Z = temperature.shape[0], pressure.shape[1]
-    out = np.empty((N,), dtype=np.float64 if sizeof(double) == pressure.itemsize else np.float32)
+    out = np.empty((N,), dtype=np.dtype(f"f{pressure.itemsize}"))
 
     with nogil:
         if BROADCAST is mode:
@@ -534,9 +534,6 @@ cdef void parcel_profile_with_lcl_1d(
         moist_lapse_1d(pt[stop + 1:], pressure[stop:], lcl.pressure, lcl.temperature)
 
 
-    
-
-
 cdef T[:, :, :] parcel_profile_with_lcl_2d(
     T[:, :] pressure,
     T[:, :] temperature,
@@ -548,13 +545,8 @@ cdef T[:, :, :] parcel_profile_with_lcl_2d(
         T[:, :, :] out
 
     N, Z = temperature.shape[0], pressure.shape[1] + 1
-    out = np.full(
-        (4, N, Z), 
-        fill_value=NaN,
-        dtype=np.float64 if sizeof(double) == pressure.itemsize else np.float32
-    )
-    # cdef long[:] indcies = np.argmax(np.isnan(pressure), axis=1) 
-    # print(indcies)
+    out = np.full((4, N, Z), fill_value=NaN, dtype=np.dtype(f"f{pressure.itemsize}"))
+
     with nogil, parallel():
         if BROADCAST is mode:
             for i in prange(N, schedule='dynamic'):
@@ -569,9 +561,6 @@ cdef T[:, :, :] parcel_profile_with_lcl_2d(
                 )
         else: # MATRIX
             for i in prange(N, schedule='dynamic'):
-                
-                
-                
                 parcel_profile_with_lcl_1d(
                     out[0, i, :],
                     out[1, i, :],
@@ -581,12 +570,7 @@ cdef T[:, :, :] parcel_profile_with_lcl_2d(
                     temperature[i, :],
                     dewpoint[i, :],
                 )
-                
-    print(
-        'nanvalues',
-        np.argmin(~np.isnan(pressure), axis=1).any()
-    )
- 
+
     return out
 
 
@@ -606,7 +590,6 @@ def parcel_profile_with_lcl(np.ndarray pressure, np.ndarray temperature, np.ndar
             temperature.astype(np.float64),
             dewpoint.astype(np.float64),
             mode,
-            
         )
     else:
         out[...] = parcel_profile_with_lcl_2d[float](
@@ -614,7 +597,6 @@ def parcel_profile_with_lcl(np.ndarray pressure, np.ndarray temperature, np.ndar
             temperature.astype(np.float32),
             dewpoint.astype(np.float32),
             mode,
-            
             )
 
     return out[0], out[1], out[2], out[3]
@@ -633,7 +615,7 @@ cdef T[:] _interpolate_nz(
         T[:] out
 
     N, Z = x.shape[0], xp.shape[0]
-    out = np.empty(N, dtype=np.float32 if sizeof(float) == x.itemsize else np.float64)
+    out = np.empty(N, dtype=np.dtype(f"f{x.itemsize}"))
     with nogil, parallel():
         for n in prange(N, schedule='runtime'):
             out[n] = C.interpolate_1d(x[n], &xp[0], &fp[n, 0], Z)
@@ -700,7 +682,6 @@ def interpolate_nz(
         array([296.63569648, 296.79664494, 296.74736566, 297.07070398, 297.54936596]),
         array([295.07855875, 294.79437914, 295.27081714, 295.4858194, 296.31665617])
     )
-
     """
     dtype = __x.dtype
     cdef np.ndarray xp = np.asarray(__xp, dtype=dtype)
@@ -713,7 +694,7 @@ def interpolate_nz(
         else:
             out[i] = _interpolate_nz[float](__x, xp, fp[i], log_x)
 
-        if interp_nan:            
+        if interp_nan:
             mask = np.isnan(out[i])
             out[i, mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), __x[~mask])
 
@@ -770,7 +751,7 @@ def intersect(
 
     if increasing is False and direction == 'increasing':
         increasing = True
-    
+
     out = np.empty((2, a.shape[0]), x.dtype)
     if x.dtype == np.float64:
         out[...] = intersect_2d[double](x, a, b, mode, log_x, increasing, bottom)

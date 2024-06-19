@@ -1194,8 +1194,8 @@ def test_lfc_metpy_regression(which) -> None:
 # ............................................................................................... #
 # nzthermo.core.most_unstable_parcel
 # ............................................................................................... #
+@pytest.mark.mu
 @pytest.mark.cape
-@pytest.mark.mu_cape
 @pytest.mark.regression
 @pytest.mark.parametrize("depth", [30000.0])
 def test_most_unstable_parcel_index(depth) -> None:
@@ -1213,9 +1213,10 @@ def test_most_unstable_parcel_index(depth) -> None:
     )
 
 
+@pytest.mark.mu
 @pytest.mark.cape
-@pytest.mark.mu_cape
 @pytest.mark.regression
+@pytest.mark.most_unstable_cape
 @pytest.mark.parametrize("depth", [30000.0])
 def test_most_unstable_parcel(depth) -> None:
     p, t, td, idx = most_unstable_parcel(
@@ -1276,6 +1277,7 @@ def test_most_unstable_parcel(depth) -> None:
         t_ = t_.m[m]
         td_ = td_.m[m]
         mu_profile_ = mu_profile_.m[m]
+
         if np.isnan(t_[0]):
             continue
 
@@ -1332,8 +1334,10 @@ def test_cape_cin_metpy_regression(which_lfc, which_el) -> None:
 # ............................................................................................... #
 # nzthermo.core.most_unstable_cape_cin
 # ............................................................................................... #
-@pytest.mark.most_unstable_cape_cin
+@pytest.mark.mu
+@pytest.mark.cape_cin
 @pytest.mark.regression
+@pytest.mark.most_unstable_cape_cin
 @pytest.mark.parametrize(
     "depth",
     [30000.0],
@@ -1362,4 +1366,4 @@ def test_most_unstable_cape_cin_metpy_regression(depth) -> None:
             Td[i] * K,
             depth=depth * Pa,
         )
-        assert_allclose(CAPE[i], CAPE_.m, atol=1000)
+        assert_allclose(CAPE[i], CAPE_.m, atol=900)
