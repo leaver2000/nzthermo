@@ -60,6 +60,7 @@ def parcel_mixing_ratio(
         )
     r = saturation_mixing_ratio(pressure, dewpoint, out=np.empty_like(temperature), where=where)
     r = saturation_mixing_ratio(pressure, temperature, out=r, where=~where)
+
     return r
 
 
@@ -72,9 +73,10 @@ def downdraft_cape(
     temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
     dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
     /,
+    *,
     where: np.ndarray[shape[N, Z], np.dtype[np.bool_]] | None = None,
 ) -> np.ndarray[shape[N], np.dtype[_T]]:
-    """Calculate downward CAPE (DCAPE).
+    r"""Calculate downward CAPE (DCAPE).
 
     Calculate the downward convective available potential energy (DCAPE) of a given upper air
     profile. Downward CAPE is the maximum negative buoyancy energy available to a descending
@@ -85,7 +87,14 @@ def downdraft_cape(
 
     Parameters
     ----------
-    TODO: add parameters
+    pressure : `array_like[[N, Z] | [Z], floating]`
+        Atmospheric pressure profile (Pa). This array must be from high to low pressure.
+    temperature : `array_like[[N, Z], floating]`
+        Temperature (K) at the levels given by `pressure`
+    dewpoint : `array_like[[N, Z], floating]`
+        Dewpoint (K) at the levels given by `pressure`
+    where : `array_like[[N, Z], bool]`, optional
+
 
     Examples
     --------
@@ -138,17 +147,34 @@ def ccl(
     height=None,
     mixed_layer_depth=None,
     which: L["bottom", "top"] = "bottom",
-):
-    """
-    # Convective Condensation Level (CCL)
+) -> tuple[Pascal[NDArray[_T]], Kelvin[NDArray[_T]], Kelvin[NDArray[_T]]]:
+    r"""Calculate convective condensation level (CCL).
 
     The Convective Condensation Level (CCL) is the level at which condensation will occur if
     sufficient afternoon heating causes rising parcels of air to reach saturation. The CCL is
     greater than or equal in height (lower or equal pressure level) than the LCL. The CCL and the
     LCL are equal when the atmosphere is saturated. The CCL is found at the intersection of the
     saturation mixing ratio line (through the surface dewpoint) and the environmental temperature.
-    """
 
+    Parameters
+    ----------
+    pressure : `array_like[[N, Z] | [Z], floating]`
+        Atmospheric pressure profile (Pa). This array must be from high to low pressure.
+    temperature : `array_like[[N, Z], floating]`
+        Temperature (K) at the levels given by `pressure`
+    dewpoint : `array_like[[N, Z], floating]`
+        Dewpoint (K) at the levels given by `pressure`
+    TODO : ...
+
+    Returns
+    -------
+    TODO : ...
+
+    Examples
+    --------
+    TODO : ...
+
+    """
     if mixed_layer_depth is None:
         r = mixing_ratio(saturation_vapor_pressure(dewpoint[surface]), pressure[surface])
     else:
@@ -252,6 +278,46 @@ def el(
     *,
     which: L["top", "bottom"] = "top",
 ) -> Vector1d[_T]:
+    r"""Calculate the equilibrium level (EL).
+
+    This works by finding the last intersection of the ideal parcel path and the measured
+    environmental temperature. If there is one or fewer intersections, there is no equilibrium
+    level.
+
+    Parameters
+    ----------
+    pressure : `array_like[[N, Z] | [Z], floating]`
+        Atmospheric pressure profile (Pa). This array must be from high to low pressure.
+    temperature : `array_like[[N, Z], floating]`
+        Temperature (K) at the levels given by `pressure`
+    dewpoint : `array_like[[N, Z], floating]`
+        Dewpoint (K) at the levels given by `pressure`
+    parcel_profile : array_like[[N, Z], floating], optional
+        The parcel's temperature profile from which to calculate the EL. Defaults to the
+        surface parcel profile.
+    which : `str`, optional
+        Pick which EL to return. Options are `top` or `bottom`. Default is `top`.
+        'top' returns the lowest-pressure EL, default.
+        'bottom' returns the highest-pressure EL.
+        NOT IMPLEMENTED YET:
+        'wide' returns the EL whose corresponding LFC is farthest away.
+        'most_cape' returns the EL that results in the most CAPE in the profile.
+
+    Returns
+    -------
+    EL : `(ndarray[[N], floating], ndarray[[N], floating])`
+
+    Examples
+    --------
+    TODO : add examples
+
+    See Also
+    --------
+    lfc
+    parcel_profile
+    el_lfc
+    """
+
     return _el_lfc("EL", pressure, temperature, dewpoint, parcel_profile, which_el=which)
 
 
@@ -289,6 +355,26 @@ def el_lfc(
     which_el: L["bottom", "top"] = "top",
     dewpoint_start: np.ndarray[shape[N], np.dtype[_T]] | None = None,
 ) -> tuple[Vector1d[_T], Vector1d[_T]]:
+    r"""TODO ...
+
+    Parameters
+    ----------
+    pressure : `array_like[[N, Z] | [Z], floating]`
+        Atmospheric pressure profile (Pa). This array must be from high to low pressure.
+    temperature : `array_like[[N, Z], floating]`
+        Temperature (K) at the levels given by `pressure`
+    dewpoint : `array_like[[N, Z], floating]`
+        Dewpoint (K) at the levels given by `pressure`
+    TODO : ...
+
+    Returns
+    -------
+    TODO : ...
+
+    Examples
+    --------
+    TODO : ...
+    """
     return _el_lfc(
         "BOTH",
         pressure,
@@ -314,6 +400,26 @@ def most_unstable_parcel_index(
     height: float | None = None,
     bottom: float | None = None,
 ) -> np.ndarray[shape[N], np.dtype[np.intp]]:
+    """TODO ...
+
+    Parameters
+    ----------
+    pressure : `array_like[[N, Z] | [Z], floating]`
+        Atmospheric pressure profile (Pa). This array must be from high to low pressure.
+    temperature : `array_like[[N, Z], floating]`
+        Temperature (K) at the levels given by `pressure`
+    dewpoint : `array_like[[N, Z], floating]`
+        Dewpoint (K) at the levels given by `pressure`
+    TODO : ...
+
+    Returns
+    -------
+    TODO : ...
+
+    Examples
+    --------
+    TODO : ...
+    """
     if height is not None:
         raise NotImplementedError("height argument is not implemented")
 
@@ -346,6 +452,26 @@ def most_unstable_parcel(
     Kelvin[np.ndarray[shape[N], np.dtype[_T]]],
     np.ndarray[shape[N, Z], np.dtype[np.intp]],
 ]:
+    r"""Calculate the most unstable parcel profile.
+
+    Parameters
+    ----------
+    pressure : `array_like[[N, Z] | [Z], floating]`
+        Atmospheric pressure profile (Pa). This array must be from high to low pressure.
+    temperature : `array_like[[N, Z], floating]`
+        Temperature (K) at the levels given by `pressure`
+    dewpoint : `array_like[[N, Z], floating]`
+        Dewpoint (K) at the levels given by `pressure`
+    TODO : ...
+
+    Returns
+    -------
+    TODO : ...
+
+    Examples
+    --------
+    TODO : ...
+    """
     idx = most_unstable_parcel_index(
         pressure, temperature, dewpoint, depth=depth, bottom=bottom, **FASTPATH
     )
@@ -376,6 +502,26 @@ def mixed_layer(
     np.ndarray[shape[N], np.dtype[_T]],
     Kelvin[np.ndarray[shape[N], np.dtype[_T]]],
 ]:
+    r"""TODO ...
+
+    Parameters
+    ----------
+    pressure : `array_like[[N, Z] | [Z], floating]`
+        Atmospheric pressure profile (Pa). This array must be from high to low pressure.
+    temperature : `array_like[[N, Z], floating]`
+        Temperature (K) at the levels given by `pressure`
+    dewpoint : `array_like[[N, Z], floating]`
+        Dewpoint (K) at the levels given by `pressure`
+    TODO : ...
+
+    Returns
+    -------
+    TODO : ...
+
+    Examples
+    --------
+    TODO : ...
+    """
     if height is not None:
         raise NotImplementedError("height argument is not implemented")
     if interpolate:
@@ -412,6 +558,26 @@ def cape_cin(
     which_lfc: L["bottom", "top"] = "bottom",
     which_el: L["bottom", "top"] = "top",
 ) -> tuple[np.ndarray, np.ndarray]:
+    r"""TODO ...
+
+    Parameters
+    ----------
+    pressure : `array_like[[N, Z] | [Z], floating]`
+        Atmospheric pressure profile (Pa). This array must be from high to low pressure.
+    temperature : `array_like[[N, Z], floating]`
+        Temperature (K) at the levels given by `pressure`
+    dewpoint : `array_like[[N, Z], floating]`
+        Dewpoint (K) at the levels given by `pressure`
+    TODO : ...
+
+    Returns
+    -------
+    TODO : ...
+
+    Examples
+    --------
+    TODO : ...
+    """
     # The mixing ratio of the parcel comes from the dewpoint below the LCL, is saturated
     # based on the temperature above the LCL
 
@@ -454,6 +620,26 @@ def most_unstable_cape_cin(
     depth: Pascal[float] = 30000.0,
     bottom: Pascal[float] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
+    r"""TODO ...
+
+    Parameters
+    ----------
+    pressure : `array_like[[N, Z] | [Z], floating]`
+        Atmospheric pressure profile (Pa). This array must be from high to low pressure.
+    temperature : `array_like[[N, Z], floating]`
+        Temperature (K) at the levels given by `pressure`
+    dewpoint : `array_like[[N, Z], floating]`
+        Dewpoint (K) at the levels given by `pressure`
+    TODO : ...
+
+    Returns
+    -------
+    TODO : ...
+
+    Examples
+    --------
+    TODO : ...
+    """
     idx = most_unstable_parcel_index(
         pressure,
         temperature,

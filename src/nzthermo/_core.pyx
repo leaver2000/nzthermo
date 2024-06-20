@@ -166,8 +166,7 @@ def broadcast_and_nanmask(
     if where is not None:
         if not isinstance(where, np.ndarray):
             raise ValueError("where must be a numpy array.")
-        
-        
+
         mode = MATRIX
         N = temperature.shape[0]
         Z = temperature.shape[1]

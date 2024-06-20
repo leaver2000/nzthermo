@@ -231,7 +231,8 @@ cdef T dry_lapse(T pressure, T temperature, T reference_pressure) noexcept nogil
 
 @cython.ufunc # theta_e
 cdef T equivalent_potential_temperature(T pressure, T temperature, T dewpoint) noexcept nogil:
-    """
+    r"""Calculates the equivalent potential temperature.
+
     Parameters
     ----------
     x : array_like
