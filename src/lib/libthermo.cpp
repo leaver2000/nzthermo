@@ -35,8 +35,6 @@ constexpr size_t index_pressure(const T levels[], const T value, const size_t si
     return idx;
 }
 
-// thermodynamic functions
-
 template <floating T>
 constexpr T mixing_ratio(const T partial_press, const T total_press) noexcept {
     return epsilon * partial_press / (total_press - partial_press);
@@ -75,7 +73,6 @@ constexpr T dry_lapse(const T pressure, const T reference_pressure, const T temp
 template <floating T>
 constexpr T dewpoint(const T vapor_pressure) noexcept {
     const T ln = log(vapor_pressure / E0);
-
     return T0 + 243.5 * ln / (17.67 - ln);
 }
 
@@ -93,6 +90,7 @@ template <floating T>
 constexpr T potential_temperature(const T pressure, const T temperature) noexcept {
     return temperature / exner_function(pressure);
 }
+
 /**
  * @brief theta_e
  * 
@@ -114,6 +112,7 @@ constexpr T equivalent_potential_temperature(
 
     return th_l * exp(r * (1 + 0.448 * r) * (3036.0 / t_l - 1.78));
 }
+
 /**
  * @brief theta_w
  * 

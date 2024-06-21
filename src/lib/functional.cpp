@@ -59,6 +59,7 @@ constexpr T linear_interpolate(
 ) noexcept {
     return y0 + (x - x0) * (y1 - y0) / LIMIT_ZERO(x1 - x0);
 }
+
 /**
  * @author Kelton Halbert - NWS Storm Prediction Center/OU-CIWRO
  *
@@ -116,6 +117,7 @@ size_t search_sorted(const T x[], const T value, const size_t size, const bool i
 
     return upper_bound(x, size, value, std::less_equal());
 }
+
 /**
  * @brief The Heaviside step function, or the unit step function, usually denoted by H or θ, is a
  * mathematical function that is zero for negative arguments and one for positive arguments.
@@ -136,6 +138,7 @@ constexpr T heaviside(const T x, const T h0) noexcept {
 
     return 1.0;
 }
+
 /**
  * @author Jason Leaver - USAF 557WW/1WXG
  * 
@@ -169,6 +172,7 @@ constexpr T rk2(Fn<T, T, T> fn, T x0, T x1, T y, T step /* 1000.0 (Pa) */) noexc
 
     return y;
 }
+
 /**
  * @author Jason Leaver - USAF 557WW/1WXG
  * 
@@ -212,6 +216,7 @@ constexpr T fixed_point(
 
     return NAN;
 }
+
 /**
  * @brief Interpolates a 1D function using a linear interpolation.
  * 
@@ -230,6 +235,7 @@ constexpr T interpolate_1d(const T x, const T xp[], const T fp[], const size_t s
 
     return linear_interpolate(x, xp[i - 1], xp[i], fp[i - 1], fp[i]);
 }
+
 /**
  * @author Jason Leaver - USAF 557WW/1WXG
  * 
