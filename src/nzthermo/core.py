@@ -15,15 +15,17 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from . import functional as F
-from ._core import moist_lapse, parcel_profile_with_lcl
+from ._core import Rd, moist_lapse, parcel_profile_with_lcl
 from ._ufunc import (
     dewpoint as _dewpoint,
     dry_lapse,
     equivalent_potential_temperature,
+    exner_function,
     greater_or_close,
     lcl,
     lcl_pressure,
     mixing_ratio,
+    potential_temperature,
     pressure_vector,
     saturation_mixing_ratio,
     saturation_vapor_pressure,
@@ -31,7 +33,6 @@ from ._ufunc import (
     virtual_temperature,
     wet_bulb_temperature,
 )
-from .const import Rd
 from .typing import Kelvin, N, Pascal, Z, shape
 from .utils import Axis, Vector1d, broadcast_nz
 
@@ -248,13 +249,13 @@ def _el_lfc(
         log_x=True,
     ).where_above(LCL)
 
-    no_lfc = LFC.is_nan().all(Axis.Z, out=np.empty((N, 1), dtype=np.bool_), keepdims=True)
+    no_lfc = LFC.is_nan().all(axis=1, out=np.empty((N, 1), dtype=np.bool_), keepdims=True)
 
     is_lcl = no_lfc & greater_or_close(
         # the mask only needs to be applied to either the temperature or parcel_temperature_profile
         np.where(LCL.is_below(pressure, close=True), parcel_profile, NaN),
         temperature,
-    ).any(Axis.Z, out=np.empty((N, 1), dtype=np.bool_), keepdims=True)
+    ).any(axis=1, out=np.empty((N, 1), dtype=np.bool_), keepdims=True)
 
     LFC = LFC.select(
         [~no_lfc, is_lcl],
@@ -485,66 +486,6 @@ def most_unstable_parcel(
 
 
 # -------------------------------------------------------------------------------------------------
-# nzthermo.core.mixed_layer
-# -------------------------------------------------------------------------------------------------
-@broadcast_nz
-def mixed_layer(
-    pressure: Pascal[pressure_vector[shape[N, Z], np.dtype[_T]]],
-    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
-    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
-    /,
-    *,
-    depth: float | NDArray[np.floating[Any]] = 10000.0,
-    height: ArrayLike | None = None,
-    bottom: ArrayLike | None = None,
-    interpolate=False,
-) -> tuple[
-    np.ndarray[shape[N], np.dtype[_T]],
-    Kelvin[np.ndarray[shape[N], np.dtype[_T]]],
-]:
-    r"""TODO ...
-
-    Parameters
-    ----------
-    pressure : `array_like[[N, Z] | [Z], floating]`
-        Atmospheric pressure profile (Pa). This array must be from high to low pressure.
-    temperature : `array_like[[N, Z], floating]`
-        Temperature (K) at the levels given by `pressure`
-    dewpoint : `array_like[[N, Z], floating]`
-        Dewpoint (K) at the levels given by `pressure`
-    TODO : ...
-
-    Returns
-    -------
-    TODO : ...
-
-    Examples
-    --------
-    TODO : ...
-    """
-    if height is not None:
-        raise NotImplementedError("height argument is not implemented")
-    if interpolate:
-        raise NotImplementedError("interpolate argument is not implemented")
-
-    bottom = (pressure[surface] if bottom is None else np.asarray(bottom)).reshape(-1, 1)
-    top = bottom - depth
-
-    where = pressure.is_between(bottom, top)
-
-    depth = np.asarray(
-        # use asarray otherwise the depth is cast to pressure_vector which doesn't
-        # make sense for the temperature and dewpoint outputs
-        np.max(pressure, initial=-np.inf, axis=1, where=where)
-        - np.min(pressure, initial=np.inf, axis=1, where=where)
-    )
-
-    T, Td = F.nantrapz([temperature, dewpoint], pressure, axis=-1, where=where) / -depth
-
-    return T, Td
-
-
-# -------------------------------------------------------------------------------------------------
 # cape_cin
 # -------------------------------------------------------------------------------------------------
 @broadcast_nz
@@ -610,6 +551,9 @@ def cape_cin(
     return CAPE, CIN
 
 
+# -------------------------------------------------------------------------------------------------
+# nzthermo.core.most_unstable
+# -------------------------------------------------------------------------------------------------
 @broadcast_nz
 def most_unstable_cape_cin(
     pressure: Pascal[pressure_vector[shape[N, Z], np.dtype[_T]]],
@@ -658,3 +602,252 @@ def most_unstable_cape_cin(
     )
 
     return cape_cin(p.view(pressure_vector), t, td, parcel_profile=mu_profile, **FASTPATH)
+
+
+# -------------------------------------------------------------------------------------------------
+# nzthermo.core.mixed_layer
+# -------------------------------------------------------------------------------------------------
+@broadcast_nz
+def mixed_layer(
+    pressure: Pascal[pressure_vector[shape[N, Z], np.dtype[_T]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    /,
+    *,
+    depth: float | NDArray[np.floating[Any]] = 10000.0,
+    height: ArrayLike | None = None,
+    bottom: ArrayLike | None = None,
+    interpolate=False,
+) -> tuple[
+    np.ndarray[shape[N], np.dtype[_T]],
+    Kelvin[np.ndarray[shape[N], np.dtype[_T]]],
+]:
+    r"""TODO ...
+
+    Parameters
+    ----------
+    pressure : `array_like[[N, Z] | [Z], floating]`
+        Atmospheric pressure profile (Pa). This array must be from high to low pressure.
+    temperature : `array_like[[N, Z], floating]`
+        Temperature (K) at the levels given by `pressure`
+    dewpoint : `array_like[[N, Z], floating]`
+        Dewpoint (K) at the levels given by `pressure`
+    TODO : ...
+
+    Returns
+    -------
+    TODO : ...
+
+    Examples
+    --------
+    TODO : ...
+    """
+    if height is not None:
+        raise NotImplementedError("height argument is not implemented")
+    if interpolate:
+        raise NotImplementedError("interpolate argument is not implemented")
+
+    bottom = (pressure[surface] if bottom is None else np.asarray(bottom)).reshape(-1, 1)
+    top = bottom - depth
+
+    where = pressure.is_between(bottom, top)
+
+    depth = np.asarray(
+        # use asarray otherwise the depth is cast to pressure_vector which doesn't
+        # make sense for the temperature and dewpoint outputs
+        np.max(pressure, initial=-np.inf, axis=1, where=where)
+        - np.min(pressure, initial=np.inf, axis=1, where=where)
+    )
+
+    T, Td = F.nantrapz([temperature, dewpoint], pressure, axis=-1, where=where) / -depth
+
+    return T, Td
+
+
+@broadcast_nz
+def mixed_parcel(
+    pressure: Pascal[pressure_vector[shape[N, Z], np.dtype[_T]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    /,
+    *,
+    parcel_start_pressure: ArrayLike | None = None,
+    height: ArrayLike | None = None,
+    bottom: ArrayLike | None = None,
+    depth: float | NDArray[np.floating[Any]] = 10000.0,
+    interpolate=False,
+) -> tuple[
+    np.ndarray[shape[N], np.dtype[_T]],
+    np.ndarray[shape[N], np.dtype[_T]],
+    Kelvin[np.ndarray[shape[N], np.dtype[_T]]],
+]:
+    r"""TODO ...
+
+    Parameters
+    ----------
+    pressure : `array_like[[N, Z] | [Z], floating]`
+        Atmospheric pressure profile (Pa). This array must be from high to low pressure.
+    temperature : `array_like[[N, Z], floating]`
+        Temperature (K) at the levels given by `pressure`
+    dewpoint : `array_like[[N, Z], floating]`
+        Dewpoint (K) at the levels given by `pressure`
+    TODO : ...
+
+    Returns
+    -------
+    TODO : ...
+
+    Examples
+    --------
+    TODO : ...
+    """
+    if height is not None:
+        raise NotImplementedError("height argument is not implemented")
+    if interpolate:
+        raise NotImplementedError("interpolate argument is not implemented")
+    if parcel_start_pressure is None:
+        parcel_start_pressure = pressure[:, 0]
+
+    theta = potential_temperature(pressure, temperature)
+    mixing_ratio = saturation_mixing_ratio(pressure, dewpoint)
+    mean_theta, mean_mixing_ratio = mixed_layer(
+        pressure,
+        theta,
+        mixing_ratio,
+        bottom=bottom,
+        height=height,
+        depth=depth,
+        interpolate=interpolate,
+        **FASTPATH,
+    )
+    mean_temperature = mean_theta * exner_function(parcel_start_pressure)
+    mean_vapor_pressure = vapor_pressure(parcel_start_pressure, mean_mixing_ratio)
+    mean_dewpoint = _dewpoint(mean_vapor_pressure)
+
+    return (
+        # parcel_start_pressure,
+        np.broadcast_to(parcel_start_pressure, mean_temperature.shape),
+        mean_temperature,
+        mean_dewpoint,
+    )
+
+
+@broadcast_nz
+def mixed_layer_cape_cin(
+    pressure: Pascal[pressure_vector[shape[N, Z], np.dtype[_T]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    /,
+    *,
+    parcel_start_pressure: ArrayLike | None = None,
+    height: ArrayLike | None = None,
+    bottom: ArrayLike | None = None,
+    depth: float | NDArray[np.floating[Any]] = 10000.0,
+    interpolate=False,
+):
+    r"""Calculate mixed-layer CAPE and CIN.
+
+    Calculate the convective available potential energy (CAPE) and convective inhibition (CIN)
+    of a given upper air profile and mixed-layer parcel path. CIN is integrated between the
+    surface and LFC, CAPE is integrated between the LFC and EL (or top of sounding).
+    Intersection points of the measured temperature profile and parcel profile are
+    logarithmically interpolated. Kwargs for `mixed_parcel` can be provided, such as `depth`.
+    Default mixed-layer depth is 100 hPa.
+
+    Parameters
+    ----------
+    pressure : `pint.Quantity`
+        Pressure profile
+
+    temperature : `pint.Quantity`
+        Temperature profile
+
+    dewpoint : `pint.Quantity`
+        Dewpoint profile
+
+    kwargs
+        Additional keyword arguments to pass to `mixed_parcel`
+
+    Returns
+    -------
+    `pint.Quantity`
+        Mixed-layer Convective Available Potential Energy (CAPE)
+    `pint.Quantity`
+        Mixed-layer Convective INhibition (CIN)
+
+    Examples
+    --------
+    >>> from metpy.calc import dewpoint_from_relative_humidity, mixed_layer_cape_cin
+    >>> from metpy.units import units
+    >>> # pressure
+    >>> p = [1008., 1000., 950., 900., 850., 800., 750., 700., 650., 600.,
+    ...      550., 500., 450., 400., 350., 300., 250., 200.,
+    ...      175., 150., 125., 100., 80., 70., 60., 50.,
+    ...      40., 30., 25., 20.] * units.hPa
+    >>> # temperature
+    >>> T = [29.3, 28.1, 25.5, 20.9, 18.4, 15.9, 13.1, 10.1, 6.7, 3.1,
+    ...      -0.5, -4.5, -9.0, -14.8, -21.5, -29.7, -40.0, -52.4,
+    ...      -59.2, -66.5, -74.1, -78.5, -76.0, -71.6, -66.7, -61.3,
+    ...      -56.3, -51.7, -50.7, -47.5] * units.degC
+    >>> # relative humidity
+    >>> rh = [.85, .75, .56, .39, .82, .72, .75, .86, .65, .22, .52,
+    ...       .66, .64, .20, .05, .75, .76, .45, .25, .48, .76, .88,
+    ...       .56, .88, .39, .67, .15, .04, .94, .35] * units.dimensionless
+    >>> # calculate dewpoint
+    >>> Td = dewpoint_from_relative_humidity(T, rh)
+    >>> mixed_layer_cape_cin(p, T, Td, depth=50 * units.hPa)
+    (<Quantity(711.239032, 'joule / kilogram')>, <Quantity(-5.48053989, 'joule / kilogram')>)
+
+    See Also
+    --------
+    cape_cin, mixed_parcel, parcel_profile
+
+    Notes
+    -----
+    Only functions on 1D profiles (not higher-dimension vertical cross sections or grids).
+    Since this function returns scalar values when given a profile, this will return Pint
+    Quantities even when given xarray DataArray profiles.
+
+    """
+    if height is not None:
+        raise NotImplementedError("height argument is not implemented")
+    if interpolate:
+        raise NotImplementedError("interpolate argument is not implemented")
+
+    start_p = np.atleast_1d(
+        pressure[:, 0] if parcel_start_pressure is None else parcel_start_pressure
+    ).reshape(-1, 1)
+
+    parcel_pressure, parcel_temp, parcel_dewpoint = np.reshape(
+        mixed_parcel(
+            pressure,
+            temperature,
+            dewpoint,
+            parcel_start_pressure=parcel_start_pressure,
+            **FASTPATH,
+        ),
+        (3, -1, 1),
+    )
+
+    pressure, temperature, dewpoint = np.where(
+        pressure <= (start_p - depth),
+        [np.broadcast_to(pressure, temperature.shape), temperature, dewpoint],
+        -np.inf,
+    )
+    pressure, temperature, dewpoint = F.map_partial(
+        np.concatenate,
+        [
+            (parcel_pressure, pressure),
+            (parcel_temp, temperature),
+            (parcel_dewpoint, dewpoint),
+        ],
+        axis=1,
+    )
+    pressure, temperature, dewpoint = F.sort_nz(np.isneginf, pressure, temperature, dewpoint)
+    pressure, temperature, dewpoint, profile = parcel_profile_with_lcl(
+        pressure, temperature, dewpoint
+    )
+
+    CAPE, CIN = cape_cin(pressure, temperature, dewpoint, profile, **FASTPATH)
+
+    return CAPE, CIN
