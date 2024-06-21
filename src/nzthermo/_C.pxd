@@ -58,6 +58,8 @@ cdef extern from "libthermo.cpp" namespace "libthermo" nogil:
 
     # 1x1
     T saturation_vapor_pressure[T](T temperature) noexcept
+    T exner_function[T](T pressure) noexcept
+    T exner_function[T](T pressure, T reference_pressure) noexcept  # .. overload ..
     # 2x1
     T mixing_ratio[T](T pressure, T vapor_pressure) noexcept
     T mixing_ratio_from_dewpoint[T](T pressure, T dewpoint) noexcept

@@ -20,12 +20,14 @@ T fn(T ...){...}
 """
 import warnings
 
+
 from cython.parallel cimport parallel, prange
 from cython.view cimport array as cvarray
 import numpy as np
 cimport numpy as np
 
 cimport nzthermo._C as C
+from nzthermo._ufunc import pressure_vector
 
 np.import_array()
 np.import_ufunc()
@@ -212,7 +214,7 @@ cdef T[:] dispatch(
     const BroadcastMode mode
 ) noexcept:
     """
-    ```
+    ```python
     def cape_cin(
         np.ndarray pressure,
         np.ndarray temperature,
@@ -652,7 +654,7 @@ def parcel_profile_with_lcl(
     else:
         out[...] = parcel_profile_with_lcl_2d[float](pressure, temperature, dewpoint, mode)
 
-    return out[0], out[1], out[2], out[3]
+    return out[0].view(pressure_vector), out[1], out[2], out[3]
 
 # ............................................................................................... #
 # interpolation
