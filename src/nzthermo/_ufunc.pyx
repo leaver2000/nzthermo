@@ -19,10 +19,15 @@ import numpy as np
 
 cimport cython
 cimport numpy as np
-from libcpp.cmath cimport fabs, isnan
 
 cimport nzthermo._C as C
 from nzthermo._C cimport Md, Mw
+
+
+cdef extern from "<cmath>" namespace "std" nogil:
+    T fabs[T](T) noexcept
+    bint isnan(double) noexcept
+
 
 np.import_array()
 np.import_ufunc()
@@ -64,6 +69,11 @@ cdef bint between_or_close(T x, T y0, T y1) noexcept nogil:
 
 class pressure_vector(np.ndarray[_S, np.dtype[_T]]):
     def __new__(cls, pressure):
+        if isinstance(pressure, pressure_vector):
+            return pressure
+        elif isinstance(pressure, np.ndarray):
+            return pressure.view(cls)
+
         return np.asarray(pressure).view(cls)
 
     def is_above(self, bottom, close=True):
@@ -120,10 +130,13 @@ cdef (double, double) wind_components(T d, T m) noexcept nogil:
 cdef (double, double) wind_vector(T u, T v) noexcept nogil:
     cdef C.wind_vector[T] dm = C.wind_vector[T](C.wind_components[T](u, v))
     return <double>dm.direction, <double>dm.magnitude
-    
-    
 
 # 1x1
+@cython.ufunc
+cdef T exner_function(T pressure) noexcept nogil:
+    return C.exner_function(pressure)
+
+
 @cython.ufunc
 cdef T dewpoint(T vapor_pressure) noexcept nogil:
     return C.dewpoint(vapor_pressure)
@@ -231,7 +244,8 @@ cdef T dry_lapse(T pressure, T temperature, T reference_pressure) noexcept nogil
 
 @cython.ufunc # theta_e
 cdef T equivalent_potential_temperature(T pressure, T temperature, T dewpoint) noexcept nogil:
-    """
+    r"""Calculates the equivalent potential temperature.
+
     Parameters
     ----------
     x : array_like

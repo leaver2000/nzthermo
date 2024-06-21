@@ -1,6 +1,17 @@
 from __future__ import annotations
 
-from typing import Any, Literal as L, SupportsIndex, TypeVar, overload
+import functools
+from typing import (
+    Any,
+    Callable,
+    Concatenate,
+    Iterable,
+    Literal as L,
+    ParamSpec,
+    SupportsIndex,
+    TypeVar,
+    overload,
+)
 
 import numpy as np
 from numpy._typing._array_like import (
@@ -8,12 +19,55 @@ from numpy._typing._array_like import (
     _ArrayLikeObject_co,
     _ArrayLikeTD64_co,
 )
-from numpy.typing import NDArray
+from numpy.typing import ArrayLike, NDArray
 
 from .typing import N, Z, shape
 from .utils import Vector2d, exactly_2d
 
 _T = TypeVar("_T", bound=np.floating[Any])
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+_T1 = TypeVar("_T1")
+
+
+def map_partial(
+    f: Callable[Concatenate[_T1, _P], _R], x: Iterable[_T1], *args: _P.args, **kwargs: _P.kwargs
+) -> map[_R]:
+    return map(functools.partial(f, *args, **kwargs), x)
+
+
+def sort_nz(
+    where: Callable[
+        Concatenate[np.ndarray[shape[N, Z], np.dtype[Any]], _P],
+        np.ndarray[shape[N, Z], np.dtype[np.bool_]],
+    ]
+    | np.ndarray[shape[N, Z], np.dtype[np.bool_]],
+    pressure: np.ndarray[shape[N, Z], np.dtype[_T]],
+    temperature: np.ndarray[shape[N, Z], np.dtype[_T]],
+    dewpoint: np.ndarray[shape[N, Z], np.dtype[_T]],
+    /,
+    *args: _P.args,
+    **kwargs: _P.kwargs,
+):
+    sort = (
+        np.arange(pressure.shape[0])[:, np.newaxis],
+        np.argsort(pressure, axis=1, kind="quicksort"),
+    )
+
+    pressure = pressure[sort][:, ::-1]
+    temperature = temperature[sort][:, ::-1]
+    dewpoint = dewpoint[sort][:, ::-1]
+    if callable(where):
+        where = where(pressure, *args, **kwargs)
+
+    pressure[where] = np.nan
+    temperature[where] = np.nan
+    dewpoint[where] = np.nan
+
+    clip = max(np.argmax(np.isnan(pressure), axis=1)) + 1
+
+    return pressure[:, :clip], temperature[:, :clip], dewpoint[:, :clip]
 
 
 def nanwhere(
@@ -42,9 +96,6 @@ def nanroll_2d(
         return args[0]
 
     return args
-
-
-from numpy.typing import ArrayLike
 
 
 def nantrapz(
@@ -227,6 +278,6 @@ def zero_crossings(
     sort = np.arange(N)[:, np.newaxis], np.argsort(x, axis=1, kind="quicksort")
     x, y = x[sort], y[sort]
     # clip axis 1 to the last non nan value.
-    clip = max(np.argmax(np.isnan(x), axis=1))
+    clip = max(np.argmax(np.isnan(x), axis=1)) + 1
 
     return Vector2d(x[:, :clip], y[:, :clip])

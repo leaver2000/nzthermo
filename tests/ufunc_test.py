@@ -9,6 +9,7 @@ from nzthermo._ufunc import (
     equivalent_potential_temperature,
     lcl,
     potential_temperature,
+    pressure_vector,
     wet_bulb_potential_temperature,
     wet_bulb_temperature,
     wind_components,
@@ -20,6 +21,19 @@ K = units.kelvin
 dimensionless = units.dimensionless
 WIND_DIRECTIONS = np.array([0, 90, 180, 270, 0])
 WIND_MAGNITUDES = np.array([10, 20, 30, 40, 50])
+
+
+def test_pressure_vector() -> None:
+    v = pressure_vector([1000.0, 900.0, 800.0, 700.0, 600.0])
+    assert v.is_above(1013.25).all()
+    assert v.is_above(1013.25, close=True).all()
+    print(v.is_above(1000.0, close=True))
+
+    assert v.is_below(200.0).all()
+    assert v.is_below(200.0, close=True).all()
+
+    assert v.is_between(1013.25, 200.0).all()
+    assert v.is_between(1013.25, 200.0, close=True).all()
 
 
 def test_dewpoints() -> None:

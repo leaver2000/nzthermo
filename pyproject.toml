@@ -31,6 +31,8 @@ testpaths = ["tests/"]
 
 [tool.pytest.ini_options]
 markers = [
+    "regression",
+    "broadcasting",
     "self: this is a flag to target a specifc test",
     "ccl: test functions for convective condensation level",
     "moist_lapse",
@@ -44,14 +46,16 @@ markers = [
     "cape_el_top",
     "cape_el_bottom",
     "cape_lfc",
+    "most_unstable_cape_cin",
+    "most_unstable_parcel",
     "cape_lfc_top",
     "cape_lfc_bottom",
     "mu_cape",
     "parcel_profile",
-    "regression",
-    "broadcasting",
+    "mixed_layer",
+    "mixed_parcel",
+    "mixed_layer_cape_cin",
 ]
-
 pythonpath = ["src"]
 
 [tool.coverage.run]
@@ -116,3 +120,4 @@ venvPath = "."
 venv = ".venv"
 pythonVersion = "3.12"
 reportOverlappingOverload = "none"
+reportMissingModuleSource = "none"

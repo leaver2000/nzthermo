@@ -19,6 +19,8 @@ from nzthermo.core import (
     el,
     lfc,
     mixed_layer,
+    mixed_layer_cape_cin,
+    mixed_parcel,
     most_unstable_cape_cin,
     most_unstable_parcel,
     most_unstable_parcel_index,
@@ -40,6 +42,8 @@ C = U.celsius
 PRESSURE_ABSOLUTE_TOLERANCE = 1e-3
 PRESSURE_RELATIVE_TOLERANCE = 1.5e-1
 TEMPERATURE_ABSOLUTE_TOLERANCE = 1.0  # temperature is within 1 degree
+CAPE_ABSOLUTE_TOLERANCE = 20.0
+CIN_ABSOLUTE_TOLERANCE = 40.0
 
 
 def assert_nan(value: np.ndarray, value_units=None):
@@ -1228,106 +1232,9 @@ def test_lfc_metpy_regression(which) -> None:
         assert_allclose(lfc_t[i], lfc_t_.m, atol=1.0)
 
 
-# ............................................................................................... #
-# nzthermo.core.most_unstable_parcel
-# ............................................................................................... #
-@pytest.mark.broadcasting
-@pytest.mark.most_unstable_parcel
-@pytest.mark.parametrize("depth", [30000.0])
-def test_most_unstable_parcel_index_broadcasting(depth) -> None:
-    assert_array_equal(
-        most_unstable_parcel_index(P, T, Td, depth=depth),
-        most_unstable_parcel_index(np.broadcast_to(P, T.shape), T, Td, depth=depth),
-        err_msg="most_unstable_parcel_index failed to on broadcasted pressure input.",
-    )
-
-
-@pytest.mark.regression
-@pytest.mark.most_unstable_parcel
-@pytest.mark.parametrize("depth", [30000.0])
-def test_most_unstable_parcel_index(depth) -> None:
-    assert_array_equal(
-        most_unstable_parcel_index(P, T, Td, depth=depth),
-        [
-            mpcalc.most_unstable_parcel(P * Pa, T[i] * K, Td[i] * K, depth=depth * Pa)[-1]
-            for i in range(T.shape[0])
-        ],
-    )
-
-
-# -------------------------------------------------------------------------------------------------
-# nzthermo.core.mixed_layer
-# -------------------------------------------------------------------------------------------------
-@pytest.mark.broadcasting
-@pytest.mark.most_unstable_parcel
-@pytest.mark.parametrize("depth", [30000.0])
-def test_most_unstable_parcel_broadcasting(depth) -> None:
-    assert_array_equal(
-        most_unstable_parcel(P, T, Td, depth=depth),
-        most_unstable_parcel(np.broadcast_to(P, T.shape), T, Td, depth=depth),
-        err_msg="most_unstable_parcel failed to on broadcasted pressure input.",
-    )
-
-
-@pytest.mark.regression
-@pytest.mark.most_unstable_parcel
-@pytest.mark.parametrize("depth", [30000.0])
-def test_most_unstable_parcel_regression(depth) -> None:
-    p, t, td, idx = most_unstable_parcel(P, T, Td, depth=depth)
-
-    for i in range(T.shape[0]):
-        p_, t_, td_, idx_ = mpcalc.most_unstable_parcel(
-            P * Pa, T[i] * K, Td[i] * K, depth=depth * Pa
-        )
-        assert_array_equal(p[i], p_.m)
-        assert_array_equal(t[i], t_.m)
-        assert_array_equal(td[i], td_.m)
-        assert_array_equal(idx[i], idx_)
-
-
-# ............................................................................................... #
-# nzthermo.core.mixed_layer
-# ............................................................................................... #
-@pytest.mark.broadcasting
-@pytest.mark.mixed_layer
-def test_mixed_layer_broadcasting() -> None:
-    """
-    NOTE: using assert_array_equal I'm not entirely sure wy broadcasting the pressure
-    is causing causing some 1e-5 differences in the results, but atol of 1e-5 is well within
-    and acceptable range for the test to pass.
-
-    ```bash
-    E           Mismatched elements: 233 / 1080 (21.6%)
-    E           Max absolute difference among violations: 0.000031
-    E           Max relative difference among violations: 0.
-    ```
-    """
-
-    assert_allclose(
-        mixed_layer(P, T, Td),
-        mixed_layer(np.broadcast_to(P, T.shape), T, Td),
-        atol=TEMPERATURE_ABSOLUTE_TOLERANCE,
-    )
-
-
-@pytest.mark.regression
-@pytest.mark.mixed_layer
-def test_mixed_layer_regression() -> None:
-    t, td = mixed_layer(P, T, Td)
-    for i in range(T.shape[0]):
-        t_, td_ = mpcalc.mixed_layer(P * Pa, T[i] * K, Td[i] * K, interpolate=False)
-        assert_allclose(
-            t[i],
-            t_.m,
-            atol=TEMPERATURE_ABSOLUTE_TOLERANCE,
-        )
-        assert_allclose(
-            td[i],
-            td_.m,
-            atol=TEMPERATURE_ABSOLUTE_TOLERANCE,
-        )
-
-
+# ----------------------------------------------------------------------------------------------- #
+# CAPE CIN
+# ----------------------------------------------------------------------------------------------- #
 # ............................................................................................... #
 # nzthermo.core.cape_cin
 # ............................................................................................... #
@@ -1384,6 +1291,66 @@ def test_cape_cin_metpy_regression(which_lfc, which_el) -> None:
         assert_allclose(CIN[i], CIN_.m, atol=10)
 
 
+# ----------------------------------------------------------------------------------------------- #
+# MOST UNSTABLE
+# ----------------------------------------------------------------------------------------------- #
+# ............................................................................................... #
+# nzthermo.core.most_unstable_parcel_index
+# ............................................................................................... #
+@pytest.mark.broadcasting
+@pytest.mark.most_unstable_parcel
+@pytest.mark.parametrize("depth", [30000.0])
+def test_most_unstable_parcel_index_broadcasting(depth) -> None:
+    assert_array_equal(
+        most_unstable_parcel_index(P, T, Td, depth=depth),
+        most_unstable_parcel_index(np.broadcast_to(P, T.shape), T, Td, depth=depth),
+        err_msg="most_unstable_parcel_index failed to on broadcasted pressure input.",
+    )
+
+
+@pytest.mark.regression
+@pytest.mark.most_unstable_parcel
+@pytest.mark.parametrize("depth", [30000.0])
+def test_most_unstable_parcel_index(depth) -> None:
+    assert_array_equal(
+        most_unstable_parcel_index(P, T, Td, depth=depth),
+        [
+            mpcalc.most_unstable_parcel(P * Pa, T[i] * K, Td[i] * K, depth=depth * Pa)[-1]
+            for i in range(T.shape[0])
+        ],
+    )
+
+
+# ............................................................................................... #
+# nzthermo.core.most_unstable_parcel
+# ............................................................................................... #
+@pytest.mark.broadcasting
+@pytest.mark.most_unstable_parcel
+@pytest.mark.parametrize("depth", [30000.0])
+def test_most_unstable_parcel_broadcasting(depth) -> None:
+    assert_array_equal(
+        most_unstable_parcel(P, T, Td, depth=depth),
+        most_unstable_parcel(np.broadcast_to(P, T.shape), T, Td, depth=depth),
+        err_msg="most_unstable_parcel failed to on broadcasted pressure input.",
+    )
+
+
+@pytest.mark.regression
+@pytest.mark.most_unstable_parcel
+@pytest.mark.parametrize("depth", [30000.0])
+def test_most_unstable_parcel_regression(depth) -> None:
+    p, t, td, idx = most_unstable_parcel(P, T, Td, depth=depth)
+
+    for i in range(T.shape[0]):
+        p_, t_, td_, idx_ = mpcalc.most_unstable_parcel(
+            P * Pa, T[i] * K, Td[i] * K, depth=depth * Pa
+        )
+        assert_array_equal(p[i], p_.m)
+        assert_array_equal(t[i], t_.m)
+        assert_array_equal(td[i], td_.m)
+        assert_array_equal(idx[i], idx_)
+
+
 # ............................................................................................... #
 # nzthermo.core.most_unstable_cape_cin
 # ............................................................................................... #
@@ -1421,3 +1388,142 @@ def test_most_unstable_cape_cin_metpy_regression(depth) -> None:
         )
         assert_allclose(CAPE[i], CAPE_.m, atol=10)
         assert_allclose(CIN[i], CIN_.m, atol=20)
+
+
+# ----------------------------------------------------------------------------------------------- #
+# MIXED LAYER
+# ----------------------------------------------------------------------------------------------- #
+# ............................................................................................... #
+# nzthermo.core.mixed_layer
+# ............................................................................................... #
+@pytest.mark.broadcasting
+@pytest.mark.mixed_layer
+def test_mixed_layer_broadcasting() -> None:
+    """
+    NOTE: using assert_array_equal I'm not entirely sure wy broadcasting the pressure
+    is causing causing some 1e-5 differences in the results, but atol of 1e-5 is well within
+    and acceptable range for the test to pass.
+
+    ```bash
+    E           Mismatched elements: 233 / 1080 (21.6%)
+    E           Max absolute difference among violations: 0.000031
+    E           Max relative difference among violations: 0.
+    ```
+    """
+
+    assert_allclose(
+        mixed_layer(P, T, Td),
+        mixed_layer(np.broadcast_to(P, T.shape), T, Td),
+        atol=TEMPERATURE_ABSOLUTE_TOLERANCE,
+    )
+
+
+@pytest.mark.regression
+@pytest.mark.mixed_layer
+def test_mixed_layer_regression() -> None:
+    t, td = mixed_layer(P, T, Td)
+    for i in range(T.shape[0]):
+        t_, td_ = mpcalc.mixed_layer(P * Pa, T[i] * K, Td[i] * K, interpolate=False)
+        assert_allclose(
+            t[i],
+            t_.m,
+            atol=TEMPERATURE_ABSOLUTE_TOLERANCE,
+        )
+        assert_allclose(
+            td[i],
+            td_.m,
+            atol=TEMPERATURE_ABSOLUTE_TOLERANCE,
+        )
+
+
+# ............................................................................................... #
+# nzthermo.core.mixed_parcel
+# ............................................................................................... #
+@pytest.mark.broadcasting
+@pytest.mark.mixed_parcel
+def test_mixed_parcel_broadcasting() -> None:
+    """
+    NOTE: using assert_array_equal I'm not entirely sure wy broadcasting the pressure
+    is causing causing some 1e-5 differences in the results, but atol of 1e-5 is well within
+    and acceptable range for the test to pass.
+
+    ```bash
+    E           Mismatched elements: 233 / 1080 (21.6%)
+    E           Max absolute difference among violations: 0.000031
+    E           Max relative difference among violations: 0.
+    ```
+    """
+
+    assert_allclose(
+        mixed_parcel(P, T, Td),
+        mixed_parcel(np.broadcast_to(P, T.shape), T, Td),
+        atol=TEMPERATURE_ABSOLUTE_TOLERANCE,
+    )
+
+
+@pytest.mark.regression
+@pytest.mark.mixed_parcel
+def test_mixed_parcel_regression() -> None:
+    p, t, td = mixed_parcel(P, T, Td)
+
+    for i in range(T.shape[0]):
+        p_, t_, td_ = mpcalc.mixed_parcel(P * Pa, T[i] * K, Td[i] * K, interpolate=False)
+        assert_allclose(
+            p[i],
+            p_.m,
+            atol=PRESSURE_ABSOLUTE_TOLERANCE,
+        )
+
+        assert_allclose(
+            t[i],
+            t_.m,
+            atol=TEMPERATURE_ABSOLUTE_TOLERANCE,
+        )
+        assert_allclose(
+            td[i],
+            td_.m,
+            atol=TEMPERATURE_ABSOLUTE_TOLERANCE,
+        )
+
+
+# ............................................................................................... #
+# nzthermo.core.mixed_layer_cape_cin
+# ............................................................................................... #
+# @pytest.mark.skip
+@pytest.mark.broadcasting
+@pytest.mark.mixed_layer_cape_cin
+def test_mixed_layer_cape_cin_broadcasting() -> None:
+    """
+    NOTE: using assert_array_equal I'm not entirely sure wy broadcasting the pressure
+    is causing causing some 1e-5 differences in the results, but atol of 1e-5 is well within
+    and acceptable range for the test to pass.
+
+    ```bash
+    E           Mismatched elements: 233 / 1080 (21.6%)
+    E           Max absolute difference among violations: 0.000031
+    E           Max relative difference among violations: 0.
+    ```
+    """
+
+    assert_allclose(
+        mixed_layer_cape_cin(P, T, Td),
+        mixed_layer_cape_cin(np.broadcast_to(P, T.shape), T, Td),
+        atol=TEMPERATURE_ABSOLUTE_TOLERANCE,
+    )
+
+
+# @pytest.mark.skip
+@pytest.mark.regression
+@pytest.mark.mixed_layer_cape_cin
+def test_mixed_layer_cape_cin_regression() -> None:
+    CAPE, CIN = mixed_layer_cape_cin(P, T, Td)
+    CAPE_ = []
+    CIN_ = []
+
+    for i in range(T.shape[0]):
+        cape_, cin_ = mpcalc.mixed_layer_cape_cin(P * Pa, T[i] * K, Td[i] * K, interpolate=False)
+        CAPE_.append(cape_.m)
+        CIN_.append(cin_.m)
+
+    assert_allclose(CAPE, CAPE_, atol=20)
+    assert_allclose(CIN, CIN_, atol=200)

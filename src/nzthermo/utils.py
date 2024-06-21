@@ -294,7 +294,6 @@ def broadcast_nz(
     ) -> _S:
         if kwargs.pop("__fastpath", False):
             return f(pressure, temperature, dewpoint, *args, **kwargs)  # type: ignore
-
         # TODO
         # - add support for squeezing what would have been a 1d input
         # - add support for reshaping:
@@ -305,7 +304,8 @@ def broadcast_nz(
             magnitude(temperature, "kelvin"),
             magnitude(dewpoint, "kelvin"),
         )
-        return f(pressure_vector(pressure), temperature, dewpoint, *args, **kwargs)
+
+        return f(pressure.view(pressure_vector), temperature, dewpoint, *args, **kwargs)
 
     return wrapper
 
