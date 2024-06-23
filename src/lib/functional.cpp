@@ -158,7 +158,7 @@ constexpr T rk2(Fn<T, T, T> fn, T x0, T x1, T y, T step /* 1000.0 (Pa) */) noexc
     T k1, delta, abs_delta;
     size_t N = 1;
 
-    abs_delta = fabs(delta = (x1 - x0));
+    abs_delta = std::fabs(delta = (x1 - x0));
     if (abs_delta > step) {
         N = (size_t)ceil(abs_delta / step);
         delta = delta / (T)N;
@@ -206,9 +206,9 @@ constexpr T fixed_point(
         p2 = fn(p1, x0, args...);
         delta = p2 - 2.0 * p1 + p0;
 
-        p2 = delta ? p0 - pow(p1 - p0, 2) / delta : p2; /* delta squared */
+        p2 = delta ? p0 - std::pow(p1 - p0, 2) / delta : p2; /* delta squared */
 
-        if ((p0 ? fabs((p2 - p0) / p0) : p2 /* absolute relative error */) < eps)
+        if ((p0 ? std::fabs((p2 - p0) / p0) : p2 /* absolute relative error */) < eps)
             return p2;
 
         p0 = p2;
@@ -289,8 +289,8 @@ constexpr point<T> intersect_1d(
     x0 = x[i0];
     x1 = x[i1];
     if (log_x) {
-        x0 = log(x0);
-        x1 = log(x1);
+        x0 = std::log(x0);
+        x1 = std::log(x1);
     }
 
     a0 = a[i0];
@@ -305,7 +305,7 @@ constexpr point<T> intersect_1d(
     y_intercept = ((x_intercept - x0) / LIMIT_ZERO(x1 - x0)) * (a1 - a0) + a0;
 
     if (log_x)
-        x_intercept = exp(x_intercept);
+        x_intercept = std::exp(x_intercept);
 
     return {x_intercept, y_intercept};
 };

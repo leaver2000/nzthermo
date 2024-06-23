@@ -103,16 +103,6 @@ kappa = C.kappa
 # ............................................................................................... #
 # helpers
 # ............................................................................................... #
-cdef cvarray nzarray((size_t, size_t) shape, size_t size):
-    return cvarray(
-        shape, 
-        itemsize=size, 
-        format='f' if size == sizeof(float) else 'd', 
-        mode='c',
-        allocate_buffer=True,
-    )
-
-
 def broadcast_and_nanmask(
     np.ndarray pressure not None,
     np.ndarray temperature not None, 
@@ -284,7 +274,7 @@ cdef T[:, :] moist_lapse_2d(
         T[:, :] out
 
     N, Z = temperature.shape[0], pressure.shape[1]
-    out = nzarray((N, Z), pressure.itemsize)
+    out = np.empty((N, Z), dtype=np.dtype(f"f{pressure.itemsize}"))
     with nogil, parallel():
         if BROADCAST is mode:
             for i in prange(N, schedule='dynamic'):
@@ -466,7 +456,7 @@ cdef void parcel_profile_1d(
 
     # [dry ascent]
     # stop the dry ascent at the LCL
-    stop = lcl.index(&pressure[0], Z)
+    stop = lcl.index_on(&pressure[0], Z)
     for i in prange(0, stop, schedule='dynamic'): # parallelize the dry ascent
         out[i] = C.dry_lapse(pressure[i], p0, temperature)
 
@@ -549,8 +539,7 @@ cdef void parcel_profile_with_lcl_1d(
     lcl = C.lcl[T](p0, t0, td0)
 
     # [dry ascent] .. parcel temperature from the surface up to the LCL ..
-
-    stop = lcl.index(&pressure[0], Z)
+    stop = lcl.index_on(&pressure[0], Z)
     
     if stop:
         ep[:stop] = pressure[:stop]
@@ -774,7 +763,7 @@ cdef intersect_2d(
         T[:, :] out 
 
     N, Z = y0.shape[0], y1.shape[1]
-    out = nzarray((2, N), x.itemsize)
+    out = np.empty((2, N), f'f{x.itemsize}')
     with nogil, parallel():
         if BROADCAST is mode:
             for i in prange(N, schedule='dynamic'):

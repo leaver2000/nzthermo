@@ -80,7 +80,7 @@ class Axis(enum.IntEnum):
     Z = 1
 
 
-class PVectorNd(NamedTuple, Generic[_S, _T]):
+class ParcelProfile(NamedTuple, Generic[_S, _T]):
     pressure: Pascal[np.ndarray[_S, np.dtype[_T]]]
     temperature: Kelvin[np.ndarray[_S, np.dtype[_T]]]
 
@@ -111,7 +111,7 @@ class PVectorNd(NamedTuple, Generic[_S, _T]):
     def is_below(
         self, pressure: Pascal[NDArray[np.floating[Any]]] | Self, *, close: bool = False
     ) -> NDArray[np.bool_]:
-        if isinstance(pressure, PVectorNd):
+        if isinstance(pressure, ParcelProfile):
             pressure = pressure.pressure
         if not close:
             return self.pressure > pressure
@@ -129,9 +129,9 @@ class PVectorNd(NamedTuple, Generic[_S, _T]):
         return self.where(self.is_below(pressure, close=close), x_fill, y_fill)
 
     def is_above(
-        self, pressure: Pascal[NDArray[np.floating[Any]]] | PVectorNd, *, close: bool = False
+        self, pressure: Pascal[NDArray[np.floating[Any]]] | ParcelProfile, *, close: bool = False
     ) -> NDArray[np.bool_]:
-        if isinstance(pressure, PVectorNd):
+        if isinstance(pressure, ParcelProfile):
             pressure = pressure.pressure
         if not close:
             return self.pressure < pressure
@@ -140,7 +140,7 @@ class PVectorNd(NamedTuple, Generic[_S, _T]):
 
     def where_above(
         self,
-        pressure: Pascal[NDArray[np.floating[Any]]] | PVectorNd,
+        pressure: Pascal[NDArray[np.floating[Any]]] | ParcelProfile,
         x_fill: ArrayLike[np.floating[Any]] = np.nan,
         y_fill: ArrayLike[np.floating[Any]] | None = None,
         *,
@@ -150,14 +150,14 @@ class PVectorNd(NamedTuple, Generic[_S, _T]):
 
     def is_between(
         self,
-        bottom: Pascal[NDArray[np.floating[Any]]] | PVectorNd,
-        top: Pascal[NDArray[np.floating[Any]]] | PVectorNd,
+        bottom: Pascal[NDArray[np.floating[Any]]] | ParcelProfile,
+        top: Pascal[NDArray[np.floating[Any]]] | ParcelProfile,
         *,
         close: bool = False,
     ):
-        if isinstance(bottom, PVectorNd):
+        if isinstance(bottom, ParcelProfile):
             bottom = bottom.pressure
-        if isinstance(top, PVectorNd):
+        if isinstance(top, ParcelProfile):
             top = top.pressure
         if not close:
             return (self.pressure > bottom) & (self.pressure < top)
@@ -166,8 +166,8 @@ class PVectorNd(NamedTuple, Generic[_S, _T]):
 
     def where_between(
         self,
-        bottom: Pascal[NDArray[np.floating[Any]]] | PVectorNd,
-        top: Pascal[NDArray[np.floating[Any]]] | PVectorNd,
+        bottom: Pascal[NDArray[np.floating[Any]]] | ParcelProfile,
+        top: Pascal[NDArray[np.floating[Any]]] | ParcelProfile,
         x_fill: ArrayLike[np.floating[Any]] = np.nan,
         y_fill: ArrayLike[np.floating[Any]] | None = None,
         *,
@@ -216,41 +216,56 @@ class PVectorNd(NamedTuple, Generic[_S, _T]):
         return p, t
 
 
-class Vector1d(PVectorNd[shape[N], _T]):
-    def unsqueeze(self) -> Vector2d[_T]:
+class Parcel(ParcelProfile[shape[N], _T]):
+    r"""class for containing a (N,) parcel.
+
+    The vertical coordinate for a parcel temperature is the pressure value.
+    """
+
+    def unsqueeze(self) -> Profile[_T]:
         s = np.s_[:, np.newaxis]
-        return Vector2d(self.pressure[s], self.temperature[s])
+        return Profile(self.pressure[s], self.temperature[s])
 
 
-class Vector2d(PVectorNd[shape[N, Z], _T]):
-    def pick(self, which: L["bottom", "top"]) -> Vector1d[_T]:
+class Profile(ParcelProfile[shape[N, Z], _T]):
+    r"""class for containing a (N, Z) profile.
+
+    The vertical coordinate for a profile temperature is the pressure value. It is assumed that
+    pressure is monotonically decreasing with height, and that any nan values are at the top
+    of the profile ie the end of the array.
+    """
+
+    def pick(self, which: L["bottom", "top"]) -> Parcel[_T]:
+        if which not in {"bottom", "top"}:
+            raise ValueError(f"which must be either 'bottom' or 'top', got {which!r}")
+
         p, t = self.pressure, self.temperature
         nx = np.arange(p.shape[0])
         if which == "bottom":
             idx = np.argmin(~np.isnan(p), axis=1) - 1  # the last non-nan value
-            return Vector1d(p[nx, idx], t[nx, idx])
+            return Parcel(p[nx, idx], t[nx, idx])
 
         elif which == "top":
-            return Vector1d(p[nx, 0], t[nx, 0])  # the first value is the uppermost value
+            return Parcel(p[nx, 0], t[nx, 0])  # the first value is the uppermost value
 
-    def bottom(self) -> Vector1d[_T]:
+    def bottom(self) -> Parcel[_T]:
         return self.pick("bottom")
 
-    def top(self) -> Vector1d[_T]:
+    def top(self) -> Parcel[_T]:
         return self.pick("top")
 
-    def sort(self) -> Self:
+    def sort(self) -> Profile[_T]:
         N = self.pressure.shape[0]
         sort = np.arange(N)[:, np.newaxis], np.argsort(self.pressure, axis=1, kind="quicksort")
-        return self.__class__(self.pressure[sort], self.temperature[sort])
+        return Profile(self.pressure[sort], self.temperature[sort])
 
 
-@overload
-def exactly_2d(x: NDArray[_T], /) -> np.ndarray[shape[N, Z], np.dtype[_T]]: ...
 @overload
 def exactly_2d(
     *args: NDArray[_T],
 ) -> tuple[np.ndarray[shape[N, Z], np.dtype[_T]], ...]: ...
+@overload
+def exactly_2d(__x: NDArray[_T], /) -> np.ndarray[shape[N, Z], np.dtype[_T]]: ...
 def exactly_2d(
     *args: NDArray[_T],
 ) -> np.ndarray[shape[N, Z], np.dtype[_T]] | tuple[np.ndarray[shape[N, Z], np.dtype[_T]], ...]:

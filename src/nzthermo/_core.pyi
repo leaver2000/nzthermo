@@ -14,7 +14,6 @@ _Dtype_t = TypeVar("_Dtype_t", bound=np.generic)
 _DualArrayLike = (
     SupportsArray[_Dtype_t] | NestedSequence[SupportsArray[_Dtype_t]] | _T | NestedSequence[_T]
 )
-_float = TypeVar("_float", np.float32, np.float64)
 
 OPENMP_ENABLED: bool = ...
 
