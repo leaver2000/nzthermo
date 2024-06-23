@@ -2,17 +2,15 @@
 
 namespace libthermo {
 
-// helper functions
-
 /**
  * @brief given a pressure array of decreasing values, find the index of the pressure level that
  * corresponds to the given value. This function is optimized for evenly distributed pressure
  * and will typically find the index in O(1) time.
  * 
  * @tparam T 
- * @param levels 
- * @param value 
- * @param size 
+ * @param levels        pressure levels array
+ * @param value         value to find
+ * @param size          size of the array
  * @return constexpr size_t 
  */
 template <floating T>
@@ -92,13 +90,17 @@ constexpr T potential_temperature(const T pressure, const T temperature) noexcep
 }
 
 /**
- * @brief theta_e
+ * @brief Equivalent potential temperature, `theta-e (𝜃𝑒)`, is a quantity that is conserved during
+ * changes to an air parcel's pressure (that is, during vertical motions in the atmosphere), even
+ * if water vapor condenses during that pressure change. It is therefore more conserved than the
+ * ordinary potential temperature, which remains constant only for unsaturated vertical motions
+ * (pressure changes).
  * 
  * @tparam T 
- * @param pressure 
- * @param temperature 
- * @param dewpoint 
- * @return constexpr T 
+ * @param pressure          `(Pa)`
+ * @param temperature       `(K)`
+ * @param dewpoint          `(K)`
+ * @return `theta-e` -      `(K)`
  */
 template <floating T>
 constexpr T equivalent_potential_temperature(
@@ -106,20 +108,20 @@ constexpr T equivalent_potential_temperature(
 ) noexcept {
     const T r = saturation_mixing_ratio(pressure, dewpoint);
     const T e = saturation_vapor_pressure(dewpoint);
-    const T t_l = 56 + 1.0 / (1.0 / (dewpoint - 56) + log(temperature / dewpoint) / 800.0);
+    const T t_l = 56. + 1. / (1. / (dewpoint - 56.) + log(temperature / dewpoint) / 800.);
     const T th_l =
       potential_temperature(pressure - e, temperature) * pow(temperature / t_l, 0.28 * r);
 
-    return th_l * exp(r * (1 + 0.448 * r) * (3036.0 / t_l - 1.78));
+    return th_l * exp(r * (1. + 0.448 * r) * (3036. / t_l - 1.78));
 }
 
 /**
  * @brief theta_w
  * 
  * @tparam T 
- * @param pressure 
- * @param temperature 
- * @param dewpoint 
+ * @param pressure          `(Pa)`
+ * @param temperature       `(K)`
+ * @param dewpoint          `(K)`
  * @return constexpr T 
  */
 template <floating T>
@@ -188,7 +190,7 @@ constexpr T lcl<T>::wet_bulb_temperature(const T pressure, const T step) noexcep
 }
 
 template <floating T>
-constexpr size_t lcl<T>::index(const T pressure[], const size_t size) noexcept {
+constexpr size_t lcl<T>::index_on(const T pressure[], const size_t size) noexcept {
     return index_pressure(pressure, this->pressure, size);
 }
 

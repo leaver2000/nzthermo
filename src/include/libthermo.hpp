@@ -95,7 +95,7 @@ class lcl {
       const size_t max_iters = DEFAULT_ITERS
     ) noexcept;
     constexpr T wet_bulb_temperature(const T pressure, const T step = DEFAULT_STEP) noexcept;
-    constexpr size_t index(const T pressure[], const size_t size) noexcept;
+    constexpr size_t index_on(const T pressure[], const size_t size) noexcept;
 };
 
 template <floating T>

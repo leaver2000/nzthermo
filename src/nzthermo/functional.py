@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+from typing import NamedTuple, Generic
 from typing import (
     Any,
     Callable,
@@ -22,7 +23,7 @@ from numpy._typing._array_like import (
 from numpy.typing import ArrayLike, NDArray
 
 from .typing import N, Z, shape
-from .utils import Vector2d, exactly_2d
+from .utils import Profile, exactly_2d
 
 _T = TypeVar("_T", bound=np.floating[Any])
 _P = ParamSpec("_P")
@@ -50,14 +51,19 @@ def sort_nz(
     *args: _P.args,
     **kwargs: _P.kwargs,
 ):
-    sort = (
-        np.arange(pressure.shape[0])[:, np.newaxis],
-        np.argsort(pressure, axis=1, kind="quicksort"),
-    )
+    p_sort = np.argsort(pressure, axis=1, kind="quicksort")
+    if pressure.shape != temperature.shape:
+        sort = np.s_[:, p_sort]
+        pressure = pressure[sort][:, ::-1]
+        sort = np.arange(pressure.shape[0])[:, np.newaxis], p_sort
+        temperature = temperature[sort][:, ::-1]
+        dewpoint = dewpoint[sort][:, ::-1]
+    else:
+        sort = np.arange(pressure.shape[0])[:, np.newaxis], p_sort
+        pressure = pressure[sort][:, ::-1]
+        temperature = temperature[sort][:, ::-1]
+        dewpoint = dewpoint[sort][:, ::-1]
 
-    pressure = pressure[sort][:, ::-1]
-    temperature = temperature[sort][:, ::-1]
-    dewpoint = dewpoint[sort][:, ::-1]
     if callable(where):
         where = where(pressure, *args, **kwargs)
 
@@ -181,7 +187,7 @@ def intersect_nz(
     b: np.ndarray[shape[N, Z], np.dtype[_T]],
     direction: L["increasing", "decreasing"] = "increasing",
     log_x: bool = False,
-) -> Vector2d[_T]:
+) -> Profile[_T]:
     """
     NOTE: this function will leave a trailing `nan` value at the end of the array, and clip the
     array to the length of the longest column.
@@ -242,13 +248,13 @@ def intersect_nz(
 
     clip = max(np.argmax(np.isnan(x), axis=1)) + 1
 
-    return Vector2d(x[:, :clip], y[:, :clip])
+    return Profile(x[:, :clip], y[:, :clip])
 
 
 def zero_crossings(
     X: np.ndarray[shape[N, Z], np.dtype[_T]] | np.ndarray[shape[N], np.dtype[_T]],
     Y: np.ndarray[shape[N, Z], np.dtype[_T]],
-) -> Vector2d[_T]:
+) -> Profile[_T]:
     """
     This function targets the `metpy.thermo._find_append_zero_crossings` function but with support
     for 2D arrays.
@@ -280,4 +286,25 @@ def zero_crossings(
     # clip axis 1 to the last non nan value.
     clip = max(np.argmax(np.isnan(x), axis=1)) + 1
 
-    return Vector2d(x[:, :clip], y[:, :clip])
+    return Profile(x[:, :clip], y[:, :clip])
+
+
+class TopK(NamedTuple, Generic[_T]):
+    values: NDArray[_T]
+    indices: NDArray[np.intp]
+
+
+def topk(
+    values: NDArray[_T], k: int, axis: int = -1, absolute: bool = False, sort: bool = False
+) -> TopK[_T]:
+    values = np.asarray(values)
+    arg = np.abs(values) if absolute else values
+    arg[np.isnan(values)] = -np.inf
+    indices = np.argpartition(arg, -k, axis=axis)[-k:]
+    values = np.take_along_axis(values, indices, axis=axis)
+    if sort:
+        idx = np.flip(np.argsort(values, axis=axis), axis=axis)
+        indices = np.take_along_axis(indices, idx, axis=axis)
+        values = np.take_along_axis(values, idx, axis=axis)
+
+    return TopK(values, indices)

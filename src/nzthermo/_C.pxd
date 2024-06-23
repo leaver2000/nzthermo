@@ -54,7 +54,7 @@ cdef extern from "libthermo.cpp" namespace "libthermo" nogil:
         lcl() noexcept
         lcl(T pressure, T temperature) noexcept
         lcl(T pressure, T temperature, T dewpoint) noexcept
-        size_t index(T* levels, size_t size) noexcept
+        size_t index_on(T* levels, size_t size) noexcept
 
     # 1x1
     T saturation_vapor_pressure[T](T temperature) noexcept
