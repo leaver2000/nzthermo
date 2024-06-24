@@ -78,3 +78,5 @@ cdef extern from "libthermo.cpp" namespace "libthermo" nogil:
     T wet_bulb_potential_temperature[T](T pressure, T temperature, T dewpoint) noexcept # theta_w
     T wet_bulb_temperature[T](T pressure, T temperature, T dewpoint) noexcept
     T wobus[T](T temperature) noexcept
+    T dry_static_energy[T](T height, T temperature) noexcept
+    T moist_static_energy[T](T height, T temperature, T specific_humidity) noexcept

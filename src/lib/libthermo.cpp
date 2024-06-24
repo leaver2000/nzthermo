@@ -90,6 +90,26 @@ constexpr T potential_temperature(const T pressure, const T temperature) noexcep
 }
 
 /**
+ * @brief Calculate the dry static energy of parcels.
+ * @return constexpr T `(J/kg)`
+ */
+template <floating T>
+constexpr T dry_static_energy(const T height, const T temperature) noexcept {
+    return g * height + Cp * temperature;
+}
+
+/**
+ * @brief Calculate the moist static energy of parcels.
+ * @return constexpr T `(J/kg)`
+ */
+template <floating T>
+constexpr T moist_static_energy(
+  const T height, const T temperature, const T specific_humidity
+) noexcept {
+    return dry_static_energy(height, temperature) + Lv * specific_humidity;
+}
+
+/**
  * @brief Equivalent potential temperature, `theta-e (𝜃𝑒)`, is a quantity that is conserved during
  * changes to an air parcel's pressure (that is, during vertical motions in the atmosphere), even
  * if water vapor condenses during that pressure change. It is therefore more conserved than the

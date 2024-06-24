@@ -9,7 +9,8 @@ the original implementation in areas where previously only support for `1D profi
 
 from __future__ import annotations
 
-from typing import Any, Literal as L, TypeVar
+from typing import Any, TypeVar
+from typing import Literal as L
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -18,6 +19,8 @@ from . import functional as F
 from ._core import Rd, moist_lapse, parcel_profile_with_lcl
 from ._ufunc import (
     dewpoint as _dewpoint,
+)
+from ._ufunc import (
     dry_lapse,
     equivalent_potential_temperature,
     exner_function,
@@ -43,6 +46,123 @@ _T = TypeVar("_T", bound=np.floating[Any], covariant=True)
 FASTPATH: dict[str, Any] = {"__fastpath": True}
 
 
+# @exporter.export
+# @preprocess_and_wrap()
+# @check_units("[pressure]", "[speed]", "[speed]", "[length]")
+def bunkers_storm_motion(pressure, u, v, height):
+    r"""Calculate right-mover and left-mover supercell storm motions using the Bunkers method.
+
+    This is a physically based, shear-relative, and Galilean invariant method for predicting
+    supercell motion. Full atmospheric profiles of wind components, as well as pressure and
+    heights, need to be provided so that calculation can properly calculate the required
+    surface to 6 km mean flow.
+
+    The calculation in summary is (from [Bunkers2000]_):
+
+    * surface to 6 km non-pressure-weighted mean wind
+    * a deviation from the sfc to 6 km mean wind of 7.5 m s−1
+    * a 5.5 to 6 km mean wind for the head of the vertical wind shear vector
+    * a surface to 0.5 km mean wind for the tail of the vertical wind shear vector
+
+    Parameters
+    ----------
+    pressure : `pint.Quantity`
+        Pressure from full profile
+
+    u : `pint.Quantity`
+        Full profile of the U-component of the wind
+
+    v : `pint.Quantity`
+        Full profile of the V-component of the wind
+
+    height : `pint.Quantity`
+        Full profile of height
+
+    Returns
+    -------
+    right_mover: (`pint.Quantity`, `pint.Quantity`)
+        Scalar U- and V- components of Bunkers right-mover storm motion
+
+    left_mover: (`pint.Quantity`, `pint.Quantity`)
+        Scalar U- and V- components of Bunkers left-mover storm motion
+
+    wind_mean: (`pint.Quantity`, `pint.Quantity`)
+        Scalar U- and V- components of surface to 6 km mean flow
+
+    Examples
+    --------
+    >>> from metpy.calc import bunkers_storm_motion, wind_components
+    >>> from metpy.units import units
+    >>> p = [1000, 925, 850, 700, 500, 400] * units.hPa
+    >>> h = [250, 700, 1500, 3100, 5720, 7120] * units.meters
+    >>> wdir = [165, 180, 190, 210, 220, 250] * units.degree
+    >>> sped = [5, 15, 20, 30, 50, 60] * units.knots
+    >>> u, v = wind_components(sped, wdir)
+    >>> bunkers_storm_motion(p, u, v, h)
+    (<Quantity([22.09618172 12.43406736], 'knot')>,
+    <Quantity([ 6.02861839 36.76517865], 'knot')>,
+    <Quantity([14.06240005 24.599623  ], 'knot')>)
+
+    Notes
+    -----
+    Only functions on 1D profiles (not higher-dimension vertical cross sections or grids).
+    Since this function returns scalar values when given a profile, this will return Pint
+    Quantities even when given xarray DataArray profiles.
+
+    .. versionchanged:: 1.0
+       Renamed ``heights`` parameter to ``height``
+
+    """
+    # remove nans from input data
+    # pressure, u, v, height = _remove_nans(pressure, u, v, height)
+
+    # mean wind from sfc-6km
+    wind_mean = weighted_continuous_average(
+        pressure, u, v, height=height, depth=6000  # (m) #units.Quantity(6000, "meter")
+    )
+
+    # wind_mean = units.Quantity.from_list(wind_mean)
+
+    # mean wind from sfc-500m
+    wind_500m = weighted_continuous_average(
+        pressure, u, v, height=height, depth=500  # (m) #units.Quantity(500, "meter")
+    )
+
+    # wind_500m = units.Quantity.from_list(wind_500m)
+
+    # mean wind from 5.5-6km
+    wind_5500m = weighted_continuous_average(
+        pressure,
+        u,
+        v,
+        height=height,
+        depth=6000,  # units.Quantity(500, "meter"),
+        bottom=height[0] + units.Quantity(5500, "meter"),
+    )
+
+    wind_5500m = units.Quantity.from_list(wind_5500m)
+
+    # Calculate the shear vector from sfc-500m to 5.5-6km
+    shear = wind_5500m - wind_500m
+
+    # Take the cross product of the wind shear and k, and divide by the vector magnitude and
+    # multiply by the deviation empirically calculated in Bunkers (2000) (7.5 m/s)
+    shear_cross = concatenate([shear[1], -shear[0]])
+    shear_mag = np.hypot(*shear)
+    rdev = shear_cross * (units.Quantity(7.5, "m/s").to(u.units) / shear_mag)
+
+    # Add the deviations to the layer average wind to get the RM motion
+    right_mover = wind_mean + rdev
+
+    # Subtract the deviations to get the LM motion
+    left_mover = wind_mean - rdev
+
+    return right_mover, left_mover, wind_mean
+
+
+# -------------------------------------------------------------------------------------------------
+# convective condensation level
+# -------------------------------------------------------------------------------------------------
 @broadcast_nz
 def parcel_mixing_ratio(
     pressure: Pascal[pressure_vector[_S, np.dtype[_T]]],
@@ -277,7 +397,8 @@ def _el_lfc(
             log_x=True,
         ).where(
             # If the top of the sounding parcel is warmer than the environment, there is no EL
-            lambda el: el.is_above(LCL) & left_of_env
+            lambda el: el.is_above(LCL)
+            & left_of_env
         )
 
         if pick == "EL":

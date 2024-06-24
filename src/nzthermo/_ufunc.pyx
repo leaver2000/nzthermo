@@ -242,6 +242,33 @@ cdef T dry_lapse(T pressure, T temperature, T reference_pressure) noexcept nogil
     return C.dry_lapse(pressure, reference_pressure, temperature)
 
 
+@cython.ufunc
+cdef T dry_static_energy(T height, T temperature) noexcept nogil:
+    r"""Calculates the equivalent potential temperature.
+    Parameters
+    ----------
+    
+    Returns
+    -------
+    energy : ndarray
+        Dry Static Energy (J / kg)
+    """
+    return C.dry_static_energy(height, temperature)
+
+@cython.ufunc
+cdef T moist_static_energy(T height, T temperature, T specific_humidity) noexcept nogil:
+    r"""Calculates the equivalent potential temperature.
+    Parameters
+    ----------
+    
+    Returns
+    -------
+    energy : ndarray
+        Moist Static Energy (J / kg)
+    """
+    return C.moist_static_energy(height, temperature, specific_humidity)
+
+
 @cython.ufunc # theta_e
 cdef T equivalent_potential_temperature(T pressure, T temperature, T dewpoint) noexcept nogil:
     r"""Calculates the equivalent potential temperature.

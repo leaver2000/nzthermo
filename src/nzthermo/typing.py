@@ -5,12 +5,14 @@ from typing import (
     TYPE_CHECKING,
     Annotated,
     Any,
-    Literal as L,
     NewType,
     Protocol,
     Sequence,
     TypeAlias,
     TypeVar,
+)
+from typing import (
+    Literal as L,
 )
 
 import numpy as np
@@ -20,6 +22,7 @@ _T_co = TypeVar("_T_co", bound=np.generic, covariant=True)
 
 Kelvin = Annotated[_T, "Kelvin"]
 Pascal = Annotated[_T, "Pascal"]
+Meter = Annotated[_T, "meters"]
 Dimensionless = Annotated[_T, "dimensionless"]
 
 
