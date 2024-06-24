@@ -338,7 +338,7 @@ def el(
     parcel_profile : array_like[[N, Z], floating], optional
         The parcel's temperature profile from which to calculate the EL. Defaults to the
         surface parcel profile.
-    which : `str`, optional
+    which : str, optional
         Pick which EL to return. Options are `top` or `bottom`. Default is `top`.
         'top' returns the lowest-pressure EL, default.
         'bottom' returns the highest-pressure EL.
@@ -455,10 +455,18 @@ def cape_cin(
     dewpoint : array_like[(N, Z), floating]
         Dewpoint (K) at the levels given by `pressure`
     parcel_profile : array_like[(N, Z), floating]
+        Parcel temperature profile from which to calculate CAPE and CIN.
+    which_lfc : str, optional
+        Pick which LFC to use. Options are `top` or `bottom`. Default is `bottom`.
+    which_el : str, optional
+        Pick which EL to use. Options are `top` or `bottom`. Default is `top`.
 
     Returns
     -------
-    TODO : ...
+    CAPE : array_like[(N,), floating]
+        Convective Available Potential Energy (J/kg)
+    CIN : array_like[(N,), floating]
+        Convective INhibition (J/kg)
 
     Examples
     --------
