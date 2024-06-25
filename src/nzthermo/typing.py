@@ -5,14 +5,12 @@ from typing import (
     TYPE_CHECKING,
     Annotated,
     Any,
+    Literal as L,
     NewType,
     Protocol,
     Sequence,
     TypeAlias,
     TypeVar,
-)
-from typing import (
-    Literal as L,
 )
 
 import numpy as np
@@ -24,7 +22,7 @@ Kelvin = Annotated[_T, "Kelvin"]
 Pascal = Annotated[_T, "Pascal"]
 Meter = Annotated[_T, "meters"]
 Dimensionless = Annotated[_T, "dimensionless"]
-
+MeterPerSecond = Annotated[_T, "meters/second"]
 
 if sys.version_info >= (3, 11):
     from typing import Self  # noqa

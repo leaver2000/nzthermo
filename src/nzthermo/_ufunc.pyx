@@ -21,7 +21,7 @@ cimport cython
 cimport numpy as np
 
 cimport nzthermo._C as C
-from nzthermo._C cimport Md, Mw
+from nzthermo._C cimport Md, Mw, Rd, g
 
 
 cdef extern from "<cmath>" namespace "std" nogil:
@@ -100,10 +100,46 @@ class pressure_vector(np.ndarray[_S, np.dtype[_T]]):
     def where(self, condition, fill=np.nan):
         return np.where(condition, self, fill).view(pressure_vector)
 
+    def to_standard_height(self):
+        return standard_height(self).view(np.ndarray)
+
+    @staticmethod
+    def from_standard_height(height):
+        return standard_pressure(height).view(pressure_vector)
 
 # ............................................................................................... #
 #  - wind
 # ............................................................................................... #
+@cython.ufunc
+cdef T standard_pressure(T height) noexcept nogil:
+     return C.standard_pressure(height)
+
+
+
+@cython.ufunc
+cdef T standard_height(T pressure) noexcept nogil:
+    r"""Convert pressure data to height using the U.S. standard atmosphere [NOAA1976]_.
+
+    The implementation uses the formula outlined in [Hobbs1977]_ pg.60-61.
+
+    Parameters
+    ----------
+    pressure : ArrayLike (Pa)
+        Atmospheric pressure
+
+    Returns
+    -------
+    `pint.Quantity`
+        Corresponding height value(s)
+
+    Notes
+    -----
+    .. math:: Z = \frac{T_0}{\Gamma}[1-\frac{p}{p_0}^\frac{R\Gamma}{g}]
+
+    """
+    return C.standard_height(pressure)
+
+
 @cython.ufunc
 cdef T wind_direction(T u, T v) noexcept nogil:
     return C.wind_direction(u, v)

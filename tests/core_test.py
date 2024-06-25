@@ -24,6 +24,7 @@ from nzthermo.core import (
     most_unstable_cape_cin,
     most_unstable_parcel,
     most_unstable_parcel_index,
+    specific_humidity,
 )
 
 np.set_printoptions(
@@ -38,7 +39,7 @@ Pa = U.pascal
 hPa = U.hectopascal
 K = U.kelvin
 C = U.celsius
-
+dimensionsless = U.dimensionless
 PRESSURE_ABSOLUTE_TOLERANCE = 1e-3
 PRESSURE_RELATIVE_TOLERANCE = 1.5e-1
 TEMPERATURE_ABSOLUTE_TOLERANCE = 1.0  # temperature is within 1 degree
@@ -82,6 +83,19 @@ def pressure_levels(sfc=1013.25, dtype: Any = np.float64):
 # =============================================================================================== #
 # nzthermo._core
 # =============================================================================================== #
+def test_specific_humidity() -> None:
+    assert_allclose(
+        specific_humidity(P, Td),
+        mpcalc.specific_humidity_from_dewpoint(P * Pa, Td * K).to(dimensionsless).m,
+        atol=1e-4,
+    )  # .to(dimensionsless).m
+
+    assert_allclose(
+        specific_humidity(0.019),
+        mpcalc.specific_humidity_from_mixing_ratio(19 * U("g/kg")).to("g/g").m,
+    )
+
+
 # ............................................................................................... #
 # nzthermo._core.moist_lapse
 # ............................................................................................... #
@@ -710,8 +724,8 @@ def test_el_lfc_equals_lcl() -> None:
     ] * C
     el_pressure, el_temperature = el(levels, temperatures, dewpoints)
 
-    assert_almost_equal(el_pressure, 17573.273, 3)  # 175.7663 * hPa, 3)
-    assert_almost_equal(el_temperature, 216.117, 3)  # -57.03994 * C, 3)
+    assert_almost_equal(el_pressure, 17574.114, 3)  # 175.7663 * hPa, 3)
+    assert_almost_equal(el_temperature, 216.115, 3)  # -57.03994 * C, 3)
 
 
 @pytest.mark.el

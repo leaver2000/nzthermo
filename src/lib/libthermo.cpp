@@ -2,6 +2,16 @@
 
 namespace libthermo {
 
+template <floating T>
+constexpr T standard_pressure(T height) noexcept {
+    return P0 * std::pow(1 - (ELR / T0) * height, g / (Rd * ELR));
+}
+
+template <floating T>
+constexpr T standard_height(T pressure) noexcept {
+    return (T0 / ELR) * (1. - std::pow(pressure / P0, Rd * ELR / g));
+}
+
 /**
  * @brief given a pressure array of decreasing values, find the index of the pressure level that
  * corresponds to the given value. This function is optimized for evenly distributed pressure
@@ -40,7 +50,7 @@ constexpr T mixing_ratio(const T partial_press, const T total_press) noexcept {
 
 template <floating T>
 constexpr T saturation_vapor_pressure(const T temperature) noexcept {
-    return E0 * exp(17.67 * (temperature - T0) / (temperature - 29.65));
+    return Es_0c * exp(17.67 * (temperature - T_0c) / (temperature - 29.65));
 }
 
 template <floating T>
@@ -70,8 +80,8 @@ constexpr T dry_lapse(const T pressure, const T reference_pressure, const T temp
 
 template <floating T>
 constexpr T dewpoint(const T vapor_pressure) noexcept {
-    const T ln = log(vapor_pressure / E0);
-    return T0 + 243.5 * ln / (17.67 - ln);
+    const T ln = log(vapor_pressure / Es_0c);
+    return T_0c + 243.5 * ln / (17.67 - ln);
 }
 
 template <floating T>
@@ -80,7 +90,7 @@ constexpr T dewpoint(const T pressure, const T mixing_ratio) noexcept {
 }
 
 template <floating T>
-constexpr T exner_function(const T pressure, const T reference_pressure = P0) noexcept {
+constexpr T exner_function(const T pressure, const T reference_pressure = 1e5) noexcept {
     return pow(pressure / reference_pressure, kappa);
 }
 
@@ -151,7 +161,7 @@ constexpr T wet_bulb_potential_temperature(
     const T theta_e = equivalent_potential_temperature(pressure, temperature, dewpoint);
     if (theta_e <= 173.15)
         return theta_e;
-    const T x = theta_e / T0;
+    const T x = theta_e / T_0c;
     const T x2 = x * x;
     const T x3 = x2 * x;
     const T x4 = x3 * x;
@@ -264,7 +274,7 @@ constexpr T wet_bulb_temperature(
 template <floating T>
 constexpr T wobus(T temperature) {
     T pol;
-    const T x = temperature - T0 - 20.0;
+    const T x = temperature - T_0c - 20.0;
     if (x <= 0.0) {
         pol = 1.0 +
           x *
@@ -273,14 +283,14 @@ constexpr T wobus(T temperature) {
                (1.4714143e-04 +
                 x * (-9.671989000000001e-07 + x * (-3.2607217e-08 + x * (-3.8598073e-10)))));
         pol = pol * pol;
-        return (15.13 / (pol * pol)) + T0;
+        return (15.13 / (pol * pol)) + T_0c;
     }
     pol = x *
       (4.9618922e-07 +
        x * (-6.1059365e-09 + x * (3.9401551e-11 + x * (-1.2588129e-13 + x * (1.6688280e-16)))));
     pol = 1.0 + x * (3.6182989e-03 + x * (-1.3603273e-05 + pol));
     pol = pol * pol;
-    return (29.93 / (pol * pol) + 0.96 * x - 14.8) + T0;
+    return (29.93 / (pol * pol) + 0.96 * x - 14.8) + T_0c;
 }
 
 }  // namespace libthermo

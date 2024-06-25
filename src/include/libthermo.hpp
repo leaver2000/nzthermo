@@ -10,19 +10,25 @@
 #include <common.hpp>
 
 namespace libthermo {
-#define DEFAULT_STEP 1000.0                       // `(Pa)` - default step for moist_lapse
-#define DEFAULT_EPS 0.1                           // default epsilon for lcl
-#define DEFAULT_ITERS 5                           // default number of iterations for lcl
-static constexpr double g = 9.80665;              // `(m/s**2)`
-static constexpr double T0 = 273.15;              // `(J/kg*K)` - freezing point in kelvin
-static constexpr double E0 = 611.21;              // `(Pa)` - vapor pressure at T0
+#define DEFAULT_STEP 1000.0  // `(Pa)` - default step for moist_lapse
+#define DEFAULT_EPS 0.1      // default epsilon for lcl
+#define DEFAULT_ITERS 5      // default number of iterations for lcl
+
+static constexpr double g = 9.80665;              // `(m/s^2)` - acceleration due to gravity
+static constexpr double ABSOLUTE_ZERO = -273.15;  // `(K)` - absolute zero temperature
+static constexpr double T0 = 288.;                // `(K)` - standard temperature at sea level
+static constexpr double P0 = 101325.0;            // `(Pa)` - standard pressure at sea level
+static constexpr double E0 = 1.225;               // `(kg/m^3)` - standard air density at sea level
+static constexpr double R = 8.31446261815324;     // `(J/mol*K)` - universal gas constant
+static constexpr double T_0c = -ABSOLUTE_ZERO;    // `(K)` - 0C in Kelvin
+static constexpr double Es_0c = 611.21;           // `(Pa)` - saturation vapor pressure @ 0C
 static constexpr double Cp = 1004.6662184201462;  // `(J/kg*K)` - specific heat of dry air
 static constexpr double Rd = 287.04749097718457;  // `(J/kg*K)` - gas constant for dry air
 static constexpr double Rv = 461.52311572606084;  // `(J/kg*K)` - gas constant for water vapor
 static constexpr double Lv = 2.50084e6;           // `(J/kg)` - latent heat of vaporization
-static constexpr double P0 = 100000.0;            // `(Pa)` - standard pressure at sea level
 static constexpr double Mw = 18.01528;            // `(g/mol)` - molecular weight of water
 static constexpr double Md = 28.96546;            // `(g/mol)` - molecular weight of dry air
+static constexpr double ELR = 6.5e-3;             // `(K/m)` - environmental lapse rate
 static constexpr double epsilon = Mw / Md;        // `Mw / Md` - molecular weight ratio
 static constexpr double kappa = Rd / Cp;          // `Rd / Cp`  - ratio of gas constants
 

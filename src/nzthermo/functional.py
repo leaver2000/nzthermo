@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import functools
-from typing import NamedTuple, Generic
 from typing import (
     Any,
     Callable,
     Concatenate,
+    Generic,
     Iterable,
     Literal as L,
+    NamedTuple,
     ParamSpec,
     SupportsIndex,
     TypeVar,
@@ -51,6 +52,9 @@ def sort_nz(
     *args: _P.args,
     **kwargs: _P.kwargs,
 ):
+    if pressure.ndim == 1:
+        pressure = pressure[np.newaxis, :]
+
     p_sort = np.argsort(pressure, axis=1, kind="quicksort")
     if pressure.shape != temperature.shape:
         sort = np.s_[:, p_sort]

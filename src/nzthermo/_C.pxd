@@ -36,7 +36,8 @@ cdef extern from "wind.cpp" namespace "libthermo" nogil:
 
 
 cdef extern from "libthermo.cpp" namespace "libthermo" nogil:
-    const double T0      # `(J/kg*K)` - freezing point in kelvin
+    const double g       # `(m/s^2)` - acceleration due to gravity
+    const double T0      # `(K)` -  
     const double E0      # `(Pa)` - vapor pressure at T0
     const double Cp      # `(J/kg*K)` - specific heat of dry air
     const double Rd      # `(J/kg*K)` - gas constant for dry air
@@ -57,6 +58,12 @@ cdef extern from "libthermo.cpp" namespace "libthermo" nogil:
         size_t index_on(T* levels, size_t size) noexcept
 
     # 1x1
+#     return std::pow(101325.0 * (1 - (0.0065 / 288.0) * height), (g / (Rd * 0.0065)));
+# }
+
+# template <floating T>
+    T standard_pressure[T](T height) noexcept 
+    T standard_height[T](T pressure) noexcept 
     T saturation_vapor_pressure[T](T temperature) noexcept
     T exner_function[T](T pressure) noexcept
     T exner_function[T](T pressure, T reference_pressure) noexcept  # .. overload ..
@@ -80,3 +87,6 @@ cdef extern from "libthermo.cpp" namespace "libthermo" nogil:
     T wobus[T](T temperature) noexcept
     T dry_static_energy[T](T height, T temperature) noexcept
     T moist_static_energy[T](T height, T temperature, T specific_humidity) noexcept
+
+
+    size_t index_pressure[T](T* levels, T value, size_t size) noexcept

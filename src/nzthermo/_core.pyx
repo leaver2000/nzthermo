@@ -22,7 +22,6 @@ import warnings
 
 
 from cython.parallel cimport parallel, prange
-from cython.view cimport array as cvarray
 import numpy as np
 cimport numpy as np
 
@@ -72,33 +71,20 @@ ctypedef enum ProfileStrategy:
     VIRTUAL = 4
 
 
+
 OPENMP_ENABLED = bool(OPENMP)
-
-
-T0 = C.T0
-"""`(J/kg*K)` - freezing point in kelvin"""
-E0 = C.E0
-"""`(Pa)` - vapor pressure at T0"""
-Cp = C.Cp
-"""`(J/kg*K)` - specific heat of dry air"""
-Rd = C.Rd
-"""`(J/kg*K)` - gas constant for dry air"""
-Rv = C.Rv
-"""`(J/kg*K)` - gas constant for water vapor"""
-Lv = C.Lv
-"""`(J/kg)` - latent heat of vaporization"""
-P0 = C.P0
-"""`(Pa)` - standard pressure at sea level"""
-Mw = C.Mw
-"""`(g/mol)` - molecular weight of water"""
-Md = C.Md
-"""`(g/mol)` - molecular weight of dry air"""
+g  = C.g  # (m/s^2)  - acceleration due to gravity
+T0 = C.T0 # (K)      - freezing point of water
+E0 = C.E0 # (Pa)     - vapor pressure at T0
+Cp = C.Cp # (J/kg*K) - specific heat of dry air
+Rd = C.Rd # (J/kg*K) - gas constant for dry air
+Rv = C.Rv # (J/kg*K) - gas constant for water vapor
+Lv = C.Lv # (J/kg)   - latent heat of vaporization
+P0 = C.P0 # (Pa)     - standard pressure at sea level
+Mw = C.Mw # (g/mol)  - molecular weight of water
+Md = C.Md # (g/mol)  - molecular weight of dry air
 epsilon = C.epsilon
-"""`Mw / Md` - molecular weight ratio"""
 kappa = C.kappa
-"""`Rd / Cp`  - ratio of gas constants"""
-
-
 
 # ............................................................................................... #
 # helpers
@@ -802,3 +788,43 @@ def intersect(
         out[...] = intersect_2d[float](x, a, b, mode, log_x, increasing, bottom)
 
     return out
+
+# ............................................................................................... #
+# vertical search
+# ............................................................................................... #
+cdef size_t[:] index_pressure_2d(T[:, :] pressure, T[:] values, BroadcastMode mode):
+    cdef:
+        size_t i, N, Z
+        size_t[:] out 
+
+    N, Z = values.shape[0], pressure.shape[1]
+    out = np.empty(N, dtype=np.uintp)
+    with nogil, parallel():
+        if BROADCAST is mode:
+            for i in prange(N, schedule='dynamic'):
+                out[i] = C.index_pressure(&pressure[0, 0], values[i], Z)
+        else: # MATRIX
+            for i in prange(N, schedule='dynamic'):
+                out[i] = C.index_pressure(&pressure[i, 0], values[i], Z)
+
+    return out
+
+def index_pressure(np.ndarray pressure, np.ndarray values):
+    cdef size_t N
+    N = values.shape[0]
+    out = np.empty(N, dtype=np.uintp)
+    pressure = pressure.squeeze()
+    if pressure.ndim == 1:
+        pressure = pressure.reshape(1, -1)
+        mode = BROADCAST
+    else:
+        mode = MATRIX
+
+    if pressure.dtype == np.float64:
+        out[...] = index_pressure_2d[double](pressure.astype(np.float64), values.astype(np.float64), mode)
+    else:
+        out[...] = index_pressure_2d[float](pressure.astype(np.float32), values.astype(np.float32), mode)
+
+    return out
+
+

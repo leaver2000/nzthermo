@@ -2,7 +2,8 @@ import metpy.calc as mpcalc
 import numpy as np
 import pytest
 from metpy.units import units
-from numpy.testing import assert_allclose
+from numpy.testing import assert_allclose, assert_array_equal
+
 from nzthermo._ufunc import (
     dewpoint_from_specific_humidity,
     dry_static_energy,
@@ -11,6 +12,8 @@ from nzthermo._ufunc import (
     moist_static_energy,
     potential_temperature,
     pressure_vector,
+    standard_height,
+    standard_pressure,
     wet_bulb_potential_temperature,
     wet_bulb_temperature,
     wind_components,
@@ -41,6 +44,24 @@ Td: np.ndarray = data["Td"][step]
 _super_saturation = Td > T
 Td[_super_saturation] = T[_super_saturation]
 Q = mpcalc.specific_humidity_from_dewpoint(P * Pa, Td * K).to("g/g").m
+
+
+def test_height_conversion() -> None:
+    height = standard_height(P)
+    pressure = standard_pressure(height)
+    assert_array_equal(height, P.view(pressure_vector).to_standard_height())
+    assert_array_equal(pressure, pressure_vector.from_standard_height(height))
+
+    assert_allclose(
+        height,
+        mpcalc.pressure_to_height_std(P * Pa).to("m").m,
+        rtol=1e-3,
+    )
+    assert_allclose(
+        pressure,
+        mpcalc.height_to_pressure_std(height * units.meter).to(Pa).m,
+        rtol=1e-3,
+    )
 
 
 def test_pressure_vector() -> None:

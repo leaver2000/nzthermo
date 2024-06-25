@@ -45,6 +45,7 @@ markers = [
     "cape_el",
     "cape_el_top",
     "cape_el_bottom",
+    "entrainment",
     "cape_lfc",
     "most_unstable_cape_cin",
     "most_unstable_parcel",
