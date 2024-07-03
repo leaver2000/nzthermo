@@ -2,14 +2,18 @@ import metpy.calc as mpcalc
 import numpy as np
 import pytest
 from metpy.units import units
-from numpy.testing import assert_allclose
+from numpy.testing import assert_allclose, assert_array_equal
 
 from nzthermo._ufunc import (
     dewpoint_from_specific_humidity,
+    dry_static_energy,
     equivalent_potential_temperature,
     lcl,
+    moist_static_energy,
     potential_temperature,
     pressure_vector,
+    standard_height,
+    standard_pressure,
     wet_bulb_potential_temperature,
     wet_bulb_temperature,
     wind_components,
@@ -21,6 +25,43 @@ K = units.kelvin
 dimensionless = units.dimensionless
 WIND_DIRECTIONS = np.array([0, 90, 180, 270, 0])
 WIND_MAGNITUDES = np.array([10, 20, 30, 40, 50])
+
+
+# =============================================================================================== #
+# load test data
+# =============================================================================================== #
+# load up the test data
+data = np.load("tests/data.npz", allow_pickle=False)
+step = np.s_[:]
+P: np.ndarray = data["P"]
+T: np.ndarray = data["T"][step]
+Td: np.ndarray = data["Td"][step]
+# In very rare cases the data accessed from the HRRR model had dewpoint temperatures greater than
+# the actual temperature. This is not physically possible and is likely due to rounding errors.
+# This also makes testing quite difficult because in many cases metpy will report a nan values
+# and throw interpolation warnings. To avoid this we will set the dewpoint temperature to be less
+# than the actual temperature.
+_super_saturation = Td > T
+Td[_super_saturation] = T[_super_saturation]
+Q = mpcalc.specific_humidity_from_dewpoint(P * Pa, Td * K).to("g/g").m
+
+
+def test_height_conversion() -> None:
+    height = standard_height(P)
+    pressure = standard_pressure(height)
+    assert_array_equal(height, P.view(pressure_vector).to_standard_height())
+    assert_array_equal(pressure, pressure_vector.from_standard_height(height))
+
+    assert_allclose(
+        height,
+        mpcalc.pressure_to_height_std(P * Pa).to("m").m,
+        rtol=1e-3,
+    )
+    assert_allclose(
+        pressure,
+        mpcalc.height_to_pressure_std(height * units.meter).to(Pa).m,
+        rtol=1e-3,
+    )
 
 
 def test_pressure_vector() -> None:
@@ -138,4 +179,20 @@ def test_wet_bulb_potential_temperature(dtype):
             for i in range(len(temperature))
         ],
         rtol=1e-4,
+    )
+
+
+def test_static_energy():
+    z = mpcalc.pressure_to_height_std(P * Pa)[np.newaxis, :].to("m")
+
+    assert_allclose(
+        dry_static_energy(z.m, T),
+        mpcalc.dry_static_energy(z, T * K).to("J/kg").m,
+        atol=1e-1,
+    )
+
+    assert_allclose(
+        moist_static_energy(z.m, T, Q),
+        mpcalc.moist_static_energy(z, T * K, Q * dimensionless).to("J/kg").m,
+        atol=1e-1,
     )

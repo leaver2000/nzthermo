@@ -23,6 +23,7 @@ from typing import (
 import numpy as np
 from numpy.typing import NDArray
 
+from ._core import index_pressure
 from ._ufunc import (
     between_or_close,
     delta_t,
@@ -84,7 +85,7 @@ class ParcelProfile(NamedTuple, Generic[_S, _T]):
     pressure: Pascal[np.ndarray[_S, np.dtype[_T]]]
     temperature: Kelvin[np.ndarray[_S, np.dtype[_T]]]
 
-    def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
+    def __array_ufunc__(self, ufunc: Callable[[ArrayLike], NDArray], method, *inputs, **kwargs):
         if method == "__call__":
             return ufunc(self.pressure)
 
@@ -226,6 +227,14 @@ class Parcel(ParcelProfile[shape[N], _T]):
         s = np.s_[:, np.newaxis]
         return Profile(self.pressure[s], self.temperature[s])
 
+    def pressure_index(
+        self, levels: Pascal[np.ndarray[shape[N, Z], np.dtype[_T]]] | Profile[_T]
+    ) -> np.ndarray[shape[N], np.dtype[np.intp]]:
+        if isinstance(levels, Profile):
+            levels = levels.pressure
+
+        return index_pressure(levels, self.pressure)
+
 
 class Profile(ParcelProfile[shape[N, Z], _T]):
     r"""class for containing a (N, Z) profile.
@@ -258,6 +267,17 @@ class Profile(ParcelProfile[shape[N, Z], _T]):
         N = self.pressure.shape[0]
         sort = np.arange(N)[:, np.newaxis], np.argsort(self.pressure, axis=1, kind="quicksort")
         return Profile(self.pressure[sort], self.temperature[sort])
+
+    def pressure_index(
+        self, value: Pascal[np.ndarray[shape[N], np.dtype[_T]]] | Parcel
+    ) -> np.ndarray[shape[N], np.dtype[np.intp]]:
+        if isinstance(value, Parcel):
+            value = value.pressure
+        if (p := self.pressure.squeeze()).ndim != 1:
+            raise ValueError(
+                f"Pressure array must be 1-dimensional, got {p.ndim}-dimensional array"
+            )
+        return index_pressure(p, value)
 
 
 @overload

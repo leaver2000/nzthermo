@@ -22,7 +22,6 @@ import warnings
 
 
 from cython.parallel cimport parallel, prange
-from cython.view cimport array as cvarray
 import numpy as np
 cimport numpy as np
 
@@ -72,33 +71,20 @@ ctypedef enum ProfileStrategy:
     VIRTUAL = 4
 
 
+
 OPENMP_ENABLED = bool(OPENMP)
-
-
-T0 = C.T0
-"""`(J/kg*K)` - freezing point in kelvin"""
-E0 = C.E0
-"""`(Pa)` - vapor pressure at T0"""
-Cp = C.Cp
-"""`(J/kg*K)` - specific heat of dry air"""
-Rd = C.Rd
-"""`(J/kg*K)` - gas constant for dry air"""
-Rv = C.Rv
-"""`(J/kg*K)` - gas constant for water vapor"""
-Lv = C.Lv
-"""`(J/kg)` - latent heat of vaporization"""
-P0 = C.P0
-"""`(Pa)` - standard pressure at sea level"""
-Mw = C.Mw
-"""`(g/mol)` - molecular weight of water"""
-Md = C.Md
-"""`(g/mol)` - molecular weight of dry air"""
+g  = C.g  # (m/s^2)  - acceleration due to gravity
+T0 = C.T0 # (K)      - freezing point of water
+E0 = C.E0 # (Pa)     - vapor pressure at T0
+Cp = C.Cp # (J/kg*K) - specific heat of dry air
+Rd = C.Rd # (J/kg*K) - gas constant for dry air
+Rv = C.Rv # (J/kg*K) - gas constant for water vapor
+Lv = C.Lv # (J/kg)   - latent heat of vaporization
+P0 = C.P0 # (Pa)     - standard pressure at sea level
+Mw = C.Mw # (g/mol)  - molecular weight of water
+Md = C.Md # (g/mol)  - molecular weight of dry air
 epsilon = C.epsilon
-"""`Mw / Md` - molecular weight ratio"""
 kappa = C.kappa
-"""`Rd / Cp`  - ratio of gas constants"""
-
-
 
 # ............................................................................................... #
 # helpers
@@ -645,160 +631,44 @@ def parcel_profile_with_lcl(
 
     return out[0].view(pressure_vector), out[1], out[2], out[3]
 
+
 # ............................................................................................... #
-# interpolation
+# vertical search
 # ............................................................................................... #
-cdef T[:] _interpolate_nz(
-    T[:] x,      # (N,)
-    T[:] xp,     # (Z,)
-    T[:, :] fp,  # (N, Z)
-    bint log_x = 0,
-) noexcept:
+cdef size_t[:] index_pressure_2d(T[:, :] pressure, T[:] values, BroadcastMode mode):
     cdef:
-        size_t N, Z, n 
-        T[:] out
+        size_t i, N, Z
+        size_t[:] out 
 
-    N, Z = x.shape[0], xp.shape[0]
-    out = np.empty(N, dtype=np.dtype(f"f{x.itemsize}"))
-    with nogil, parallel():
-        for n in prange(N, schedule='runtime'):
-            out[n] = C.interpolate_1d(x[n], &xp[0], &fp[n, 0], Z)
-
-    return out
-
-
-def interpolate_nz(
-    np.ndarray __x,
-    np.ndarray __xp,
-    *args,
-    bint log_x = 0,
-    bint interp_nan = 0
-):
-    """
-    Interpolates values for multiple batches of data.
-
-    Args:
-        x: Input array of shape (N,) containing the values to be interpolated.
-        xp: Input array of shape (Z,) containing the reference values.
-        *args: Variable number of input arrays of shape (N, Z) containing additional data.
-
-    Returns:
-        np.ndarray or tuple of np.ndarray: Interpolated values for each batch.
-
-    Raises:
-        None
-
-    Examples:
-    >>> import numpy as np
-    >>> import nzthermo as nzt
-    >>> import nzthermo.functional as F
-    >>> temperature = np.array(
-    ...     [
-    ...         [303.3, 302.36, 300.16, 298.0, 296.09, 296.73, 295.96, 294.79, 293.51, 291.81],
-    ...         [303.58, 302.6, 300.41, 298.24, 296.49, 295.35, 295.62, 294.43, 293.27, 291.6],
-    ...         [303.75, 302.77, 300.59, 298.43, 296.36, 295.15, 295.32, 294.19, 292.84, 291.54],
-    ...         [303.46, 302.51, 300.34, 298.19, 296.34, 295.51, 295.06, 293.84, 292.42, 291.1],
-    ...         [303.23, 302.31, 300.12, 297.97, 296.28, 295.68, 294.83, 293.67, 292.56, 291.47],
-    ...     ]
-    ... )  # (N, Z)
-    >>> dewpoint = np.array(
-    ...     [
-    ...         [297.61, 297.36, 296.73, 296.05, 294.69, 289.18, 286.82, 285.82, 284.88, 283.81],
-    ...         [297.62, 297.36, 296.79, 296.18, 294.5, 292.07, 287.74, 286.67, 285.15, 284.02],
-    ...         [297.76, 297.51, 296.91, 296.23, 295.05, 292.9, 288.86, 287.12, 285.99, 283.98],
-    ...         [297.82, 297.56, 296.95, 296.23, 295.0, 292.47, 289.97, 288.45, 287.09, 285.17],
-    ...         [298.22, 297.95, 297.33, 296.69, 295.19, 293.16, 291.42, 289.66, 287.28, 284.31],
-    ...     ]
-    ... )  # (N, Z)
-    >>> surface_pressure = np.array([101210.0, 101300.0, 101373.0, 101430.0, 101470.0])  # (N,)
-    >>> pressure_levels = np.array(
-    ...     [101300.0, 100000.0, 97500.0, 95000.0, 92500.0, 90000.0, 87500.0, 85000.0, 82500.0, 80000.0]
-    ... )  # (Z,)
-    >>> lcl_p, lcl_t = nzt.lcl(
-    ...     surface_pressure,  # (N,)
-    ...     temperature[:, 0],  # (N,)
-    ...     dewpoint[:, 0],  # (N,)
-    ... )  # (N,), (N,)
-    >>> lcl_p
-    array([93214.26240694, 92938.06420037, 92967.83292536, 93487.43780492, 94377.76028999])
-    >>> F.interpolate_nz(lcl_p, pressure_levels, temperature, dewpoint)  # temp & dwpt values interpolated at LCL pressure
-    (
-        array([296.63569648, 296.79664494, 296.74736566, 297.07070398, 297.54936596]),
-        array([295.07855875, 294.79437914, 295.27081714, 295.4858194, 296.31665617])
-    )
-    """
-    dtype = __x.dtype
-    cdef np.ndarray xp = np.asarray(__xp, dtype=dtype)
-    cdef np.ndarray fp = np.asarray(args, dtype=dtype)
-    cdef np.ndarray out = np.empty((fp.shape[0], __x.shape[0]), dtype=dtype)
-    
-    for i in range(fp.shape[0]):
-        if dtype == np.float64:
-            out[i] = _interpolate_nz[double](__x, xp, fp[i], log_x)
-        else:
-            out[i] = _interpolate_nz[float](__x, xp, fp[i], log_x)
-
-        if interp_nan:
-            mask = np.isnan(out[i])
-            out[i, mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), __x[~mask])
-
-    if out.shape[0] == 1:
-        return out[0]
-
-    return tuple(out)
-
-
-cdef intersect_2d(
-    T[:, :] x,
-    T[:, :] y0,
-    T[:, :] y1,
-    BroadcastMode mode,
-    bint log_x,
-    bint increasing,
-    bint bottom,
-):
-    cdef:
-        size_t N, Z, i
-        C.point[T] pt
-        T[:, :] out 
-
-    N, Z = y0.shape[0], y1.shape[1]
-    out = np.empty((2, N), f'f{x.itemsize}')
+    N, Z = values.shape[0], pressure.shape[1]
+    out = np.empty(N, dtype=np.uintp)
     with nogil, parallel():
         if BROADCAST is mode:
             for i in prange(N, schedule='dynamic'):
-                pt = C.intersect_1d(&x[0, 0], &y0[i, 0], &y1[i, 0], Z, log_x, increasing, bottom)
-                out[0, i], out[1, i] = pt.x, pt.y
+                out[i] = C.index_pressure(&pressure[0, 0], values[i], Z)
         else: # MATRIX
             for i in prange(N, schedule='dynamic'):
-                pt = C.intersect_1d(&x[i, 0], &y0[i, 0], &y1[i, 0], Z, log_x, increasing, bottom)
-                out[0, i], out[1, i] = pt.x, pt.y
+                out[i] = C.index_pressure(&pressure[i, 0], values[i], Z)
 
     return out
 
 
-def intersect(
-    np.ndarray x,
-    np.ndarray a,
-    np.ndarray b,
-    bint log_x = False,
-    str direction = 'decreasing',
-    bint increasing = False,
-    bint bottom = True,
-):
-    cdef:
-        BroadcastMode mode
-        np.ndarray out
-
-    (x, a, b), mode, dtype = broadcast_and_nanmask(x, a, b)
-
-    if increasing is False and direction == 'increasing':
-        increasing = True
-
-    out = np.empty((2, a.shape[0]), dtype)
-    if x.dtype == np.float64:
-        out[...] = intersect_2d[double](x, a, b, mode, log_x, increasing, bottom)
+def index_pressure(np.ndarray pressure, np.ndarray values):
+    cdef size_t N
+    N = values.shape[0]
+    out = np.empty(N, dtype=np.uintp)
+    pressure = pressure.squeeze()
+    if pressure.ndim == 1:
+        pressure = pressure.reshape(1, -1)
+        mode = BROADCAST
     else:
-        out[...] = intersect_2d[float](x, a, b, mode, log_x, increasing, bottom)
+        mode = MATRIX
+
+    if pressure.dtype == np.float64:
+        out[...] = index_pressure_2d[double](pressure.astype(np.float64), values.astype(np.float64), mode)
+    else:
+        out[...] = index_pressure_2d[float](pressure.astype(np.float32), values.astype(np.float32), mode)
 
     return out
+
+

@@ -5,6 +5,7 @@ __all__ = [
     "__version__",
     # ._core
     "OPENMP_ENABLED",
+    "g",
     "E0",
     "P0",
     "T0",
@@ -23,15 +24,19 @@ __all__ = [
     "delta_t",
     "dewpoint",
     "dry_lapse",
+    "dry_static_energy",
     "equivalent_potential_temperature",
     "lcl",
     "lcl_pressure",
+    "moist_static_energy",
     "potential_temperature",
     "saturation_mixing_ratio",
     "saturation_vapor_pressure",
     "wet_bulb_temperature",
     "wet_bulb_potential_temperature",
     "dewpoint_from_specific_humidity",
+    "standard_pressure",
+    "standard_height",
     "parcel_profile",
     "vapor_pressure",
     "virtual_temperature",
@@ -52,6 +57,12 @@ __all__ = [
     "most_unstable_cape_cin",
     "most_unstable_parcel",
     "most_unstable_parcel_index",
+    "specific_humidity",
+    "surface_based_cape_cin",
+    # .entrainment
+    "entrainment",
+    "bunkers_storm_motion",
+    "ecape",
     # .utils
     "timeseries",
 ]
@@ -60,7 +71,6 @@ try:
     from ._version import __version__
 except ImportError:
     __version__ = "undefined"
-
 from . import functional
 from ._core import (
     E0,
@@ -74,6 +84,7 @@ from ._core import (
     Rd,
     Rv,
     epsilon,
+    g,
     kappa,
     moist_lapse,
     parcel_profile,
@@ -84,12 +95,16 @@ from ._ufunc import (
     dewpoint,
     dewpoint_from_specific_humidity,
     dry_lapse,
+    dry_static_energy,
     equivalent_potential_temperature,
     lcl,
     lcl_pressure,
+    moist_static_energy,
     potential_temperature,
     saturation_mixing_ratio,
     saturation_vapor_pressure,
+    standard_height,
+    standard_pressure,
     vapor_pressure,
     virtual_temperature,
     wet_bulb_potential_temperature,
@@ -112,5 +127,8 @@ from .core import (
     most_unstable_cape_cin,
     most_unstable_parcel,
     most_unstable_parcel_index,
+    specific_humidity,
+    surface_based_cape_cin,
 )
+from .entrainment import bunkers_storm_motion, ecape, entrainment
 from .utils import timeseries

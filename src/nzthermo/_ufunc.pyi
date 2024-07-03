@@ -1,15 +1,18 @@
+import enum
 from typing import Annotated, Any, ParamSpec, TypeVar, overload
 
 import numpy as np
 from numpy.typing import ArrayLike
 
 from ._typing import _ufunc1x1, _ufunc2x1, _ufunc2x2, _ufunc3x1, _ufunc3x2
-from .typing import Dimensionless, Kelvin, Pascal
+from .typing import Dimensionless, Kelvin, Meter, Pascal
 
 _P = ParamSpec("_P")
 _S = TypeVar("_S")
 _T = TypeVar("_T")
 _DType_T_co = TypeVar("_DType_T_co", bound=np.dtype[Any])
+
+_Jkg = enum.Enum("J/kg", float)
 
 class pressure_vector(np.ndarray[_S, _DType_T_co]):
     @overload
@@ -28,6 +31,11 @@ class pressure_vector(np.ndarray[_S, _DType_T_co]):
     def where(
         self, condition: np.ndarray[_S, np.dtype[np.bool_]], fill: ArrayLike = ...
     ) -> pressure_vector[_S, _DType_T_co]: ...
+    def to_standard_height(self) -> Meter[np.ndarray[_S, np.dtype[np.float64]]]: ...
+    @staticmethod
+    def from_standard_height(
+        height: Meter[ArrayLike],
+    ) -> pressure_vector[ArrayLike, np.dtype[Any]]: ...
 
 @_ufunc2x1
 def less_or_close(x: float, y: float) -> bool: ...
@@ -53,6 +61,10 @@ def wind_vector(u: float, v: float) -> tuple[float, float]: ...
 def wind_components(direction: float, speed: float) -> tuple[float, float]: ...
 
 # 1x1
+@_ufunc1x1
+def standard_height(pressure: Pascal[float]) -> Meter[float]: ...
+@_ufunc1x1
+def standard_pressure(height: Meter[float]) -> Pascal[float]: ...
 @_ufunc1x1
 def exner_function(pressure: Pascal[float]) -> Pascal[float]: ...
 @_ufunc1x1
@@ -85,6 +97,8 @@ def vapor_pressure(
 def dewpoint_from_specific_humidity(
     pressure: Pascal[float], specific_humidity: Dimensionless[float]
 ) -> Kelvin[float]: ...
+@_ufunc2x1
+def dry_static_energy(height: Meter[float], temperature: Kelvin[float]) -> _Jkg: ...
 
 # 3x1
 @_ufunc3x1
@@ -107,6 +121,10 @@ def wet_bulb_temperature(
 def dry_lapse(
     pressure: Pascal[float], temperature: Kelvin[float], reference_pressure: Pascal[float]
 ) -> Kelvin[float]: ...
+@_ufunc3x1
+def moist_static_energy(
+    height: Meter[float], temperature: Kelvin[float], specific_humidity: Dimensionless[float]
+) -> _Jkg: ...
 
 # 3x2
 @_ufunc3x2

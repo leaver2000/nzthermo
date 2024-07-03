@@ -20,8 +20,9 @@ _T_co = TypeVar("_T_co", bound=np.generic, covariant=True)
 
 Kelvin = Annotated[_T, "Kelvin"]
 Pascal = Annotated[_T, "Pascal"]
+Meter = Annotated[_T, "meters"]
 Dimensionless = Annotated[_T, "dimensionless"]
-
+MeterPerSecond = Annotated[_T, "meters/second"]
 
 if sys.version_info >= (3, 11):
     from typing import Self  # noqa

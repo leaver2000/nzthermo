@@ -1,3 +1,4 @@
+import enum
 from typing import (
     Any,
     Callable,
@@ -24,6 +25,10 @@ _Dtype_t = TypeVar("_Dtype_t", bound=np.generic)
 _DualArrayLike = (
     SupportsArray[_Dtype_t] | NestedSequence[SupportsArray[_Dtype_t]] | _T | NestedSequence[_T]
 )
+
+kg = enum.Enum("kg kg**-1", "kg")
+
+class floating(np.floating[Any], Generic[_T]): ...
 
 class _ufunc(np.ufunc, Generic[_P, _R, _In, _Out]):  # type: ignore[misc]
     @overload

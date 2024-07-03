@@ -9,7 +9,7 @@ the original implementation in areas where previously only support for `1D profi
 
 from __future__ import annotations
 
-from typing import Any, Literal as L, TypeVar
+from typing import TYPE_CHECKING, Annotated, Any, Literal as L, TypeVar, overload
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -33,16 +33,57 @@ from ._ufunc import (
     virtual_temperature,
     wet_bulb_temperature,
 )
-from .typing import Kelvin, N, Pascal, Z, shape
+from .typing import Dimensionless, Kelvin, N, Pascal, Z, shape
 from .utils import Parcel, broadcast_nz
 
+if TYPE_CHECKING:
+    from ._typing import floating as _floating, kg
+
 _S = TypeVar("_S", bound=shape)
-_T = TypeVar("_T", bound=np.floating[Any], covariant=True)
+_T = TypeVar("_T", bound=np.floating[Any])
 
 
 FASTPATH: dict[str, Any] = {"__fastpath": True}
 
 
+@overload
+def specific_humidity(mixing_ratio: Dimensionless[ArrayLike], /) -> NDArray[_floating[kg]]: ...
+@overload
+def specific_humidity(
+    pressure: Pascal[ArrayLike], dewpoint: Kelvin[ArrayLike], /
+) -> NDArray[_floating[kg]]: ...
+def specific_humidity(
+    mixing_ratio: ArrayLike, dewpoint: ArrayLike | None = None, /
+) -> NDArray[_floating[kg]]:
+    r"""Calculate the specific humidity.
+
+    Parameters:
+    -----------
+    mixing_ratio : array_like
+        Mixing ratio (kg/kg) at the levels given by `pressure`
+
+    [overload]
+    pressure : array_like
+        Atmospheric pressure profile (Pa). This array must be from high to low pressure.
+    dewpoint : array_like
+        Dewpoint (K) at the levels given by `pressure`
+
+    Returns:
+    --------
+    specific_humidity : ndarray
+        Specific humidity (kg/kg)
+    """
+    if dewpoint is None:
+        mixing_ratio = np.asarray(mixing_ratio)
+    else:
+        mixing_ratio = saturation_mixing_ratio(mixing_ratio, dewpoint)
+
+    return mixing_ratio / (1 + mixing_ratio)
+
+
+# -------------------------------------------------------------------------------------------------
+# convective condensation level
+# -------------------------------------------------------------------------------------------------
 @broadcast_nz
 def parcel_mixing_ratio(
     pressure: Pascal[pressure_vector[_S, np.dtype[_T]]],
@@ -338,7 +379,7 @@ def el(
     parcel_profile : array_like[[N, Z], floating], optional
         The parcel's temperature profile from which to calculate the EL. Defaults to the
         surface parcel profile.
-    which : `str`, optional
+    which : str, optional
         Pick which EL to return. Options are `top` or `bottom`. Default is `top`.
         'top' returns the lowest-pressure EL, default.
         'bottom' returns the highest-pressure EL.
@@ -433,6 +474,10 @@ def el_lfc(
 # -------------------------------------------------------------------------------------------------
 # cape_cin
 # -------------------------------------------------------------------------------------------------
+CAPE = Annotated[np.ndarray[_S, np.dtype[_T]], "Convective Available Potential Energy (J/kg)"]
+CIN = Annotated[np.ndarray[_S, np.dtype[_T]], "Convective INhibition (J/kg)"]
+
+
 @broadcast_nz
 def cape_cin(
     pressure: Pascal[pressure_vector[shape[N, Z], np.dtype[_T]]],
@@ -443,7 +488,7 @@ def cape_cin(
     *,
     which_lfc: L["bottom", "top"] = "bottom",
     which_el: L["bottom", "top"] = "top",
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[CAPE[shape[N], _T], CIN[shape[N], _T]]:
     r"""Calculate CAPE and CIN.
 
     Parameters
@@ -455,10 +500,18 @@ def cape_cin(
     dewpoint : array_like[(N, Z), floating]
         Dewpoint (K) at the levels given by `pressure`
     parcel_profile : array_like[(N, Z), floating]
+        Parcel temperature profile from which to calculate CAPE and CIN.
+    which_lfc : str, optional
+        Pick which LFC to use. Options are `top` or `bottom`. Default is `bottom`.
+    which_el : str, optional
+        Pick which EL to use. Options are `top` or `bottom`. Default is `top`.
 
     Returns
     -------
-    TODO : ...
+    CAPE : array_like[(N,), floating]
+        Convective Available Potential Energy (J/kg)
+    CIN : array_like[(N,), floating]
+        Convective INhibition (J/kg)
 
     Examples
     --------
@@ -494,6 +547,42 @@ def cape_cin(
     CIN[CIN > 0.0] = 0.0
 
     return CAPE, CIN
+
+
+# -------------------------------------------------------------------------------------------------
+# surface_based_cape_cin
+# -------------------------------------------------------------------------------------------------
+@broadcast_nz
+def surface_based_cape_cin(
+    pressure: Pascal[pressure_vector[shape[N, Z], np.dtype[_T]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    /,
+) -> tuple[CAPE[shape[N], _T], CIN[shape[N], _T]]:
+    r"""Calculate surface-based CAPE and CIN.
+
+    Parameters
+    ----------
+    pressure : array_like[(N, Z), floating]
+        Atmospheric pressure profile (Pa). This array must be from high to low pressure.
+    temperature : array_like[(N, Z), floating]
+        Temperature (K) at the levels given by `pressure`
+    dewpoint : array_like[(N, Z), floating]
+        Dewpoint (K) at the levels given by `pressure`
+
+    Returns
+    -------
+    TODO : ...
+
+    Examples
+    --------
+    TODO : ...
+    """
+    pressure, temperature, dewpoint, prof = parcel_profile_with_lcl(
+        pressure, temperature, dewpoint
+    )
+
+    return cape_cin(pressure, temperature, dewpoint, prof, **FASTPATH)
 
 
 # -------------------------------------------------------------------------------------------------
@@ -602,7 +691,7 @@ def most_unstable_cape_cin(
     *,
     depth: Pascal[float] = 30000.0,
     bottom: Pascal[float] | None = None,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[CAPE[shape[N], _T], CIN[shape[N], _T]]:
     r"""Calculate most unstable CAPE and CIN.
 
     Parameters
@@ -697,7 +786,7 @@ def mixed_layer(
         - np.min(pressure, initial=np.inf, axis=1, where=where)
     )
 
-    return tuple(F.nantrapz(args, pressure, axis=-1, where=where) / -depth)
+    return tuple(F.nantrapz(args, pressure, axis=-1, where=where[np.newaxis]) / -depth)
 
 
 @broadcast_nz
@@ -777,7 +866,7 @@ def mixed_layer_cape_cin(
     bottom: ArrayLike | None = None,
     depth: float | NDArray[np.floating[Any]] = 10000.0,
     interpolate=False,
-):
+) -> tuple[CAPE[shape[N], _T], CIN[shape[N], _T]]:
     r"""Calculate mixed-layer CAPE and CIN.
 
     Calculate the convective available potential energy (CAPE) and convective inhibition (CIN)
@@ -789,58 +878,21 @@ def mixed_layer_cape_cin(
 
     Parameters
     ----------
-    pressure : `pint.Quantity`
-        Pressure profile
-
-    temperature : `pint.Quantity`
-        Temperature profile
-
-    dewpoint : `pint.Quantity`
-        Dewpoint profile
-
-    kwargs
-        Additional keyword arguments to pass to `mixed_parcel`
+    pressure : array_like[(N, Z), floating]
+        Atmospheric pressure profile (Pa). This array must be from high to low pressure.
+    temperature : array_like[(N, Z), floating]
+        Temperature (K) at the levels given by `pressure`
+    dewpoint : array_like[(N, Z), floating]
+        Dewpoint (K) at the levels given by `pressure`
+    TODO : ...
 
     Returns
     -------
-    `pint.Quantity`
-        Mixed-layer Convective Available Potential Energy (CAPE)
-    `pint.Quantity`
-        Mixed-layer Convective INhibition (CIN)
+    TODO : ...
 
     Examples
     --------
-    >>> from metpy.calc import dewpoint_from_relative_humidity, mixed_layer_cape_cin
-    >>> from metpy.units import units
-    >>> # pressure
-    >>> p = [1008., 1000., 950., 900., 850., 800., 750., 700., 650., 600.,
-    ...      550., 500., 450., 400., 350., 300., 250., 200.,
-    ...      175., 150., 125., 100., 80., 70., 60., 50.,
-    ...      40., 30., 25., 20.] * units.hPa
-    >>> # temperature
-    >>> T = [29.3, 28.1, 25.5, 20.9, 18.4, 15.9, 13.1, 10.1, 6.7, 3.1,
-    ...      -0.5, -4.5, -9.0, -14.8, -21.5, -29.7, -40.0, -52.4,
-    ...      -59.2, -66.5, -74.1, -78.5, -76.0, -71.6, -66.7, -61.3,
-    ...      -56.3, -51.7, -50.7, -47.5] * units.degC
-    >>> # relative humidity
-    >>> rh = [.85, .75, .56, .39, .82, .72, .75, .86, .65, .22, .52,
-    ...       .66, .64, .20, .05, .75, .76, .45, .25, .48, .76, .88,
-    ...       .56, .88, .39, .67, .15, .04, .94, .35] * units.dimensionless
-    >>> # calculate dewpoint
-    >>> Td = dewpoint_from_relative_humidity(T, rh)
-    >>> mixed_layer_cape_cin(p, T, Td, depth=50 * units.hPa)
-    (<Quantity(711.239032, 'joule / kilogram')>, <Quantity(-5.48053989, 'joule / kilogram')>)
-
-    See Also
-    --------
-    cape_cin, mixed_parcel, parcel_profile
-
-    Notes
-    -----
-    Only functions on 1D profiles (not higher-dimension vertical cross sections or grids).
-    Since this function returns scalar values when given a profile, this will return Pint
-    Quantities even when given xarray DataArray profiles.
-
+    TODO : ...
     """
     if height is not None:
         raise NotImplementedError("height argument is not implemented")
