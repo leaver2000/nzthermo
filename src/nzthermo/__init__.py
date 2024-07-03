@@ -58,9 +58,11 @@ __all__ = [
     "most_unstable_parcel",
     "most_unstable_parcel_index",
     "specific_humidity",
+    "surface_based_cape_cin",
     # .entrainment
     "entrainment",
     "bunkers_storm_motion",
+    "ecape",
     # .utils
     "timeseries",
 ]
@@ -126,6 +128,7 @@ from .core import (
     most_unstable_parcel,
     most_unstable_parcel_index,
     specific_humidity,
+    surface_based_cape_cin,
 )
-from .entrainment import bunkers_storm_motion, entrainment
+from .entrainment import bunkers_storm_motion, ecape, entrainment
 from .utils import timeseries

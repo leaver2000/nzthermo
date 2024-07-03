@@ -85,7 +85,7 @@ class ParcelProfile(NamedTuple, Generic[_S, _T]):
     pressure: Pascal[np.ndarray[_S, np.dtype[_T]]]
     temperature: Kelvin[np.ndarray[_S, np.dtype[_T]]]
 
-    def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
+    def __array_ufunc__(self, ufunc: Callable[[ArrayLike], NDArray], method, *inputs, **kwargs):
         if method == "__call__":
             return ufunc(self.pressure)
 

@@ -1,15 +1,16 @@
 #include <libthermo.hpp>
+#include <stdio.h>
 
 namespace libthermo {
 
 template <floating T>
 constexpr T standard_pressure(T height) noexcept {
-    return P0 * std::pow(1 - (ELR / T0) * height, g / (Rd * ELR));
+    return P0 * pow(1 - (ELR / T0) * height, g / (Rd * ELR));
 }
 
 template <floating T>
 constexpr T standard_height(T pressure) noexcept {
-    return (T0 / ELR) * (1. - std::pow(pressure / P0, Rd * ELR / g));
+    return (T0 / ELR) * (1. - pow(pressure / P0, Rd * ELR / g));
 }
 
 /**
@@ -29,6 +30,7 @@ constexpr size_t index_pressure(const T levels[], const T value, const size_t si
     const T p1 = levels[N];
     if (isnan(p1))
         return index_pressure(levels, value, N);
+
     const T p0 = levels[0];
     const T step = ((p1 - p0) / N);
 
@@ -41,6 +43,39 @@ constexpr size_t index_pressure(const T levels[], const T value, const size_t si
         idx++;
 
     return idx;
+}
+
+template <floating T>
+constexpr T wind_direction(const T u, const T v) noexcept {
+    return fmod(degrees(atan2(u, v)) + 180.0, 360.0);
+}
+
+template <floating T>
+constexpr T wind_direction(const wind_components<T>& uv) noexcept {
+    return wind_direction(uv.u, uv.v);
+}
+
+template <floating T>
+constexpr T wind_magnitude(const T u, const T v) noexcept {
+    return hypot(u, v);
+}
+
+template <floating T>
+constexpr T wind_magnitude(const wind_components<T>& uv) noexcept {
+    return hypot(uv.u, uv.v);
+}
+
+template <floating T>
+constexpr wind_vector<T>::wind_vector(const wind_components<T>& uv) noexcept :
+    direction(wind_direction(uv)), magnitude(wind_magnitude(uv)) {
+}
+
+template <floating T>
+constexpr wind_components<T>::wind_components(const wind_vector<T>& dm) noexcept {
+    const T d = radians(dm.direction);
+    const T m = -dm.magnitude;
+    u = m * sin(d);
+    v = m * cos(d);
 }
 
 template <floating T>
@@ -173,25 +208,25 @@ constexpr T wet_bulb_potential_temperature(
 }
 
 template <floating T>
-constexpr T _moist_lapse(const T pressure, const T temperature) noexcept {
-    const T r = saturation_mixing_ratio(pressure, temperature);
-
-    return ((Rd * temperature + Lv * r) /
-            (Cp + (Lv * Lv * r * epsilon / (Rd * temperature * temperature)))) /
-      pressure;
-}
-
-template <floating T>
 constexpr T moist_lapse(
   const T pressure, const T next_pressure, const T temperature, const T step
 ) noexcept {
-    return rk2<T>(_moist_lapse<T>, pressure, next_pressure, temperature, step);
+    return rk2<T>(
+      [](T p, T t) -> T {
+          T r = saturation_mixing_ratio(p, t);
+          return ((Rd * t + Lv * r) / (Cp + (Lv * Lv * r * epsilon / (Rd * t * t)))) / p;
+      },
+      pressure,
+      next_pressure,
+      temperature,
+      step
+    );
 }
 
 template <floating T>
 constexpr T find_lcl(T pressure, T reference_pressure, T temperature, T mixing_ratio) noexcept {
-    const T td = dewpoint(pressure, mixing_ratio);
-    const T p = reference_pressure * pow(td / temperature, 1.0 / (Rd / Cp));
+    const T p =
+      reference_pressure * pow(dewpoint(pressure, mixing_ratio) / temperature, 1.0 / (Rd / Cp));
 
     return isnan(p) ? pressure : p;
 }
@@ -200,9 +235,14 @@ template <floating T>
 constexpr T lcl_pressure(
   const T pressure, const T temperature, const T dewpoint, const T eps, const size_t max_iters
 ) noexcept {
-    const T r = mixing_ratio(saturation_vapor_pressure(dewpoint), pressure);
-
-    return fixed_point(find_lcl<T>, max_iters, eps, pressure, temperature, r);
+    return fixed_point(
+      find_lcl<T>,
+      max_iters,
+      eps,
+      pressure,
+      temperature,
+      mixing_ratio(saturation_vapor_pressure(dewpoint), pressure)
+    );
 }
 
 template <floating T>

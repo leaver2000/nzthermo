@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 """Calculate the entraining CAPE (ECAPE) of a parcel"""
+
 from typing import Callable, Tuple
 
 import metpy.calc as mpcalc
@@ -89,7 +90,10 @@ def calc_lfc_height(
     lfc_p, lfc_t = mpcalc.lfc(
         pressure, temperature, dew_point_temperature, parcel_temperature_profile=parcel_profile
     )
-    lfc_idx = (pressure - lfc_p > 0).nonzero()[0][-1]
+    lfc_idx = (pressure - lfc_p > 0).nonzero()[0]
+    if len(lfc_idx) == 0:
+        return np.nan, np.nan
+    lfc_idx = lfc_idx[-1]
     lfc_z = height_msl[lfc_idx]
 
     return lfc_idx, lfc_z
@@ -133,7 +137,11 @@ def calc_el_height(
     el_p, el_t = mpcalc.el(
         pressure, temperature, dew_point_temperature, parcel_temperature_profile=parcel_profile
     )
-    el_idx = (pressure - el_p > 0).nonzero()[0][-1]
+    el_idx = (pressure - el_p > 0).nonzero()[0]
+    if len(el_idx) == 0:
+        return np.nan, np.nan
+
+    el_idx = el_idx[-1]
     el_z = height_msl[el_idx]
 
     return el_idx, el_z
@@ -203,8 +211,7 @@ def calc_mse(
 
     # calculate MSE_bar
     moist_static_energy = mpcalc.moist_static_energy(height_msl, temperature, specific_humidity)
-    print(moist_static_energy.units)
-    print(np.cumsum(moist_static_energy))
+
     moist_static_energy_bar = np.cumsum(moist_static_energy) / np.arange(
         1, len(moist_static_energy) + 1
     )
@@ -216,7 +223,7 @@ def calc_mse(
         height_msl, temperature, saturation_mixing_ratio
     )
     moist_static_energy_star = moist_static_energy_star.to("J/kg")
-    print(moist_static_energy_bar)
+
     return moist_static_energy_bar, moist_static_energy_star
 
 
@@ -270,6 +277,8 @@ def calc_ncape(
     """
 
     # see compute_NCAPE.m L41
+    if np.isnan(lfc_idx) or np.isnan(el_idx):
+        return np.nan * units("J/kg")
     ncape = np.sum(
         (0.5 * integral_arg[lfc_idx:el_idx] + 0.5 * integral_arg[lfc_idx + 1 : el_idx + 1])
         * (height_msl[lfc_idx + 1 : el_idx + 1] - height_msl[lfc_idx:el_idx])
@@ -424,6 +433,9 @@ def calc_ecape(
     sr_wind = calc_sr_wind(pressure, u_wind, v_wind, height_msl)
 
     # calculate the entraining cape (ecape)
+    if np.isnan(el_z):
+        return np.nan * units("J/kg")
+
     psi = calc_psi(el_z)
     ecape_a = calc_ecape_a(sr_wind, psi, ncape, cape)
 

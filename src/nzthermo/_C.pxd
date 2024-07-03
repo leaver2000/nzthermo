@@ -1,38 +1,4 @@
-# cython: boundscheck=False
 # pyright: reportGeneralTypeIssues=false
-
-
-cdef extern from "functional.cpp" namespace "libthermo" nogil:
-    cdef cppclass point[T]:
-        T x
-        T y
-
-    T linear_interpolate[T](T x, T x0, T x1, T y0, T y1) noexcept
-    T degrees[T](T radians) noexcept
-    T radians[T](T degrees) noexcept
-    T interpolate_1d[T](T x, T* xp, T* fp, size_t size) noexcept
-    point[T] intersect_1d[T](
-        T* x, T* a, T* b, size_t size, bint log_x, bint increasing, bint bottom
-    ) noexcept
-
-    size_t search_sorted[T](T* x, T value, size_t size, bint inverted) noexcept
-
-
-cdef extern from "wind.cpp" namespace "libthermo" nogil:
-    T wind_direction[T](T, T) noexcept
-    T wind_magnitude[T](T, T) noexcept
-
-    cdef cppclass wind_components[T]:
-        T u, v
-        wind_components() noexcept
-        wind_components(T, T) noexcept
-        wind_components(wind_vector[T]) noexcept
-
-    cdef cppclass wind_vector[T]:
-        T direction, magnitude
-        wind_vector() noexcept
-        wind_vector(T, T) noexcept
-        wind_vector(wind_components[T])  noexcept
 
 
 cdef extern from "libthermo.cpp" namespace "libthermo" nogil:
@@ -49,6 +15,22 @@ cdef extern from "libthermo.cpp" namespace "libthermo" nogil:
     const double epsilon # `Mw / Md` - molecular weight ratio
     const double kappa   # `Rd / Cp`  - ratio of gas constants
 
+    T linear_interpolate[T](T x, T x0, T x1, T y0, T  y1) noexcept
+    size_t index_pressure[T](T* levels, T value, size_t size) noexcept
+
+
+    cdef cppclass wind_components[T]:
+        T u, v
+        wind_components() noexcept
+        wind_components(T, T) noexcept
+        wind_components(wind_vector[T]) noexcept
+
+    cdef cppclass wind_vector[T]:
+        T direction, magnitude
+        wind_vector() noexcept
+        wind_vector(T, T) noexcept
+        wind_vector(wind_components[T]) noexcept
+
     cdef cppclass lcl[T]:
         T pressure
         T temperature
@@ -57,11 +39,8 @@ cdef extern from "libthermo.cpp" namespace "libthermo" nogil:
         lcl(T pressure, T temperature, T dewpoint) noexcept
         size_t index_on(T* levels, size_t size) noexcept
 
-    # 1x1
-#     return std::pow(101325.0 * (1 - (0.0065 / 288.0) * height), (g / (Rd * 0.0065)));
-# }
-
-# template <floating T>
+    T wind_direction[T](T u, T v) noexcept
+    T wind_magnitude[T](T u, T v) noexcept
     T standard_pressure[T](T height) noexcept 
     T standard_height[T](T pressure) noexcept 
     T saturation_vapor_pressure[T](T temperature) noexcept
@@ -89,4 +68,4 @@ cdef extern from "libthermo.cpp" namespace "libthermo" nogil:
     T moist_static_energy[T](T height, T temperature, T specific_humidity) noexcept
 
 
-    size_t index_pressure[T](T* levels, T value, size_t size) noexcept
+    

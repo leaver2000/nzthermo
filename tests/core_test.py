@@ -25,6 +25,7 @@ from nzthermo.core import (
     most_unstable_parcel,
     most_unstable_parcel_index,
     specific_humidity,
+    surface_based_cape_cin,
 )
 
 np.set_printoptions(
@@ -1312,6 +1313,29 @@ def test_cape_cin_metpy_regression(which_lfc, which_el) -> None:
         assert_allclose(CIN[i], CIN_.m, atol=10)
 
 
+# ............................................................................................... #
+# nzthermo.core.surface_based_cape_cin
+# ............................................................................................... #
+@pytest.mark.broadcasting
+@pytest.mark.surface_based_cape_cin
+def test_surface_based_cape_cin_broadcasting():
+    assert_array_equal(
+        surface_based_cape_cin(P, T, Td),
+        surface_based_cape_cin(np.broadcast_to(P, T.shape), T, Td),
+    )
+
+
+@pytest.mark.regression
+@pytest.mark.surface_based_cape_cin
+def test_surface_based_cape_cin_regression() -> None:
+    CAPE, CIN = surface_based_cape_cin(P, T, Td)
+
+    for i in range(T.shape[0]):
+        CAPE_, CIN_ = mpcalc.surface_based_cape_cin(P * Pa, T[i] * K, Td[i] * K)
+        assert_allclose(CAPE[i], CAPE_.m, atol=10)
+        assert_allclose(CIN[i], CIN_.m, atol=20)
+
+
 # ----------------------------------------------------------------------------------------------- #
 # MOST UNSTABLE
 # ----------------------------------------------------------------------------------------------- #
@@ -1459,7 +1483,7 @@ def test_mixed_parcel_broadcasting() -> None:
 @pytest.mark.mixed_parcel
 def test_mixed_parcel_regression() -> None:
     p, t, td = mixed_parcel(P, T, Td)
-
+    mpcalc.surface_based_cape_cin
     for i in range(T.shape[0]):
         p_, t_, td_ = mpcalc.mixed_parcel(P * Pa, T[i] * K, Td[i] * K, interpolate=False)
         assert_allclose(

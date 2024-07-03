@@ -6,7 +6,7 @@
 #include <vector>
 #include <array>
 
-#include <functional.hpp>
+// #include <functional.hpp>
 #include <common.hpp>
 
 namespace libthermo {
@@ -31,6 +31,35 @@ static constexpr double Md = 28.96546;            // `(g/mol)` - molecular weigh
 static constexpr double ELR = 6.5e-3;             // `(K/m)` - environmental lapse rate
 static constexpr double epsilon = Mw / Md;        // `Mw / Md` - molecular weight ratio
 static constexpr double kappa = Rd / Cp;          // `Rd / Cp`  - ratio of gas constants
+
+template <floating T>
+class wind_vector;
+
+template <floating T>
+class wind_components;
+
+template <floating T>
+constexpr T wind_direction(const T u, const T v) noexcept;
+template <floating T>
+constexpr T wind_magnitude(const T u, const T v) noexcept;
+
+template <floating T>
+class wind_components {
+  public:
+    T u, v;
+    constexpr wind_components() noexcept = default;
+    constexpr wind_components(const T u, const T v) noexcept : u(u), v(v){};
+    constexpr explicit wind_components(const wind_vector<T>& uv) noexcept;
+};
+
+template <floating T>
+class wind_vector {
+  public:
+    T direction, magnitude;
+    constexpr wind_vector() noexcept = default;
+    constexpr wind_vector(const T d, const T m) noexcept : direction(d), magnitude(m){};
+    constexpr explicit wind_vector(const wind_components<T>& uv) noexcept;
+};
 
 template <floating T>
 constexpr size_t index_pressure(const T x[], const T value, const size_t size) noexcept;

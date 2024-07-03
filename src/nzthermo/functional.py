@@ -157,13 +157,9 @@ def nantrapz(
     The try-except block was removed because it was not necessary, for the use case of this
     of this library.
     """
-    if where is not None:
-        y = np.where(where, y, np.nan)
-        if x is not None:
-            x = np.where(where, x, np.nan)
+    kw: dict[str, Any] = {"axis": axis}
 
-    else:
-        y = np.asanyarray(y)
+    y = np.asanyarray(y)
     if x is None:
         d = dx
     else:
@@ -181,8 +177,11 @@ def nantrapz(
     slice2 = [slice(None)] * nd
     slice1[axis] = slice(1, None)
     slice2[axis] = slice(None, -1)
+    if where is not None:
+        m = np.asarray(where, dtype=np.bool_)
+        kw["where"] = m[tuple(slice1)] & m[tuple(slice2)]
 
-    return np.nansum(d * (y[tuple(slice1)] + y[tuple(slice2)]) / 2.0, axis=axis)
+    return np.nansum(d * (y[tuple(slice1)] + y[tuple(slice2)]) / 2.0, **kw)  # type: ignore
 
 
 def intersect_nz(
