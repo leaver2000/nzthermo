@@ -108,6 +108,13 @@ def nanroll_2d(
     return args
 
 
+def arange_slice(x: slice, nd: int, axis: SupportsIndex = -1) -> tuple[slice, ...]:
+    s = [slice(None)] * nd
+    s[axis] = x
+
+    return tuple(s)
+
+
 def nantrapz(
     y: _ArrayLikeComplex_co | _ArrayLikeTD64_co | _ArrayLikeObject_co,
     x: _ArrayLikeComplex_co | _ArrayLikeTD64_co | _ArrayLikeObject_co | None = None,
@@ -143,6 +150,9 @@ def nantrapz(
         The spacing between sample points when `x` is None. The default is 1.
     axis : int, optional
         The axis along which to integrate.
+    where : array_like, optional
+        Define a boolean mask to exclude certain values from the integration.
+
 
     Returns
     -------
@@ -173,15 +183,13 @@ def nantrapz(
         else:
             d = np.diff(x, axis=axis)
     nd = y.ndim
-    slice1 = [slice(None)] * nd
-    slice2 = [slice(None)] * nd
-    slice1[axis] = slice(1, None)
-    slice2[axis] = slice(None, -1)
+    s1 = arange_slice(slice(1, None), nd, axis)
+    s2 = arange_slice(slice(None, -1), nd, axis)
     if where is not None:
         m = np.asarray(where, dtype=np.bool_)
-        kw["where"] = m[tuple(slice1)] & m[tuple(slice2)]
+        kw["where"] = m[s1] & m[s2]
 
-    return np.nansum(d * (y[tuple(slice1)] + y[tuple(slice2)]) / 2.0, **kw)  # type: ignore
+    return np.nansum(d * (y[s1] + y[s2]) / 2.0, **kw)  # type: ignore
 
 
 def intersect_nz(
@@ -255,8 +263,8 @@ def intersect_nz(
 
 
 def zero_crossings(
-    X: np.ndarray[shape[N, Z], np.dtype[_T]] | np.ndarray[shape[N], np.dtype[_T]],
-    Y: np.ndarray[shape[N, Z], np.dtype[_T]],
+    pressure: np.ndarray[shape[N, Z], np.dtype[_T]] | np.ndarray[shape[N], np.dtype[_T]],
+    temperature: np.ndarray[shape[N, Z], np.dtype[_T]],
 ) -> Profile[_T]:
     """
     This function targets the `metpy.thermo._find_append_zero_crossings` function but with support
@@ -265,11 +273,11 @@ def zero_crossings(
 
     >>> F.find_append_zero_crossings(x, x - y)
     """
-    N, Z = Y.shape
-    X = np.broadcast_to(X, (N, Z))
+    N, Z = temperature.shape
+    pressure = np.broadcast_to(pressure, (N, Z))
 
-    x_full, y_full = np.full((2, N, Z), fill_value=np.nan, dtype=X.dtype)
-    x, y = np.log(X[:, 1:]), Y[:, 1:]
+    x_full, y_full = np.full((2, N, Z), fill_value=np.nan, dtype=pressure.dtype)
+    x, y = np.log(pressure[:, 1:]), temperature[:, 1:]
 
     nx, z0 = np.nonzero(np.diff(np.sign(y), axis=1))
     z1 = z0 + 1
@@ -281,7 +289,10 @@ def zero_crossings(
         x_full[nx, z0] = np.exp(x := (y1 * x0 - y0 * x1) / (y1 - y0))
         y_full[nx, z0] = ((x - x0) / (x1 - x0)) * (y1 - y0) + y0
 
-    x, y = np.concatenate([X, x_full], axis=1), np.concatenate([Y, y_full], axis=1)
+    x, y = (
+        np.concatenate([pressure, x_full], axis=1),
+        np.concatenate([temperature, y_full], axis=1),
+    )
 
     # sort all of the values with the lowest value first and all of the nan values last
     sort = np.arange(N)[:, np.newaxis], np.argsort(x, axis=1, kind="quicksort")
@@ -298,7 +309,11 @@ class TopK(NamedTuple, Generic[_T]):
 
 
 def topk(
-    values: NDArray[_T], k: int, axis: int = -1, absolute: bool = False, sort: bool = False
+    values: ArrayLike | NDArray[_T],
+    k: int,
+    axis: int = -1,
+    absolute: bool = False,
+    sort: bool = False,
 ) -> TopK[_T]:
     values = np.asarray(values)
     arg = np.abs(values) if absolute else values

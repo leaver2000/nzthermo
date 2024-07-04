@@ -4,6 +4,7 @@ import pytest
 from metpy.units import units
 from numpy.testing import assert_allclose, assert_array_equal
 
+from nzthermo._core import pressure_vector
 from nzthermo._ufunc import (
     dewpoint_from_specific_humidity,
     dry_static_energy,
@@ -11,7 +12,6 @@ from nzthermo._ufunc import (
     lcl,
     moist_static_energy,
     potential_temperature,
-    pressure_vector,
     standard_height,
     standard_pressure,
     wet_bulb_potential_temperature,
@@ -62,19 +62,6 @@ def test_height_conversion() -> None:
         mpcalc.height_to_pressure_std(height * units.meter).to(Pa).m,
         rtol=1e-3,
     )
-
-
-def test_pressure_vector() -> None:
-    v = pressure_vector([1000.0, 900.0, 800.0, 700.0, 600.0])
-    assert v.is_above(1013.25).all()
-    assert v.is_above(1013.25, close=True).all()
-    print(v.is_above(1000.0, close=True))
-
-    assert v.is_below(200.0).all()
-    assert v.is_below(200.0, close=True).all()
-
-    assert v.is_between(1013.25, 200.0).all()
-    assert v.is_between(1013.25, 200.0, close=True).all()
 
 
 def test_dewpoints() -> None:
