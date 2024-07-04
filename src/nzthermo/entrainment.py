@@ -5,13 +5,11 @@ from typing import TYPE_CHECKING, Any, Callable, Generic, Literal as L, TypeVar
 import numpy as np
 
 from . import functional as F
-from ._core import Rd, g, parcel_profile
+from ._core import Rd, g, parcel_profile, pressure_vector, height_vector
 from ._ufunc import (
     between_or_close,
     dewpoint_from_specific_humidity,
-    less_or_close,
     moist_static_energy,
-    pressure_vector,
     saturation_mixing_ratio,
     wind_magnitude,
 )
@@ -34,23 +32,23 @@ def bunkers_storm_motion(
     pressure: Pascal[pressure_vector[shape[N, Z], np.dtype[_T]]],
     u: MeterPerSecond[np.ndarray[shape[N, Z], np.dtype[_T]]],
     v: MeterPerSecond[np.ndarray[shape[N, Z], np.dtype[_T]]],
-    height: Meter[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    height: Meter[height_vector[shape[N, Z], np.dtype[_T]]],
 ) -> tuple[np.ndarray[shape[L["(U, V)"], N], np.dtype[_T]], ...]:
     # mean wind from sfc-6km
-    mask = less_or_close(height, 6000.0).astype(np.bool_)
+    mask = height.is_below(6000.0, close=True)
     pbot = pressure[np.nanargmax(pressure.where(mask), axis=1)]
     ptop = pressure[np.nanargmin(pressure.where(mask), axis=1)]
     delta = ptop - pbot
     wind_mean = F.nantrapz([u, v], pressure, axis=2, where=mask[np.newaxis]) / delta
 
     # mean wind from sfc-500m
-    mask = less_or_close(height, 500.0).astype(np.bool_)
+    mask = height.is_below(500.0, close=True)
     pbot = pressure[np.nanargmax(pressure.where(mask), axis=1)]
     ptop = pressure[np.nanargmin(pressure.where(mask), axis=1)]
     delta = ptop - pbot
     w0500 = F.nantrapz([u, v], x=pressure, axis=2, where=mask[np.newaxis]) / delta
 
-    mask = between_or_close(height, 5250.0, 6250.0).astype(np.bool_)
+    mask = height.is_between(5250.0, 6250.0, close=True)
     pbot = pressure[np.nanargmax(pressure.where(mask), axis=1)]
     ptop = pressure[np.nanargmin(pressure.where(mask), axis=1)]
     delta = ptop - pbot
@@ -81,14 +79,14 @@ def _get_profile(
     return parcel_profile(pressure, t, td)
 
 
-class entrainment(Generic[_T]):
+class _entrainment(Generic[_T]):
     # TODO: some of the ecape type arguments need to be built into the constructor function
     # as many of the properties are dependent on the parcel type...
     if TYPE_CHECKING:
         shape: tuple[int, int]
         dtype: np.dtype[_T]
         pressure: Pascal[pressure_vector[shape[N, Z], np.dtype[_T]]]
-        height: Meter[np.ndarray[shape[N, Z], np.dtype[_T]]]
+        height: Meter[height_vector[shape[N, Z], np.dtype[_T]]]
         temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]]
         u_wind: MeterPerSecond[np.ndarray[shape[N, Z], np.dtype[_T]]]
         v_wind: MeterPerSecond[np.ndarray[shape[N, Z], np.dtype[_T]]]
@@ -100,7 +98,9 @@ class entrainment(Generic[_T]):
 
     def __init__(
         self,
-        pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[_T]]],
+        pressure: Pascal[
+            np.ndarray[shape[N, Z], np.dtype[_T]] | np.ndarray[shape[N], np.dtype[_T]]
+        ],
         height: Meter[np.ndarray[shape[N, Z], np.dtype[_T]]],
         temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
         u_wind: MeterPerSecond[np.ndarray[shape[N, Z], np.dtype[_T]]],
@@ -121,7 +121,7 @@ class entrainment(Generic[_T]):
         self.dtype = np.dtype(dtype)
         self.temperature = temperature.astype(dtype, copy=False)
         self.pressure = pressure.astype(dtype, copy=False).view(pressure_vector)
-        self.height = height.astype(dtype, copy=False)
+        self.height = height.astype(dtype, copy=False).view(height_vector)
 
         if dewpoint is not None and specific_humidity is not None:
             raise ValueError("Only one of specific_humidity or dewpoint can be provided")
@@ -222,8 +222,8 @@ class entrainment(Generic[_T]):
     @property
     def storm_relative_motion(self) -> np.ndarray[shape[N], np.dtype[_T]]:
         height_agl = self.height - self.height[:, :1]
-        right_mover = bunkers_storm_motion(self.pressure, self.u, self.v, height_agl)[0].reshape(
-            2, -1, 1
+        right_mover = (
+            bunkers_storm_motion(self.pressure, self.u, self.v, height_agl)[0].reshape(2, -1, 1)  # type: ignore
         )  # ((U, V), N, 1)
 
         u, v = self.wind - right_mover  # ((U, V), N, Z)
@@ -237,7 +237,6 @@ class entrainment(Generic[_T]):
         dry_air_spec_heat_ratio = 1.4
 
         cp_d = dry_air_spec_heat_ratio * Rd / (dry_air_spec_heat_ratio - 1)
-        # dry_air_spec_heat_ratio = 0.14
 
         temperature = self.temperature
         bar, star = self.moist_static_energy
@@ -276,44 +275,70 @@ class entrainment(Generic[_T]):
 
     @property
     def ecape_a(self) -> np.ndarray[shape[N], np.dtype[_T]]:
-        srm = self.storm_relative_motion
+        srm2 = self.storm_relative_motion**2
         psi = self.psi
+        cape = self._cape
         ncape = self.ncape
 
-        a = srm**2 / 2.0
-        b = (-1 - psi - (2 * psi / srm**2) * ncape) / (4 * psi / srm**2)
+        a = srm2 / 2.0
+        b = (-1 - psi - (2 * psi / srm2) * ncape) / (4 * psi / srm2)
         c = np.sqrt(
-            (1 + psi + (2 * psi / srm**2) * ncape) ** 2
-            + 8 * (psi / srm**2) * (self._cape - (psi * ncape))
-        ) / (4 * psi / srm**2)
+            (1 + psi + (2 * psi / srm2) * ncape) ** 2 + 8 * (psi / srm2) * (cape - (psi * ncape))
+        ) / (4 * psi / srm2)
 
         ecape_a = np.sum([a, b, c], axis=0)
         # set to 0 if negative
-        m = ecape_a < 0.0
-        ecape_a[m] = 0.0
+        ecape_a[ecape_a < 0.0] = 0.0
 
         return ecape_a
 
 
-def ecape(
+entrainment = _entrainment
+
+
+def ncape(
     pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[_T]]],
-    height: Meter[np.ndarray[shape[N, Z], np.dtype[_T]]],
     temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    height: Meter[np.ndarray[shape[N, Z], np.dtype[_T]]],
     u_wind: MeterPerSecond[np.ndarray[shape[N, Z], np.dtype[_T]]],
     v_wind: MeterPerSecond[np.ndarray[shape[N, Z], np.dtype[_T]]],
     /,
-    specific_humidity: Dimensionless[np.ndarray[shape[N, Z], np.dtype[_T]]] | None = None,
-    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]] | None = None,
+    *,
     cape_type: np.ndarray[shape[N], np.dtype[np.floating[Any]]]
     | L["most_unstable", "surface_based", "mixed_layer"] = "most_unstable",
 ) -> np.ndarray[shape[N], np.dtype[_T]]:
-    e = entrainment(
+    e = _entrainment(
         pressure,
         height,
         temperature,
         u_wind,
         v_wind,
-        specific_humidity=specific_humidity,
+        dewpoint=dewpoint,
+        cape_type=cape_type,
+    )
+
+    return e.ncape
+
+
+def ecape(
+    pressure: Pascal[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    temperature: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    dewpoint: Kelvin[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    height: Meter[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    u_wind: MeterPerSecond[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    v_wind: MeterPerSecond[np.ndarray[shape[N, Z], np.dtype[_T]]],
+    /,
+    *,
+    cape_type: np.ndarray[shape[N], np.dtype[np.floating[Any]]]
+    | L["most_unstable", "surface_based", "mixed_layer"] = "most_unstable",
+) -> np.ndarray[shape[N], np.dtype[_T]]:
+    e = _entrainment(
+        pressure,
+        height,
+        temperature,
+        u_wind,
+        v_wind,
         dewpoint=dewpoint,
         cape_type=cape_type,
     )

@@ -6,7 +6,7 @@ import pytest
 from metpy.units import units
 from numpy.testing import assert_allclose
 
-from nzthermo._ufunc import pressure_vector
+from nzthermo._core import pressure_vector, height_vector
 from nzthermo.core import specific_humidity
 from nzthermo.entrainment import bunkers_storm_motion, ecape, entrainment
 
@@ -42,7 +42,7 @@ U = data["U"][step]
 V = data["V"][step]
 print(np.abs(Q - data["Q"][step]).max())
 
-MSL: np.ndarray = data["Z"][step]
+MSL: height_vector = data["Z"][step].view(height_vector)
 
 assert P[0] > P[-1]
 assert np.all(T[:, 0] > T[:, -1])
@@ -216,7 +216,7 @@ def test_storm_entrainment_cape():
     ["most_unstable", "mixed_layer", "surface_based"],
 )
 def test_ecape(cape_type):
-    ECAPE = ecape(P, MSL, T, U, V, specific_humidity=Q, cape_type=cape_type)
+    ECAPE = ecape(P, T, Td, MSL, U, V, cape_type=cape_type)
     for i in range(T.shape[0]):
         ecape_ = calc_ecape(
             MSL[i] * m,

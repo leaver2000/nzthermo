@@ -67,45 +67,6 @@ cdef bint between_or_close(T x, T y0, T y1) noexcept nogil:
         and (x < y1 or fabs(x - y1) <= (1.0e-05 * fabs(y1)))
     )
 
-class pressure_vector(np.ndarray[_S, np.dtype[_T]]):
-    def __new__(cls, pressure):
-        if isinstance(pressure, pressure_vector):
-            return pressure
-        elif isinstance(pressure, np.ndarray):
-            return pressure.view(cls)
-
-        return np.asarray(pressure).view(cls)
-
-    def is_above(self, bottom, close=True):
-        bottom = np.asarray(bottom)
-        if not close:
-            return np.asarray(self > bottom, np.bool_)
-
-        return np.asarray(less_or_close(self, bottom), np.bool_)
-
-    def is_below(self, top, close=True):
-        top = np.asarray(top)
-        if not close:
-            return np.asarray(self < top, np.bool_)
-
-        return np.asarray(greater_or_close(self, top), np.bool_)
-
-    def is_between(self, bottom, top, close=True):
-        bottom, top = np.asarray(bottom), np.asarray(top)
-        if not close:
-            return np.asarray((self > bottom) & (self < top), np.bool_)
-
-        return np.asarray(between_or_close(self, top, bottom), np.bool_)
-
-    def where(self, condition, fill=np.nan):
-        return np.where(condition, self, fill).view(pressure_vector)
-
-    def to_standard_height(self):
-        return standard_height(self).view(np.ndarray)
-
-    @staticmethod
-    def from_standard_height(height):
-        return standard_pressure(height).view(pressure_vector)
 
 # ............................................................................................... #
 #  - wind
@@ -113,8 +74,6 @@ class pressure_vector(np.ndarray[_S, np.dtype[_T]]):
 @cython.ufunc
 cdef T standard_pressure(T height) noexcept nogil:
      return C.standard_pressure(height)
-
-
 
 @cython.ufunc
 cdef T standard_height(T pressure) noexcept nogil:

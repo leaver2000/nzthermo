@@ -15,7 +15,7 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from . import functional as F
-from ._core import Rd, moist_lapse, parcel_profile_with_lcl
+from ._core import Rd, moist_lapse, parcel_profile_with_lcl, pressure_vector
 from ._ufunc import (
     dewpoint as _dewpoint,
     dry_lapse,
@@ -26,7 +26,6 @@ from ._ufunc import (
     lcl_pressure,
     mixing_ratio,
     potential_temperature,
-    pressure_vector,
     saturation_mixing_ratio,
     saturation_vapor_pressure,
     vapor_pressure,
@@ -123,7 +122,7 @@ def parcel_mixing_ratio(
     """
     if where is None:
         where = pressure.is_below(
-            lcl_pressure(pressure[:, :1], temperature[:, :1], dewpoint[:, :1])
+            lcl_pressure(pressure[:, :1], temperature[:, :1], dewpoint[:, :1]), close=True
         )
 
     r = saturation_mixing_ratio(
@@ -628,7 +627,7 @@ def most_unstable_parcel_index(
         pressure,
         temperature,
         dewpoint,
-        where=pressure.is_between(pbot, ptop),
+        where=pressure.is_between(pbot, ptop, close=True),
         out=np.full(temperature.shape, -np.inf, dtype=temperature.dtype),
     )
 
@@ -775,7 +774,7 @@ def mixed_layer(
     if where is None:
         bottom = (pressure[:, :1] if bottom is None else np.asarray(bottom)).reshape(-1, 1)
         top = bottom - np.asarray(depth)
-        where = pressure.view(pressure_vector).is_between(bottom, top)
+        where = pressure.view(pressure_vector).is_between(bottom, top, close=True)
     else:
         where = np.asarray(where, dtype=np.bool_)
 

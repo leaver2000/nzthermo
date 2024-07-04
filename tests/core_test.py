@@ -11,7 +11,7 @@ from metpy.units import units, units as U
 from numpy.testing import assert_allclose, assert_almost_equal, assert_array_equal
 
 import nzthermo._core as _C
-from nzthermo._core import moist_lapse
+from nzthermo._core import height_vector, moist_lapse, pressure_vector
 from nzthermo.core import (
     cape_cin,
     ccl,
@@ -79,6 +79,72 @@ def pressure_levels(sfc=1013.25, dtype: Any = np.float64):
     pressure = [sfc, 1000, 975, 950, 925, 900, 875, 850, 825, 800, 775, 750]
     pressure += [725, 700, 650, 600, 550, 500, 450, 400, 350, 300, 250, 200]
     return np.array(pressure, dtype=dtype) * 100.0
+
+
+def test_pressure_vector() -> None:
+    p = pressure_vector(
+        [
+            101300.0,
+            100000.0,
+            97500.0,
+            95000.0,
+            92500.0,
+            90000.0,
+            87500.0,
+            85000.0,
+            82500.0,
+            80000.0,
+            77500.0,
+            75000.0,
+            72500.0,
+            70000.0,
+            67500.0,
+            65000.0,
+            62500.0,
+            60000.0,
+            57500.0,
+            55000.0,
+            52500.0,
+            50000.0,
+            47500.0,
+            45000.0,
+            42500.0,
+            40000.0,
+            37500.0,
+            35000.0,
+            32500.0,
+            30000.0,
+            27500.0,
+            25000.0,
+            22500.0,
+            20000.0,
+            17500.0,
+            15000.0,
+            12500.0,
+            10000.0,
+            7500.0,
+            5000.0,
+        ]
+    )
+    z = p.to_standard_height()
+    assert isinstance(z, height_vector)
+    p2 = z.to_standard_pressure()
+    assert isinstance(p2, pressure_vector)
+    assert np.allclose(p, p2)
+
+    assert np.all(p.is_above(101325.0))
+    assert np.all(p.is_above(101325.0, close=True))
+    assert np.all(p.is_below(4999.0))
+    assert np.all(p.is_below(5000.0, close=True))
+    assert np.all(p.is_between(101325.0, 4999.0))
+    assert np.all(p.is_between(101325.0, 5000.0, close=True))
+
+    assert np.all(z.is_above(0.0))
+    assert np.all(z.is_above(0.0, close=True))
+    assert np.all(z.is_below(20000.0))
+    assert np.all(z.is_below(20000.0, close=True))
+    assert np.all(z.is_between(0.0, 20000.0))
+    assert np.all(z.is_between(0.0, 20000.0, close=True))
 
 
 # =============================================================================================== #

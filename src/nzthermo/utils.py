@@ -23,14 +23,8 @@ from typing import (
 import numpy as np
 from numpy.typing import NDArray
 
-from ._core import index_pressure
-from ._ufunc import (
-    between_or_close,
-    delta_t,
-    greater_or_close,
-    less_or_close,
-    pressure_vector,
-)
+from ._core import index_pressure, pressure_vector
+from ._ufunc import between_or_close, delta_t, greater_or_close, less_or_close
 from .typing import (
     Kelvin,
     N,

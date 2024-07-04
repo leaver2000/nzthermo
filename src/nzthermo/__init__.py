@@ -16,10 +16,12 @@ __all__ = [
     "Rd",
     "Rv",
     "epsilon",
+    "height_vector",
     "kappa",
     "moist_lapse",
     "parcel_profile",
     "parcel_profile_with_lcl",
+    "pressure_vector",
     # ._ufunc
     "delta_t",
     "dewpoint",
@@ -60,9 +62,9 @@ __all__ = [
     "specific_humidity",
     "surface_based_cape_cin",
     # .entrainment
-    "entrainment",
     "bunkers_storm_motion",
     "ecape",
+    "ncape",
     # .utils
     "timeseries",
 ]
@@ -85,10 +87,12 @@ from ._core import (
     Rv,
     epsilon,
     g,
+    height_vector,
     kappa,
     moist_lapse,
     parcel_profile,
     parcel_profile_with_lcl,
+    pressure_vector,
 )
 from ._ufunc import (
     delta_t,
@@ -130,5 +134,5 @@ from .core import (
     specific_humidity,
     surface_based_cape_cin,
 )
-from .entrainment import bunkers_storm_motion, ecape, entrainment
+from .entrainment import bunkers_storm_motion, ecape, ncape
 from .utils import timeseries

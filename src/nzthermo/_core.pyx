@@ -5,28 +5,25 @@
 # cython: cdivision=True
 
 # pyright: reportGeneralTypeIssues=false
-"""
-This is the Cython implementation of the parcel analysis functions.
-
-The header file makes avalaible several atmospheric functions in the _core.cpp file. The function
-templates support `std::floating_point` types. Additonaly in the header is a fused type `T` which
-can be assumed to suport either ``float`` or ``double`` types.
-
-```cpp
-template <typename T>
-    requires std::floating_point<T>
-T fn(T ...){...}
-```
-"""
+import abc
 import warnings
-
+from typing import TypeVar
 
 from cython.parallel cimport parallel, prange
+
 import numpy as np
+
 cimport numpy as np
 
 cimport nzthermo._C as C
-from nzthermo._ufunc import pressure_vector
+
+from nzthermo._ufunc import (
+    between_or_close,
+    greater_or_close,
+    less_or_close,
+    standard_height,
+    standard_pressure,
+)
 
 np.import_array()
 np.import_ufunc()
@@ -86,9 +83,93 @@ Md = C.Md # (g/mol)  - molecular weight of dry air
 epsilon = C.epsilon
 kappa = C.kappa
 
+_S = TypeVar("_S")
+_T = TypeVar("_T")
+
 # ............................................................................................... #
 # helpers
 # ............................................................................................... #
+class vertical_vector(np.ndarray[_S, np.dtype[_T]], abc.ABC):
+    def __new__(cls, x):
+        if isinstance(x, cls):
+            return x
+        x = np.asarray(x).view(cls)
+
+        return x
+
+    @abc.abstractmethod
+    def is_above(self, bottom, close=True): ...
+    @abc.abstractmethod
+    def is_below(self, top, close=True): ...
+    @abc.abstractmethod
+    def is_between(self, bottom, top, close=True): ...
+    @abc.abstractmethod
+    def where(self, condition, fill=np.nan):
+        return np.where(condition, self, fill).view(self.__class__)
+
+
+
+class pressure_vector(vertical_vector[_S, np.dtype[_T]]):
+    def is_above(self, bottom, close=False):
+        bottom = np.asarray(bottom)
+        if not close:
+            return np.asarray(self < bottom, np.bool_)
+
+        return np.asarray(less_or_close(self, bottom), np.bool_)
+
+    def is_below(self, top, close=False):
+        top = np.asarray(top)
+        if not close:
+            return np.asarray(self > top, np.bool_)
+
+        return np.asarray(greater_or_close(self, top), np.bool_)
+
+    def is_between(self, bottom, top, close=False):
+        bottom, top = np.asarray(bottom), np.asarray(top)
+        if not close:
+            return np.asarray((self < bottom) & (self > top), np.bool_)
+
+        return np.asarray(between_or_close(self, top, bottom), np.bool_)
+
+    def to_standard_height(self):
+        return standard_height(self).view(height_vector)
+
+    @staticmethod
+    def from_standard_height(height):
+        return standard_pressure(height).view(pressure_vector)
+
+
+
+class height_vector(vertical_vector[_S, np.dtype[_T]]):
+    def is_above(self, bottom, close=False):
+        bottom = np.asarray(bottom)
+        if not close:
+            return np.asarray(self > bottom, np.bool_)
+
+        return np.asarray(greater_or_close(self, bottom), np.bool_)
+
+    def is_below(self, top, close=False):
+        top = np.asarray(top)
+        if not close:
+            return np.asarray(self < top, np.bool_)
+
+        return np.asarray(less_or_close(self, top), np.bool_)
+
+    def is_between(self, bottom, top, close=False):
+        bottom, top = np.asarray(bottom), np.asarray(top)
+        if not close:
+            return np.asarray((self > bottom) & (self < top), np.bool_)
+
+        return np.asarray(between_or_close(self, bottom, top), np.bool_)
+
+    def to_standard_pressure(self):
+        return standard_pressure(self).view(pressure_vector)
+
+    @staticmethod
+    def from_standard_pressure(pressure):
+        return standard_height(pressure).view(height_vector)
+
+
 def broadcast_and_nanmask(
     np.ndarray pressure not None,
     np.ndarray temperature not None, 
@@ -653,7 +734,7 @@ cdef size_t[:] index_pressure_2d(T[:, :] pressure, T[:] values, BroadcastMode mo
     return out
 
 
-def index_pressure(np.ndarray pressure, np.ndarray values):
+def index_pressure(np.ndarray pressure not None, np.ndarray values not None):
     cdef size_t N
     N = values.shape[0]
     out = np.empty(N, dtype=np.uintp)
@@ -665,9 +746,13 @@ def index_pressure(np.ndarray pressure, np.ndarray values):
         mode = MATRIX
 
     if pressure.dtype == np.float64:
-        out[...] = index_pressure_2d[double](pressure.astype(np.float64), values.astype(np.float64), mode)
+        out[...] = index_pressure_2d[double](
+            pressure.astype(np.float64), values.astype(np.float64), mode
+        )
     else:
-        out[...] = index_pressure_2d[float](pressure.astype(np.float32), values.astype(np.float32), mode)
+        out[...] = index_pressure_2d[float](
+            pressure.astype(np.float32), values.astype(np.float32), mode
+        )
 
     return out
 
