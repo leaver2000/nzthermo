@@ -46,27 +46,41 @@ ctypedef fused integer:
 
 
 @cython.ufunc
-cdef bint less_or_close(T x, T y) noexcept nogil:
+cdef int _less_or_close(T x, T y) noexcept nogil:
     return (
         not isnan(x) and not isnan(y)
         and (x < y or fabs(x - y) <= (1.0e-05 * fabs(y)))
     )
 
+def less_or_close(x, y, /, *args, **kwargs):
+    return _less_or_close(x, y, *args, **kwargs).astype(bool)
+
+less_or_close.__doc__ = _less_or_close.__doc__.removeprefix("_")
+
 @cython.ufunc
-cdef bint greater_or_close(T x, T y) noexcept nogil:
+cdef int _greater_or_close(T x, T y) noexcept nogil:
     return (
         not isnan(x) and not isnan(y)
         and (x > y or fabs(x - y) <= (1.0e-05 * fabs(y)))
     )
 
+def greater_or_close(x, y, /, *args, **kwargs):
+    return _greater_or_close(x, y, *args, **kwargs).astype(bool)
+
+greater_or_close.__doc__ = _greater_or_close.__doc__.removeprefix("_")
+
 @cython.ufunc
-cdef bint between_or_close(T x, T y0, T y1) noexcept nogil:
+cdef int _between_or_close(T x, T y0, T y1) noexcept nogil:
     return (
         not isnan(x) and not isnan(y0) and not isnan(y1)
         and (x > y0 or fabs(x - y0) <= (1.0e-05 * fabs(y0)))
         and (x < y1 or fabs(x - y1) <= (1.0e-05 * fabs(y1)))
     )
 
+def between_or_close(x, y, z, /, *args, **kwargs):
+    return _between_or_close(x, y, z, *args, **kwargs).astype(bool)
+
+between_or_close.__doc__ = _between_or_close.__doc__.removeprefix("_")
 
 # ............................................................................................... #
 #  - wind
