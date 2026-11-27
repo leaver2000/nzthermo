@@ -381,9 +381,6 @@ def moist_lapse(
         Reference pressure; if not given, it defaults to the first non nan element of the
         pressure array.
 
-    step :
-        The step size for the calculation (default: 1000.0).
-
     dtype :
         The data type for the output array (optional).
 

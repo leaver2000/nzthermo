@@ -1,6 +1,8 @@
 #pragma once
 #include <cmath>
+#include <limits>
 #if __cplusplus >= 202002L
+#include <numbers>
 #include <type_traits>
 template <typename T>
 concept floating = std::is_floating_point_v<T>;
@@ -21,6 +23,14 @@ using std::log;
 using std::pow;
 using std::sin;
 using std::sqrt;
+
+#if __cplusplus >= 202002L
+template <floating T>
+inline constexpr T pi = std::numbers::pi_v<T>;
+#else
+template <floating T>
+inline constexpr T pi = static_cast<T>(3.141592653589793238462643383279502884L);
+#endif
 
 template <floating T>
 inline constexpr T limit_zero(T x) {
@@ -48,12 +58,12 @@ inline constexpr T sign(const T x) noexcept {
 
 template <floating T>
 inline constexpr T degrees(const T radians) noexcept {
-    return radians * 180.0 / M_PI;
+    return radians * 180.0 / pi<T>;
 }
 
 template <floating T>
 inline constexpr T radians(const T degrees) noexcept {
-    return degrees * M_PI / 180.0;
+    return degrees * pi<T> / 180.0;
 }
 
 template <floating T>
@@ -154,7 +164,7 @@ inline constexpr T fixed_point(
 
         p2 = delta ? p0 - pow(p1 - p0, 2) / delta : p2; /* delta squared */
 
-        if ((p0 ? fabs((p2 - p0) / p0) : p2 /* absolute relative error */) < eps)
+        if ((p0 ? fabs((p2 - p0) / p0) : fabs(p2) /* absolute relative error */) < eps)
             return p2;
 
         p0 = p2;
