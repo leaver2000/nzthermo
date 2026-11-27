@@ -47,6 +47,9 @@ constexpr size_t index_pressure(const T levels[], const T value, const size_t si
 
 template <floating T>
 constexpr T wind_direction(const T u, const T v) noexcept {
+    if (u == 0 && v == 0)  // calm winds have no direction, by convention (WMO, MetPy) report 0
+        return 0.0;
+
     return fmod(degrees(atan2(u, v)) + 180.0, 360.0);
 }
 
