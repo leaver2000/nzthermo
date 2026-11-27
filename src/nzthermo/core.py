@@ -908,6 +908,8 @@ def mixed_layer_cape_cin(
             temperature,
             dewpoint,
             parcel_start_pressure=parcel_start_pressure,
+            bottom=bottom,
+            depth=depth,
             **FASTPATH,
         ),
         (3, -1, 1),

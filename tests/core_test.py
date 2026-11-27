@@ -1591,3 +1591,22 @@ def test_mixed_layer_cape_cin_regression() -> None:
         CAPE_, CIN__ = mpcalc.mixed_layer_cape_cin(P * Pa, T[i] * K, Td[i] * K, interpolate=False)
         assert_allclose(CAPE[i], CAPE_.m, atol=20)
         assert_allclose(CIN[i], CIN__.m, atol=200)
+
+
+
+@pytest.mark.regression
+@pytest.mark.mixed_layer_cape_cin
+def test_mixed_layer_cape_cin_depth_regression() -> None:
+    """``depth`` must reach ``mixed_parcel``, not only the level mask (#32)."""
+    depth = 5000.0
+    CAPE, CIN = mixed_layer_cape_cin(P, T, Td, depth=depth)
+
+    for i in range(T.shape[0]):
+        CAPE_, CIN_ = mpcalc.mixed_layer_cape_cin(
+            P * Pa, T[i] * K, Td[i] * K, depth=depth * Pa, interpolate=False
+        )
+        if CAPE_.m < 0:  # metpy 1.6.2 occasionally reports negative CAPE
+            continue
+        assert_allclose(CAPE[i], CAPE_.m, atol=20)
+        assert_allclose(CIN[i], CIN_.m, atol=200)
+
