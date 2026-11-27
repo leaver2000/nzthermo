@@ -230,10 +230,15 @@ def broadcast_and_nanmask(
         N = temperature.shape[0]
         Z = temperature.shape[1]
 
-        where = np.atleast_2d(where)
-        # where &= np.isfinite(temperature) & np.isfinite(dewpoint) & np.isfinite(pressure)
-
         pressure = np.broadcast_to(pressure.squeeze(), (N, Z))
+        # values that are already missing are masked too; otherwise ``argsort`` places the NaNs
+        # after every real value and the reversal below moves them to the bottom of the profile
+        where = (
+            np.atleast_2d(where)
+            & np.isfinite(pressure)
+            & np.isfinite(temperature)
+            & np.isfinite(dewpoint)
+        )
         pressure = np.where(where, pressure, -np.inf)
 
         sort = np.arange(N)[:, np.newaxis], np.argsort(pressure, axis=1)

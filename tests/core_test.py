@@ -1591,3 +1591,33 @@ def test_mixed_layer_cape_cin_regression() -> None:
         CAPE_, CIN__ = mpcalc.mixed_layer_cape_cin(P * Pa, T[i] * K, Td[i] * K, interpolate=False)
         assert_allclose(CAPE[i], CAPE_.m, atol=20)
         assert_allclose(CIN[i], CIN__.m, atol=200)
+
+
+@pytest.mark.most_unstable_cape_cin
+def test_most_unstable_cape_cin_nan_padded_equals_trimmed() -> None:
+    """NaN-padded (masked) top levels must behave like the trimmed profile (#29)."""
+    n = 50
+    PP = np.broadcast_to(P, (n, P.size)).copy()
+    TT, DD = T[:n].copy(), Td[:n].copy()
+    PP[:, -1] = TT[:, -1] = DD[:, -1] = np.nan  # top level missing
+
+    padded = most_unstable_cape_cin(PP, TT, DD)
+    trimmed = most_unstable_cape_cin(P[:-1], T[:n, :-1], Td[:n, :-1])
+
+    assert_allclose(padded[0], trimmed[0], atol=1e-3)
+    assert_allclose(padded[1], trimmed[1], atol=1e-3)
+
+
+@pytest.mark.parcel_profile
+def test_parcel_profile_with_lcl_where_keeps_existing_nan_at_top() -> None:
+    p = np.array([1000.0, 925.0, 850.0, 700.0, 500.0, 300.0]) * 100
+    t = np.array([300.0, 295.0, 290.0, 280.0, 262.0, 240.0])
+    pp, tt, dd = (np.tile(a, (2, 1)) for a in (p, t, t - 5))
+    pp[1, -2:] = tt[1, -2:] = dd[1, -2:] = np.nan
+
+    ep, *_ = _C.parcel_profile_with_lcl(pp, tt, dd, where=np.ones_like(pp, dtype=bool))
+
+    assert ep[1, 0] == p[0]  # the surface stays at the bottom
+    valid = ep[1][~np.isnan(ep[1])]
+    assert np.all(np.diff(valid) < 0)  # strictly decreasing pressure
+    assert np.isnan(ep[1, -2:]).all()
