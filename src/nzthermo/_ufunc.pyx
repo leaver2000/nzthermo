@@ -45,6 +45,15 @@ ctypedef fused integer:
     long
 
 
+def _as_bool(result, out, where):
+    """The comparison ufuncs return ``int`` (Cython >= 3.1 rejects ``bint`` ufuncs, see #26);
+    convert to ``bool`` while honouring numpy's ``out=`` / ``where=`` semantics."""
+    if out is None:
+        return np.asarray(result).astype(np.bool_)
+    np.copyto(out, result, where=where, casting="unsafe")
+    return out
+
+
 @cython.ufunc
 cdef int _less_or_close(T x, T y) noexcept nogil:
     return (
@@ -52,8 +61,8 @@ cdef int _less_or_close(T x, T y) noexcept nogil:
         and (x < y or fabs(x - y) <= (1.0e-05 * fabs(y)))
     )
 
-def less_or_close(x, y, /, *args, **kwargs):
-    return _less_or_close(x, y, *args, **kwargs).astype(bool)
+def less_or_close(x, y, /, out=None, *, where=True, **kwargs):
+    return _as_bool(_less_or_close(x, y, where=where, **kwargs), out, where)
 
 less_or_close.__doc__ = _less_or_close.__doc__.removeprefix("_")
 
@@ -64,8 +73,8 @@ cdef int _greater_or_close(T x, T y) noexcept nogil:
         and (x > y or fabs(x - y) <= (1.0e-05 * fabs(y)))
     )
 
-def greater_or_close(x, y, /, *args, **kwargs):
-    return _greater_or_close(x, y, *args, **kwargs).astype(bool)
+def greater_or_close(x, y, /, out=None, *, where=True, **kwargs):
+    return _as_bool(_greater_or_close(x, y, where=where, **kwargs), out, where)
 
 greater_or_close.__doc__ = _greater_or_close.__doc__.removeprefix("_")
 
@@ -77,8 +86,8 @@ cdef int _between_or_close(T x, T y0, T y1) noexcept nogil:
         and (x < y1 or fabs(x - y1) <= (1.0e-05 * fabs(y1)))
     )
 
-def between_or_close(x, y, z, /, *args, **kwargs):
-    return _between_or_close(x, y, z, *args, **kwargs).astype(bool)
+def between_or_close(x, y, z, /, out=None, *, where=True, **kwargs):
+    return _as_bool(_between_or_close(x, y, z, where=where, **kwargs), out, where)
 
 between_or_close.__doc__ = _between_or_close.__doc__.removeprefix("_")
 
