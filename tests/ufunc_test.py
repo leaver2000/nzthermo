@@ -183,3 +183,27 @@ def test_static_energy():
         mpcalc.moist_static_energy(z, T * K, Q * dimensionless).to("J/kg").m,
         atol=1e-1,
     )
+
+
+def test_or_close_ufuncs_return_bool_and_honour_out_where() -> None:
+    from nzthermo._ufunc import between_or_close, greater_or_close, less_or_close
+
+    x = np.array([1.0, 2.0, np.nan, 3.0])
+    y = np.array([2.0, 2.0 + 1e-9, 1.0, 1.0])
+    assert less_or_close(x, y).dtype == np.bool_
+    assert_array_equal(less_or_close(x, y), [True, True, False, False])
+    assert_array_equal(greater_or_close(x, y), [False, True, False, True])
+    assert_array_equal(between_or_close(x, 0.5, 2.5), [True, True, False, False])
+
+    out = np.ones(4, dtype=bool)
+    res = less_or_close(x, y, out=out, where=np.array([True, False, True, True]))
+    assert res is out
+    assert_array_equal(out, [True, True, False, False])  # index 1 left untouched
+
+
+def test_import_does_not_modify_numpy() -> None:
+    import subprocess
+    import sys
+
+    code = "import numpy as np; had = hasattr(np, 'trapz'); import nzthermo; assert hasattr(np, 'trapz') == had"
+    subprocess.run([sys.executable, "-c", code], check=True, env={**__import__("os").environ, "PYTHONPATH": "src"})

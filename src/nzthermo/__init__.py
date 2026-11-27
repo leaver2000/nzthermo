@@ -74,11 +74,6 @@ try:
 except ImportError:
     __version__ = "undefined"
 
-import numpy
-
-if not hasattr(numpy, "trapz") and hasattr(numpy, "trapezoid"):
-    setattr(numpy, "trapz", numpy.trapezoid)
-
 from . import functional
 from ._core import (
     E0,
