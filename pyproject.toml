@@ -26,10 +26,8 @@ nzthermo = ["py.typed", "*.pyi", "*.pyx", "*.pxd"]
 [tool.setuptools_scm]
 write_to = "src/nzthermo/_version.py"
 
-[tool.pytest]
-testpaths = ["tests/"]
-
 [tool.pytest.ini_options]
+testpaths = ["tests/"]
 markers = [
     "regression",
     "broadcasting",
