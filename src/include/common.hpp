@@ -1,5 +1,8 @@
 #pragma once
 #include <cmath>
+#include <cstddef>
+#include <limits>
+#include <numbers>
 #if __cplusplus >= 202002L
 #include <type_traits>
 template <typename T>
@@ -48,12 +51,12 @@ inline constexpr T sign(const T x) noexcept {
 
 template <floating T>
 inline constexpr T degrees(const T radians) noexcept {
-    return radians * 180.0 / M_PI;
+    return radians * T(180.0) / std::numbers::pi_v<T>;
 }
 
 template <floating T>
 inline constexpr T radians(const T degrees) noexcept {
-    return degrees * M_PI / 180.0;
+    return degrees * std::numbers::pi_v<T> / T(180.0);
 }
 
 template <floating T>
@@ -154,7 +157,7 @@ inline constexpr T fixed_point(
 
         p2 = delta ? p0 - pow(p1 - p0, 2) / delta : p2; /* delta squared */
 
-        if ((p0 ? fabs((p2 - p0) / p0) : p2 /* absolute relative error */) < eps)
+        if ((p0 ? fabs((p2 - p0) / p0) : fabs(p2) /* relative, or absolute when p0 == 0 */) < eps)
             return p2;
 
         p0 = p2;

@@ -47,6 +47,8 @@ constexpr size_t index_pressure(const T levels[], const T value, const size_t si
 
 template <floating T>
 constexpr T wind_direction(const T u, const T v) noexcept {
+    if (u == 0 && v == 0)
+        return 0.0;  // calm: 0 rather than the 180 that atan2(0, 0) would give
     return fmod(degrees(atan2(u, v)) + 180.0, 360.0);
 }
 
