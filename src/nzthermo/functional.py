@@ -33,6 +33,14 @@ _R = TypeVar("_R")
 _T1 = TypeVar("_T1")
 
 
+def _nan_clip(x: np.ndarray) -> int:
+    """Number of columns to keep so that every row keeps its first NaN (or all of its values when
+    it has none). ``max(argmax(isnan(x))) + 1`` returns 1 when no row contains a NaN (#30)."""
+    isnan = np.isnan(x)
+    first = np.where(isnan.any(axis=1), isnan.argmax(axis=1), x.shape[1])
+    return int(first.max(initial=0)) + 1
+
+
 def map_partial(
     f: Callable[Concatenate[_T1, _P], _R], x: Iterable[_T1], *args: _P.args, **kwargs: _P.kwargs
 ) -> map[_R]:
@@ -54,19 +62,16 @@ def sort_nz(
 ):
     if pressure.ndim == 1:
         pressure = pressure[np.newaxis, :]
-
-    p_sort = np.argsort(pressure, axis=1, kind="quicksort")
     if pressure.shape != temperature.shape:
-        sort = np.s_[:, p_sort]
-        pressure = pressure[sort][:, ::-1]
-        sort = np.arange(pressure.shape[0])[:, np.newaxis], p_sort
-        temperature = temperature[sort][:, ::-1]
-        dewpoint = dewpoint[sort][:, ::-1]
-    else:
-        sort = np.arange(pressure.shape[0])[:, np.newaxis], p_sort
-        pressure = pressure[sort][:, ::-1]
-        temperature = temperature[sort][:, ::-1]
-        dewpoint = dewpoint[sort][:, ::-1]
+        pressure = np.broadcast_to(pressure, temperature.shape)
+
+    # sort by descending pressure; NaN values (already missing data) are keyed as -inf so they
+    # end up at the top of the profile together with anything masked by ``where``.
+    key = np.where(np.isnan(pressure), -np.inf, pressure)
+    sort = np.arange(pressure.shape[0])[:, np.newaxis], np.argsort(key, axis=1, kind="stable")
+    pressure = pressure[sort][:, ::-1]
+    temperature = temperature[sort][:, ::-1]
+    dewpoint = dewpoint[sort][:, ::-1]
 
     if callable(where):
         where = where(pressure, *args, **kwargs)
@@ -75,7 +80,14 @@ def sort_nz(
     temperature[where] = np.nan
     dewpoint[where] = np.nan
 
-    clip = max(np.argmax(np.isnan(pressure), axis=1)) + 1
+    # masked values may be anywhere after sorting by the ``where`` callable; move them to the end
+    key = np.where(np.isnan(pressure), -np.inf, pressure)
+    sort = np.arange(pressure.shape[0])[:, np.newaxis], np.argsort(key, axis=1, kind="stable")
+    pressure = pressure[sort][:, ::-1]
+    temperature = temperature[sort][:, ::-1]
+    dewpoint = dewpoint[sort][:, ::-1]
+
+    clip = _nan_clip(pressure)
 
     return pressure[:, :clip], temperature[:, :clip], dewpoint[:, :clip]
 
@@ -257,7 +269,7 @@ def intersect_nz(
     sort = np.arange(x_full.shape[0])[:, np.newaxis], np.argsort(x_full, axis=1)
     x, y = x_full[sort], y_full[sort]
 
-    clip = max(np.argmax(np.isnan(x), axis=1)) + 1
+    clip = _nan_clip(x)
 
     return Profile(x[:, :clip], y[:, :clip])
 
@@ -298,7 +310,7 @@ def zero_crossings(
     sort = np.arange(N)[:, np.newaxis], np.argsort(x, axis=1, kind="quicksort")
     x, y = x[sort], y[sort]
     # clip axis 1 to the last non nan value.
-    clip = max(np.argmax(np.isnan(x), axis=1)) + 1
+    clip = _nan_clip(x)
 
     return Profile(x[:, :clip], y[:, :clip])
 

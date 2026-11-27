@@ -424,3 +424,51 @@ def test_insert_zero_crossings_specifically_for_cape_cin() -> None:
             Y[i][~np.isnan(Y[i])],
             y_.m,
         )
+
+
+# ----------------------------------------------------------------------------------------------- #
+# sort_nz (#30)
+# ----------------------------------------------------------------------------------------------- #
+_P_SORT = np.array([1000.0, 925.0, 850.0, 700.0, 500.0, 300.0]) * 100
+_T_SORT = np.array([300.0, 295.0, 290.0, 280.0, 262.0, 240.0])
+
+
+def test_sort_nz_nothing_masked_keeps_all_levels() -> None:
+    P, T = np.tile(_P_SORT, (2, 1)), np.tile(_T_SORT, (2, 1))
+    p, t, td = F.sort_nz(np.isneginf, P, T, T - 5)
+    assert p.shape == (2, 6)
+    assert_allclose(p, P)
+    assert_allclose(t, T)
+
+
+def test_sort_nz_broadcast_pressure() -> None:
+    P = _P_SORT.copy()
+    P[2] = -np.inf  # masked
+    T = np.tile(_T_SORT, (2, 1))
+    p, t, td = F.sort_nz(np.isneginf, P[np.newaxis, :], T, T - 5)
+    assert p.shape[0] == 2
+    assert_allclose(p[:, :5], np.tile(np.delete(_P_SORT, 2), (2, 1)))
+    assert_allclose(t[:, :5], np.tile(np.delete(_T_SORT, 2), (2, 1)))
+    assert np.isnan(p[:, 5:]).all()
+
+
+def test_sort_nz_existing_nan_goes_to_the_top() -> None:
+    P, T = np.tile(_P_SORT, (2, 1)), np.tile(_T_SORT, (2, 1))
+    P[1, 1] = T[1, 1] = np.nan  # missing level in the middle of row 1
+    p, t, td = F.sort_nz(np.isneginf, P, T, T - 5)
+    assert_allclose(p[0], _P_SORT)
+    assert_allclose(p[1, :5], np.delete(_P_SORT, 1))
+    assert np.isnan(p[1, 5])
+    assert_allclose(t[1, :5], np.delete(_T_SORT, 1))
+
+
+@pytest.mark.parametrize(
+    "x, expected",
+    [
+        (np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]), 4),
+        (np.array([[1.0, np.nan, np.nan], [4.0, 5.0, np.nan]]), 3),
+        (np.array([[np.nan, np.nan], [np.nan, np.nan]]), 1),
+    ],
+)
+def test_nan_clip(x, expected) -> None:
+    assert F._nan_clip(x) == expected
