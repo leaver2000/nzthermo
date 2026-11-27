@@ -10,7 +10,9 @@ import pytest
 from metpy.units import units, units as U
 from numpy.testing import assert_allclose, assert_almost_equal, assert_array_equal
 
+import nzthermo as nzt
 import nzthermo._core as _C
+import nzthermo.core as _core
 from nzthermo._core import height_vector, moist_lapse, pressure_vector
 from nzthermo.core import (
     cape_cin,
@@ -521,9 +523,35 @@ def test_downdraft_cape_metpy_regression(dtype) -> None:
         assert_allclose(DCAPE[i], DCAPE_, rtol=1e-2)
 
 
+@pytest.mark.downdraft_cape
+def test_downdraft_cape_descends_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The parcel should be lowered in a single pass from the top pressure to the surface,
+    rather than integrating down to the surface and then back up through every level."""
+    calls: list[np.ndarray] = []
+
+    def spy(pressure, temperature, reference_pressure=None, **kwargs):
+        calls.append(np.asarray(pressure))
+        return moist_lapse(pressure, temperature, reference_pressure, **kwargs)
+
+    monkeypatch.setattr(_core, "moist_lapse", spy)
+    downdraft_cape(P, T, Td)
+    monkeypatch.undo()
+
+    assert len(calls) == 1
+    for row in calls[0]:
+        levels = row[~np.isnan(row)]
+        assert levels.size > 1
+        assert np.all(np.diff(levels) > 0), "pressure levels must increase (descending parcel)"
+
+
 # ............................................................................................... #
 # nzthermo.core.el
 # ............................................................................................... #
+def test_el_lfc_is_exported() -> None:
+    assert "el_lfc" in nzt.__all__
+    assert nzt.el_lfc is _core.el_lfc
+
+
 @pytest.mark.el
 def test_el() -> None:
     """Test equilibrium layer calculation."""
