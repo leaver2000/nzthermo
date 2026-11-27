@@ -1591,3 +1591,48 @@ def test_mixed_layer_cape_cin_regression() -> None:
         CAPE_, CIN__ = mpcalc.mixed_layer_cape_cin(P * Pa, T[i] * K, Td[i] * K, interpolate=False)
         assert_allclose(CAPE[i], CAPE_.m, atol=20)
         assert_allclose(CIN[i], CIN__.m, atol=200)
+
+
+# ............................................................................................... #
+# parcel still buoyant at the top of the profile (no EL inside the data) (#27)
+# ............................................................................................... #
+def _tropical_profile():
+    p = np.array([1000, 975, 950, 925, 900, 850, 800, 750, 700, 650, 600, 550, 500, 450, 400, 350, 300, 250.0])
+    p = p * 100.0
+    z = 44330.8 * (1 - (p / 101325) ** 0.190263)
+    t = 303 - 0.0068 * z
+    td = t - np.clip(2 + (100000 - p) / 1000 * 1.2, 2, 40)
+    return p, t, td
+
+
+@pytest.mark.regression
+@pytest.mark.cape_cin
+def test_surface_based_cape_cin_truncated_profile_regression() -> None:
+    """Profiles that end at 500 hPa: many parcels are still buoyant at the top, so there is no EL
+    inside the data and CAPE must be integrated to the top of the profile (#27)."""
+    k = int(np.sum(P >= 50000.0))
+    CAPE, CIN = surface_based_cape_cin(P[:k], T[:, :k], Td[:, :k])
+
+    compared = 0
+    for i in range(T.shape[0]):
+        try:
+            CAPE_, _ = mpcalc.surface_based_cape_cin(P[:k] * Pa, T[i, :k] * K, Td[i, :k] * K)
+        except ValueError:  # metpy 1.6.2 raises in `lfc` for some of these profiles
+            continue
+        if CAPE_.m <= 0.0:  # metpy 1.6.2 returns 0 (or negative) when no LFC crossing is found
+            continue
+        compared += 1
+        assert_allclose(CAPE[i], CAPE_.m, atol=CAPE_ABSOLUTE_TOLERANCE)
+
+    assert compared > 100
+
+
+@pytest.mark.cape_cin
+def test_surface_based_cape_cin_no_el_nan_padded() -> None:
+    p, t, td = _tropical_profile()
+    pp, tt, dd = (np.tile(np.r_[a, np.nan, np.nan], (2, 1)) for a in (p, t, td))
+    CAPE, _ = surface_based_cape_cin(pp, tt, dd)
+    CAPE_, _ = surface_based_cape_cin(p, t[np.newaxis], td[np.newaxis])
+
+    assert CAPE_[0] > 1000.0  # buoyant all the way to the 250 hPa top
+    assert_allclose(CAPE, CAPE_[0], atol=1e-3)

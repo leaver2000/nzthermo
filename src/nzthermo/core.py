@@ -534,6 +534,11 @@ def cape_cin(
         which_el,
     )
     EL, LFC = np.reshape((EL, LFC), (2, -1, 1))  # reshape for broadcasting
+    # If there is an LFC but no EL inside the data (the parcel is still buoyant at the top of the
+    # profile) integrate up to the top of the profile, as metpy does.
+    with np.errstate(invalid="ignore"):
+        top = np.nanmin(np.where(np.isnan(pressure), np.inf, pressure), axis=1, keepdims=True)
+    EL = np.where(np.isnan(EL) & ~np.isnan(LFC) & np.isfinite(top), top, EL)
 
     tzx = F.zero_crossings(pressure, parcel_profile - temperature)  # temperature zero crossings
 
