@@ -263,7 +263,11 @@ def downdraft_cape(
 
     pressure = pressure.where(pressure.is_below(p_top[:, np.newaxis], close=True), np.nan)
     e_vt = virtual_temperature(temperature, saturation_mixing_ratio(pressure, dewpoint))  # (N, Z)
-    trace = moist_lapse(pressure, wb_top, p_top)  # (N, Z)
+    # Lower the parcel in a single pass from ``p_top`` to the surface by integrating over the
+    # reversed (increasing) pressure levels; the masked levels above ``p_top`` lead with NaN and
+    # are skipped. Integrating in the original order would first step from ``p_top`` down to the
+    # surface and then back up through every level, doubling the work.
+    trace = moist_lapse(pressure[:, ::-1], wb_top, p_top)[:, ::-1]  # (N, Z)
     p_vt = virtual_temperature(trace, saturation_mixing_ratio(pressure, trace))  # (N, Z)
 
     DCAPE = Rd * F.nantrapz(p_vt - e_vt, np.log(pressure), axis=1)
