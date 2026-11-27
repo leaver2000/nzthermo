@@ -12,7 +12,6 @@ from typing import (
     Mapping,
     NamedTuple,
     ParamSpec,
-    Self,
     Sequence,
     TypeAlias,
     TypeGuard,
@@ -26,6 +25,7 @@ from numpy.typing import NDArray
 from ._core import index_pressure, pressure_vector
 from ._ufunc import between_or_close, delta_t, greater_or_close, less_or_close
 from .typing import (
+    Self,
     Kelvin,
     N,
     NestedSequence,

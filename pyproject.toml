@@ -14,7 +14,7 @@ dynamic = ["version"]
 description = "(N, Z) Thermodynamics"
 authors = [{ name = "Jason Leaver", email = "leaver2000@gmail.com" }]
 dependencies = ['numpy']
-requires-python = ">=3.10"
+requires-python = ">=3.11"  # generic NamedTuple (utils.ParcelProfile)
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -26,10 +26,8 @@ nzthermo = ["py.typed", "*.pyi", "*.pyx", "*.pxd"]
 [tool.setuptools_scm]
 write_to = "src/nzthermo/_version.py"
 
-[tool.pytest]
-testpaths = ["tests/"]
-
 [tool.pytest.ini_options]
+testpaths = ["tests/"]
 markers = [
     "regression",
     "broadcasting",
@@ -61,7 +59,9 @@ pythonpath = ["src"]
 
 [tool.coverage.run]
 plugins = ["Cython.Coverage"]
-source = ["nzthermo/"]
+# Cython's @cython.ufunc tracing records a pseudo-file that the Cython.Coverage plugin can't report
+omit = ["*/UFuncDefinition"]
+source = ["nzthermo"]  # the package (src layout), not a directory
 
 [tool.coverage.xml]
 output = ".reports/coverage.xml"

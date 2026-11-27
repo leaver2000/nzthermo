@@ -147,8 +147,9 @@ def test_ncape() -> None:
         NCAPE_ = calc_ncape(
             integral_arg[i] * units("meter / second ** 2"),
             MSL[i] * m,
-            lfc_idx[i],
-            el_idx[i],
+            # plain ints: with numpy < 2, ``np.uint64 + 1`` is promoted to float64
+            int(lfc_idx[i]),
+            int(el_idx[i]),
         )
         assert NCAPE_.units == "meter ** 2 / second ** 2"
 

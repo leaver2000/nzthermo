@@ -1,0 +1,10 @@
+# build
+Cython>=3.0
+numpy>=1.26
+setuptools>=64
+setuptools_scm>=8
+wheel
+# test
+-r tests/requirements.txt
+# lint
+ruff
