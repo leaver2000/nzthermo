@@ -4,6 +4,7 @@ import pytest
 from metpy.units import units
 from numpy.testing import assert_allclose, assert_array_equal
 
+import nzthermo as nzt
 from nzthermo._core import pressure_vector
 from nzthermo._ufunc import (
     dewpoint_from_specific_humidity,
@@ -183,3 +184,17 @@ def test_static_energy():
         mpcalc.moist_static_energy(z, T * K, Q * dimensionless).to("J/kg").m,
         atol=1e-1,
     )
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_wind_direction_calm(dtype) -> None:
+    u = np.array([0.0, 10.0, -3.0, 0.0, 5.0], dtype=dtype)
+    v = np.array([0.0, 0.0, -3.0, 10.0, 5.0], dtype=dtype)
+    expected = mpcalc.wind_direction(u * units("m/s"), v * units("m/s")).m
+    assert_allclose(nzt.wind_direction(u, v), expected, atol=1e-4)
+    assert nzt.wind_direction(dtype(0), dtype(0)) == 0  # calm (was 180)
+
+
+def test_el_lfc_is_exported() -> None:
+    assert "el_lfc" in nzt.__all__
+    assert callable(nzt.el_lfc)
