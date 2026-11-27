@@ -516,12 +516,16 @@ def cape_cin(
     --------
     TODO : ...
     """
-    # The mixing ratio of the parcel comes from the dewpoint below the LCL, is saturated
-    # based on the temperature above the LCL
-
-    parcel_profile = virtual_temperature(
-        parcel_profile, parcel_mixing_ratio(pressure, temperature, dewpoint, **FASTPATH)
+    # The parcel keeps the surface mixing ratio below the LCL and is saturated at its own (parcel)
+    # temperature above it. The environment's temperature and dewpoint must not be used here.
+    lcl_p = lcl_pressure(pressure[:, :1], temperature[:, :1], dewpoint[:, :1])
+    below_lcl = pressure.is_below(lcl_p, close=False)
+    parcel_mixing_ratio_ = np.where(
+        below_lcl,
+        saturation_mixing_ratio(pressure[:, :1], dewpoint[:, :1]),
+        saturation_mixing_ratio(pressure, parcel_profile),
     )
+    parcel_profile = virtual_temperature(parcel_profile, parcel_mixing_ratio_)
     temperature = virtual_temperature(temperature, saturation_mixing_ratio(pressure, dewpoint))
     # Calculate the EL limit of integration
     (EL, _), (LFC, _) = _el_lfc(

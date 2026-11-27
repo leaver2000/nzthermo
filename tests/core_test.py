@@ -75,6 +75,40 @@ _super_saturation = Td > T
 Td[_super_saturation] = T[_super_saturation]
 
 
+@pytest.fixture
+def metpy_parcel_moisture(monkeypatch):
+    """Make metpy 1.6.2's ``cape_cin`` use the parcel's own moisture for its virtual temperature.
+
+    metpy < 1.7 corrects the parcel with the *environmental* dewpoint (below the LCL) and
+    temperature (above it); metpy >= 1.7 uses the surface mixing ratio below the LCL and
+    saturation at the parcel temperature above it, as nzthermo now does (#28). metpy's
+    correction is linear in temperature, so scaling the parcel profile handed to the 1.6.2
+    implementation by ``f(w_parcel) / f(w_env)`` applies exactly the >= 1.7 moisture treatment.
+    Other metpy 1.7 changes (e.g. the Romps (2017) LCL) are not reproduced; the suite still pins
+    metpy 1.6.2.
+    """
+    import metpy.calc as calc
+    import metpy.calc.thermo as thermo
+    from metpy.constants import epsilon
+
+    original = thermo.cape_cin
+
+    def factor(w):
+        return (w + epsilon) / (epsilon * (1 + w))
+
+    def cape_cin(pressure, temperature, dewpoint, parcel_profile, *args, **kwargs):
+        lcl_p, _ = thermo.lcl(pressure[0], temperature[0], dewpoint[0])
+        below = pressure > lcl_p
+        smr = thermo.saturation_mixing_ratio
+        w_env = np.where(below, smr(pressure, dewpoint), smr(pressure, temperature))
+        w_parcel = np.where(below, smr(pressure[0], dewpoint[0]), smr(pressure, parcel_profile))
+        scaled = parcel_profile * (factor(w_parcel) / factor(w_env)).m_as("")
+        return original(pressure, temperature, dewpoint, scaled, *args, **kwargs)
+
+    monkeypatch.setattr(thermo, "cape_cin", cape_cin)
+    monkeypatch.setattr(calc, "cape_cin", cape_cin)
+
+
 def pressure_levels(sfc=1013.25, dtype: Any = np.float64):
     pressure = [sfc, 1000, 975, 950, 925, 900, 875, 850, 825, 800, 775, 750]
     pressure += [725, 700, 650, 600, 550, 500, 450, 400, 350, 300, 250, 200]
@@ -1340,6 +1374,7 @@ def test_cape_cin_broadcasting():
     )
 
 
+@pytest.mark.usefixtures("metpy_parcel_moisture")
 @pytest.mark.cape_cin
 @pytest.mark.regression
 @pytest.mark.parametrize(
@@ -1391,6 +1426,7 @@ def test_surface_based_cape_cin_broadcasting():
     )
 
 
+@pytest.mark.usefixtures("metpy_parcel_moisture")
 @pytest.mark.regression
 @pytest.mark.surface_based_cape_cin
 def test_surface_based_cape_cin_regression() -> None:
@@ -1473,6 +1509,7 @@ def test_most_unstable_cape_cin_broadcasting(depth) -> None:
     )
 
 
+@pytest.mark.usefixtures("metpy_parcel_moisture")
 @pytest.mark.regression
 @pytest.mark.most_unstable_cape_cin
 @pytest.mark.parametrize("depth", [30000.0])
@@ -1582,6 +1619,7 @@ def test_mixed_layer_cape_cin_broadcasting() -> None:
     )
 
 
+@pytest.mark.usefixtures("metpy_parcel_moisture")
 @pytest.mark.regression
 @pytest.mark.mixed_layer_cape_cin
 def test_mixed_layer_cape_cin_regression() -> None:
