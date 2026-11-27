@@ -59,6 +59,8 @@ pythonpath = ["src"]
 
 [tool.coverage.run]
 plugins = ["Cython.Coverage"]
+# Cython's @cython.ufunc tracing records a pseudo-file that the Cython.Coverage plugin can't report
+omit = ["*/UFuncDefinition"]
 source = ["nzthermo"]  # the package (src layout), not a directory
 
 [tool.coverage.xml]
@@ -66,8 +68,6 @@ output = ".reports/coverage.xml"
 
 [tool.coverage.report]
 ignore_errors = false
-# Cython's @cython.ufunc tracing records a pseudo-file that the Cython.Coverage plugin can't report
-omit = ["*/UFuncDefinition"]
 show_missing = true
 exclude_lines = [
     # Have to re-enable the standard pragma
