@@ -315,7 +315,7 @@ cdef void moist_lapse_1d(
 
     Z = pressure.shape[0]
     if isnan(temperature) or isnan(reference_pressure): # don't bother with the computation
-        for i in prange(Z):
+        for i in range(Z):
             out[i] = NaN
         return
 
@@ -524,7 +524,9 @@ cdef void parcel_profile_1d(
     # [dry ascent]
     # stop the dry ascent at the LCL
     stop = lcl.index_on(&pressure[0], Z)
-    for i in prange(0, stop, schedule='dynamic'): # parallelize the dry ascent
+    # plain range: this kernel already runs inside a prange over N, and a nested parallel region
+    # per profile costs more than the handful of dry_lapse calls it would split up
+    for i in range(stop):
         out[i] = C.dry_lapse(pressure[i], p0, temperature)
 
     # [ moist ascent ]
@@ -612,7 +614,7 @@ cdef void parcel_profile_with_lcl_1d(
         ep[:stop] = pressure[:stop]
         et[:stop] = temperature[:stop]
         etd[:stop] = dewpoint[:stop]
-        for i in prange(0, stop, schedule='dynamic'): # parallelize the dry ascent
+        for i in range(stop):  # see parcel_profile_1d: no nested prange
             pt[i] = C.dry_lapse(pressure[i], p0, t0)
 
         # [ lcl ]
