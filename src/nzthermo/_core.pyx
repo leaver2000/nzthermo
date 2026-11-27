@@ -506,6 +506,14 @@ def moist_lapse(
 # ............................................................................................... #
 # parcel_profile
 # ............................................................................................... #
+cdef inline size_t n_valid(T[:] pressure, size_t Z) noexcept nogil:
+    """Number of levels before the trailing NaN padding."""
+    cdef size_t n = Z
+    while n > 0 and isnan(pressure[n - 1]):
+        n -= 1
+    return n
+
+
 cdef void parcel_profile_1d(
     T[:] out,      # (Z,)
     T[:] pressure,  # (Z,)
@@ -520,6 +528,13 @@ cdef void parcel_profile_1d(
     Z = out.shape[0]
     p0 = pressure[0]
     lcl = C.lcl[T](pressure[0], temperature, dewpoint)
+
+    # the LCL is above the top of the profile: the parcel rises dry through every level
+    stop = n_valid(pressure, Z)
+    if stop and lcl.pressure < pressure[stop - 1]:
+        for i in range(Z):
+            out[i] = C.dry_lapse(pressure[i], p0, temperature)
+        return
 
     # [dry ascent]
     # stop the dry ascent at the LCL
@@ -604,6 +619,17 @@ cdef void parcel_profile_with_lcl_1d(
     p0, t0, td0 = pressure[0], temperature[0], dewpoint[0]
 
     lcl = C.lcl[T](p0, t0, td0)
+
+    # the LCL is above the top of the profile: dry ascent through every level, no LCL level is
+    # inserted (the extra slot at the end stays NaN)
+    stop = n_valid(pressure, Z)
+    if stop and lcl.pressure < pressure[stop - 1]:
+        ep[:Z] = pressure[:Z]
+        et[:Z] = temperature[:Z]
+        etd[:Z] = dewpoint[:Z]
+        for i in range(Z):
+            pt[i] = C.dry_lapse(pressure[i], p0, t0)
+        return
 
     # [dry ascent] .. parcel temperature from the surface up to the LCL ..
     stop = lcl.index_on(&pressure[0], Z)

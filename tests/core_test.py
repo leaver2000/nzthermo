@@ -1591,3 +1591,41 @@ def test_mixed_layer_cape_cin_regression() -> None:
         CAPE_, CIN__ = mpcalc.mixed_layer_cape_cin(P * Pa, T[i] * K, Td[i] * K, interpolate=False)
         assert_allclose(CAPE[i], CAPE_.m, atol=20)
         assert_allclose(CIN[i], CIN__.m, atol=200)
+
+
+# ............................................................................................... #
+# LCL above the top of the profile (#31)
+# ............................................................................................... #
+_P_DRY = np.array([1000.0, 950.0, 900.0, 850.0, 800.0]) * 100
+_T_DRY = np.array([310.0, 305.0, 300.0, 296.0, 292.0])
+_TD_DRY = _T_DRY - 50.0  # LCL near 480 hPa, far above the 800 hPa top
+
+
+@pytest.mark.parcel_profile
+def test_parcel_profile_with_lcl_lcl_above_top() -> None:
+    ep, et, etd, pt = _C.parcel_profile_with_lcl(_P_DRY, _T_DRY[np.newaxis], _TD_DRY[np.newaxis])
+
+    assert_array_equal(ep[0, :-1], _P_DRY)  # no LCL level inserted, order preserved
+    assert np.isnan(ep[0, -1]) and np.isnan(pt[0, -1])
+    assert_allclose(et[0, :-1], _T_DRY)
+    expected = mpcalc.parcel_profile(_P_DRY * Pa, _T_DRY[0] * K, _TD_DRY[0] * K).m
+    assert_allclose(pt[0, :-1], expected, atol=0.05)
+
+
+@pytest.mark.parcel_profile
+def test_parcel_profile_lcl_above_top() -> None:
+    pt = _C.parcel_profile(_P_DRY, _T_DRY[:1], _TD_DRY[:1])
+    expected = mpcalc.parcel_profile(_P_DRY * Pa, _T_DRY[0] * K, _TD_DRY[0] * K).m
+    assert_allclose(pt[0], expected, atol=0.05)
+
+
+@pytest.mark.parcel_profile
+def test_parcel_profile_with_lcl_lcl_above_last_valid_level() -> None:
+    """Same case with NaN padding: the LCL is above the last *valid* level of the row."""
+    p = np.r_[_P_DRY, np.nan, np.nan][np.newaxis]
+    t = np.r_[_T_DRY, np.nan, np.nan][np.newaxis]
+    td = np.r_[_TD_DRY, np.nan, np.nan][np.newaxis]
+    ep, *_ = _C.parcel_profile_with_lcl(p, t, td)
+
+    valid = ep[0][~np.isnan(ep[0])]
+    assert_array_equal(valid, _P_DRY)
