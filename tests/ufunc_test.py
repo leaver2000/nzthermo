@@ -17,6 +17,7 @@ from nzthermo._ufunc import (
     wet_bulb_potential_temperature,
     wet_bulb_temperature,
     wind_components,
+    wind_direction,
     wind_vector,
 )
 
@@ -88,6 +89,22 @@ def test_wind_components() -> None:
 
     u, v = wind_components(WIND_DIRECTIONS, WIND_MAGNITUDES)
     assert_allclose([WIND_DIRECTIONS, WIND_MAGNITUDES], wind_vector(u, v), atol=1e-9)
+
+
+@pytest.mark.parametrize("dtype", [np.float64, np.float32])
+def test_wind_direction_calm(dtype) -> None:
+    # calm winds have no direction; by convention (WMO, MetPy) the direction is reported as 0
+    u = np.array([0.0, -0.0, 0.0, -10.0], dtype=dtype)
+    v = np.array([0.0, -0.0, -10.0, 0.0], dtype=dtype)
+    assert_array_equal(wind_direction(u, v), [0.0, 0.0, 0.0, 90.0])
+    assert_allclose(
+        wind_direction(u, v),
+        mpcalc.wind_direction(u * units.meter / units.second, v * units.meter / units.second)
+        .to(units.degrees)
+        .m
+        % 360.0,
+    )
+    assert_array_equal(wind_vector(dtype(0.0), dtype(0.0)), (0.0, 0.0))
 
 
 @pytest.mark.parametrize("dtype", [np.float64, np.float32])
