@@ -14,7 +14,7 @@ dynamic = ["version"]
 description = "(N, Z) Thermodynamics"
 authors = [{ name = "Jason Leaver", email = "leaver2000@gmail.com" }]
 dependencies = ['numpy']
-requires-python = ">=3.10"
+requires-python = ">=3.11"  # generic NamedTuple (utils.ParcelProfile)
 
 [tool.setuptools.packages.find]
 where = ["src"]
