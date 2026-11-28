@@ -1,0 +1,206 @@
+# Nightly check against the newest releases (and nightly wheels) of nzthermo's build and runtime
+# dependencies, so upstream breakages such as #26 (Cython 3.1 rejecting `bint` ufuncs) are caught
+# before users hit them. A failing scheduled run opens (or updates) an issue labelled `upstream`;
+# the next passing run closes it. See #47.
+#
+# Scheduled workflows only run from the default branch.
+name: upstream
+
+on:
+  schedule:
+    - cron: "17 7 * * *" # daily, 07:17 UTC
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/upstream.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NIGHTLY_INDEX: https://pypi.anaconda.org/scientific-python-nightly-wheels/simple
+
+jobs:
+  test:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: latest releases (Python 3.13)
+            python: "3.13"
+            nightly: false
+          - name: latest releases (Python 3.14)
+            python: "3.14"
+            nightly: false
+          - name: nightly NumPy and Cython (Python 3.13)
+            python: "3.13"
+            nightly: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # setuptools_scm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          allow-prereleases: true
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # test references first (MetPy stays pinned, see tests/requirements.txt), then the
+          # build dependencies at their newest version so nothing downgrades them again
+          pip install -r tests/requirements.txt
+          if [ "${{ matrix.nightly }}" = "true" ]; then
+            pip install --upgrade --pre --extra-index-url "$NIGHTLY_INDEX" numpy cython
+          else
+            pip install --upgrade numpy cython
+          fi
+          pip install --upgrade setuptools setuptools_scm wheel
+      - name: Record versions
+        run: |
+          python - <<'EOF' | tee -a "$GITHUB_STEP_SUMMARY"
+          import platform, numpy, Cython, setuptools, metpy
+          print(f"**{platform.python_version()}**: numpy {numpy.__version__}, Cython {Cython.__version__}, "
+                f"setuptools {setuptools.__version__}, MetPy {metpy.__version__} (reference)")
+          EOF
+      - name: Build extensions
+        run: python setup.py build_ext --inplace
+      - name: Test
+        run: pytest -q
+
+  isolated-install:
+    # the user install path from #26: an isolated `pip install .` with whatever is newest
+    name: isolated pip install (Python 3.13)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: |
+          python -m pip install --upgrade pip
+          pip install .
+      - name: Smoke test
+        working-directory: /tmp
+        run: |
+          python - <<'EOF' | tee -a "$GITHUB_STEP_SUMMARY"
+          import numpy as np, nzthermo as nzt, Cython
+          P = np.array([1000, 850, 700, 500, 300.0]) * 100
+          T = np.array([[300, 290, 280, 262, 240.0]])
+          cape, cin = nzt.surface_based_cape_cin(P, T, T - 5)
+          assert np.isfinite(cape).all()
+          print(f"nzthermo {nzt.__version__} (OpenMP {nzt.OPENMP_ENABLED}) installed; numpy {np.__version__}; SBCAPE {cape[0]:.0f} J/kg")
+          EOF
+
+  metpy-latest:
+    # informational only: MetPy >= 1.7 changed several reference results (Romps LCL, CCL, DCAPE,
+    # ECAPE), so differences are expected until the suite moves off MetPy 1.6.2
+    name: newest MetPy reference (informational)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r tests/requirements.txt
+          pip install --upgrade metpy numpy cython setuptools setuptools_scm wheel
+          python setup.py build_ext --inplace
+      - name: Test against the newest MetPy
+        run: |
+          set +e
+          pytest -q -rf -p no:warnings > pytest.txt 2>&1
+          code=$?
+          {
+            echo "### Newest MetPy ($(python -c 'import metpy; print(metpy.__version__)'))"
+            echo
+            echo '```'
+            tail -n 1 pytest.txt
+            echo '```'
+            echo
+            echo '<details><summary>failing tests</summary>'
+            echo
+            echo '```'
+            grep '^FAILED' pytest.txt | cut -c1-200 || true
+            echo '```'
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "pytest exit code $code (informational, does not fail the run)"
+
+  report:
+    # on a schedule (or manual run): open/update an `upstream` issue on failure, close it on success.
+    # on a pull request: dry run that only logs what it would do.
+    needs: [test, isolated-install]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      actions: read
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          DRY_RUN: ${{ github.event_name == 'pull_request' }}
+        with:
+          script: |
+            const dry = process.env.DRY_RUN === "true";
+            const { owner, repo } = context.repo;
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+              owner, repo, run_id: context.runId, per_page: 100,
+            });
+            const failed = jobs.filter((j) => j.conclusion === "failure" && j.name !== "report");
+            core.info(`failed jobs: ${failed.map((j) => j.name).join(", ") || "none"}`);
+
+            const label = "upstream";
+            const open = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, labels: label, state: "open", per_page: 100,
+            });
+            const existing = open.find((i) => !i.pull_request);
+
+            if (failed.length) {
+              const body = [
+                `The nightly upstream check failed: ${runUrl}`,
+                "",
+                ...failed.map((j) => `- [${j.name}](${j.html_url})`),
+                "",
+                "Dependency versions are in each job's summary. See #47 for what this workflow checks.",
+              ].join("\n");
+              if (dry) {
+                core.notice(`dry run: would ${existing ? `comment on #${existing.number}` : "open a new issue"}`);
+                return;
+              }
+              try {
+                await github.rest.issues.createLabel({ owner, repo, name: label, color: "d93f0b",
+                  description: "Breakage against new releases of dependencies" });
+              } catch (e) {
+                if (e.status !== 422) throw e; // already exists
+              }
+              if (existing) {
+                await github.rest.issues.createComment({ owner, repo, issue_number: existing.number, body });
+              } else {
+                await github.rest.issues.create({ owner, repo, labels: [label],
+                  title: "Nightly upstream check is failing", body });
+              }
+            } else if (existing) {
+              if (dry) {
+                core.notice(`dry run: would close #${existing.number}`);
+                return;
+              }
+              await github.rest.issues.createComment({ owner, repo, issue_number: existing.number,
+                body: `The nightly upstream check passes again: ${runUrl}` });
+              await github.rest.issues.update({ owner, repo, issue_number: existing.number, state: "closed" });
+            } else {
+              core.info("all upstream jobs passed; nothing to report");
+            }
